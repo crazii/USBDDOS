@@ -1,0 +1,379 @@
+#ifndef _PLATFORM_H_
+#define _PLATFORM_H_
+
+
+#if defined(__BORLANDC__) || defined(__BCPLUSPLUS__)
+#define __BC__ 1
+#elif defined(__WATCOMC__) || defined(__WATCOM_CPLUSPLUS__)
+#define __WC__ 1
+#elif defined(__DJGPP__)
+#if (__DJGPP__ == 2)
+#define __DJ2__ 1
+#endif
+#endif
+
+#define nullable
+#define outputp
+#define inoutp
+#define inoroutp
+#define inputp
+
+#define unused(x) (void)x
+
+//align down
+#define align(x,a) (((x)+(a)-1)&(~((a)-1)))
+
+//log should be disabled or write to file in final shipping. use output function (printf/puts) to show msg to user.
+#ifndef _LOG_ENABLE
+#define _LOG_ENABLE 1
+#endif
+
+#if defined(__BC__)
+
+#if !defined(__TINY__) && !defined(__SMALL__)
+#error only tiny/small model supported.
+#endif
+
+#include <stddef.h>
+#include <stdlib.h>    //min max
+typedef char int8_t;
+typedef unsigned char uint8_t;
+typedef short int16_t;
+typedef unsigned short uint16_t;
+typedef long int32_t;
+typedef unsigned long uint32_t;
+
+typedef int16_t intptr_t;   //only use tiny or small model by default. if large mmemory is used, be care about far pointer and not to use this, use FP_SEG/FP_OFF
+typedef uint16_t uintptr_t;
+
+#define _ASM_BEGIN __asm {
+#define _ASM_END }
+#define _ASM(x) x;
+#define _ASMLBL(x) }x __asm { x //the first label makes compiler happy and the second used by TASM when offset used
+#define _ASM2(x,y) x,y;
+#define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
+#define _ASM_RETF _ASM2(mov sp, bp) _ASM(pop bp) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump
+
+
+#define _ASM_BEGIN16 _ASM_BEGIN
+#define _ASM_END16 _ASM_END
+//this is hack to origianl assembly code. need -B (compile via assembler) for BC
+#define _ASM_BEGIN32 _ASM_BEGIN16 _TEXT ends; _TEXT32 segment public use32 'CODE'; assume cs:_TEXT32;
+#define _ASM_END32 _TEXT32 ends; _TEXT segment; assume cs:_TEXT;_ASM_END16
+
+#define NOP __asm nop
+#define CLI __asm cli
+#define STI __asm sti
+
+#define __NAKED //not supported on BC3.1. uncheck 'standard stack frame' might work but it is implicit: no frame when no param&local vars.
+                //#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
+#define __CDECL __cdecl
+
+#if _LOG_ENABLE
+#define _LOG printf
+#else
+inline int _nolog(...){return 0;}
+#define _LOG _nolog
+#endif
+
+//copy code to data. as long as the compiler doesn't touch the PM segment selector
+#define memcpy_c2d(src, dest, size) do{\
+    void far* fdest = MK_FP(_DS, FP_OFF(src));\
+    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+    _fmemcpy(fdest, fsrc, size);\
+}while(0)
+
+
+#elif defined(__DJ2__)
+#include <stdint.h>
+#include <stddef.h>
+
+//looks ugly. only if we can work preprocessing with raw string literals (R"()")
+//raw string can work with preprocessor using gcc -E or cpp in the triditional way. need a special pass for file with asm
+#define _ASM_BEGIN asm __volatile__(".intel_syntax noprefix\n\t"
+#define _ASM_END ".att_syntax noprefix");
+#define _ASM(...) #__VA_ARGS__"\n\t"
+#define _ASMLBL _ASM
+#define _ASM2 _ASM
+#define _ASM_OPERAND_SIZE _ASM(.byte 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
+#define _ASM_RETF _ASM(retf)
+
+#define _ASM_BEGIN16 _ASM_BEGIN ".code16\n\t"
+#define _ASM_END16 ".code32\n\t" _ASM_END
+#define _ASM_BEGIN32 _ASM_BEGIN
+#define _ASM_END32 _ASM_END
+
+#define NOP asm __volatile__("nop")
+#define CLI asm __volatile__("cli")
+#define STI asm __volatile__("sti")
+
+#define __NAKED __attribute__((naked))
+#define __CDECL __attribute__((cdecl))
+
+#if _LOG_ENABLE
+#define _LOG(...) do{ printf(__VA_ARGS__); fflush(stdout); } while(0)
+#else
+#define _LOG(...)
+#endif
+
+#define memcpy_c2d memcpy
+
+#elif defined(__WC__)
+//need -za99 option?
+#include <stdint.h>
+#include <stddef.h>
+
+#define _ASM_BEGIN __asm {
+#define _ASM_END }
+#define _ASM(...) __VA_ARGS__;
+#define _ASMLBL _ASM
+#define _ASM2 _ASM
+#define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
+#define _ASM_RETF _ASM(retf)
+
+//wc inline asm doesn't support use16 codes, except .286 but that will disble 32bit registers too
+#define _ASM_BEGIN16 _ASM_BEGIN //not supported. TODO:
+#define _ASM_END16 _ASM_END //not supported. TODO:
+#define _ASM_BEGIN32 _ASM_BEGIN 
+#define _ASM_END32 _ASM_END
+
+#define NOP __asm nop
+#define CLI __asm cli
+#define STI __asm sti
+
+#define __NAKED __declspec(naked)
+#define __CDECL __cdecl
+
+#if _LOG_ENABLE
+#define _LOG(...) do{ printf(__VA_ARGS__); fflush(stdout); } while(0)
+#else
+#define _LOG(...)
+#endif
+
+#define memcpy_c2d memcpy
+
+#else //stub
+#error "Not supported."
+#include <stdint.h>
+#include <stdlib.h>
+#include <stddef.h>
+
+//make text editor happy. i.e. vscode
+#define delay(n)
+
+#define inp(port) 0
+#define inpw(port) 0
+#define inpd(port) 0
+
+#define outp(port)
+#define outpw(port)
+#define outpd(port)
+
+#define _dos_open(s, m, fd) 0
+#define _dos_close(fd)
+
+#define _ASM_BEGIN __asm {
+#define _ASM_END }
+#define _ASM(...) __VA_ARGS__
+#define _ASM2 _ASM
+#define _ASMLBL _ASM
+
+#define _ASM_BEGIN16 _ASM_BEGIN
+#define _ASM_END16 _ASM_END
+#define _ASM_BEGIN32 _ASM_BEGIN
+#define _ASM_END32 _ASM_END
+
+#define NOP
+#define CLI
+#define STI
+
+#define __far
+#define far
+
+#define __NAKED
+#define __CDECL
+
+#define _LOG(...)
+
+#define _fmemset memset
+#define FP_SEG(x) ((uintptr_t)(x))
+#define FP_OFF(x) ((uintptr_t)(x))
+#define MK_FP(x,y) (NULL)
+#define _DS 0
+#define _CS 0
+#define _AX 0
+#define _AH 0
+#define _AL 0
+
+#endif
+
+typedef enum {FALSE, TRUE}BOOLEAN;
+typedef int BOOL;
+
+#undef min
+#undef max
+#define min(x,y) ((x)<(y)?(x):(y))
+#define max(x,y) ((x)>(y)?(x):(y))
+
+//Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 3.4.5 (3-9)
+typedef struct //segment descriptors
+{
+    uint16_t limit_low;
+    uint16_t base_low;
+    uint8_t base_middle;
+
+    uint8_t accessed : 1;
+    uint8_t read_write : 1; //read for code, write for data
+    uint8_t CE : 1;     //code: conforming(1), data: expand down (1)
+    uint8_t type : 1;   //1 code, 0 data
+    uint8_t nonsystem : 1;  //S: 0: system, 1: code or data
+    uint8_t privilege : 2;  //DPL
+    uint8_t present : 1;    //P
+
+    uint8_t limit_high : 4;
+    uint8_t available : 1;  //AVL: available for programmer
+    uint8_t zero: 1;    //always 0
+    uint8_t bits32 : 1; //16 or 32
+    uint8_t granuarity : 1; //0: 1B, 1: 4K
+
+    uint8_t base_high;
+}GDT,LDT;
+
+//Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, (6-11)
+//gate type
+#define IDT_GT_TASK 0x5   //task gate, offset should be 0
+#define IDT_GT_IG 0x6     //interrupt gate
+#define IDT_GT_TG 0x7     //trap gate
+typedef struct
+{
+    uint16_t offset_low;
+    uint16_t selector;
+    uint8_t reserved;
+    uint8_t gate_type : 3;
+    uint8_t bit32 : 1;
+    uint8_t zero2 : 1;
+    uint8_t privilege : 2;
+    uint8_t present : 1;
+    uint16_t offset_high;
+}IDT;
+
+typedef struct
+{
+    //easy alignment
+    uint16_t unused; //make clear of size/alignment, care about the offset (2)
+    uint16_t size;
+    uint32_t offset;
+}GDTR, LDTR, IDTR;
+
+//Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, Charpter 4: Paging
+typedef struct//bc3.1 doesn't support 32bit bitfields
+{
+    uint16_t present : 1;       //
+    uint16_t writable : 1;      //R/W
+    uint16_t user : 1;          //1: user, 0: system
+    uint16_t writethrough : 1;  //PWT
+    uint16_t disable_cache: 1;  //PCD
+    uint16_t accessed : 1;      //A
+    uint16_t dirty : 1;         //D
+    uint16_t PS_PAT : 1;        //PS page size: 4M for pde, need Pentium Pro (CPUID). PAT Page Attribute Table: for pte(PIII+). both not used.
+    uint16_t global: 1;         //G valid when PGE(bit7) set in cr4
+    uint16_t ignored : 3;       //user feilds
+    uint16_t address_low : 4;   //
+    uint16_t address_high;
+}PDE,PTE;
+/*#define PDE_INIT(pde, addr) do{\
+    (pde).present = 1;\
+    (pde).writable = 1;\
+    (pde).user = 1;\
+    (pde).address_low = (addr) >> 12L;\
+    (pde).address_high = (addr) >> 16L;\
+}while(0) //good readibility but generate bad code */
+
+#define PDE_INIT(pde, addr) do{\
+    *(uint32_t*)&(pde) = (((uint32_t)(addr))&~0xFFFL) | 0x7L;\
+}while(0)
+
+#define PDE_ADDR(pde) ((*(uint32_t*)&pde)&~0xFFFL)
+
+#define PTE_INIT PDE_INIT
+#define PTE_ADDR PDE_ADDR
+
+
+//Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 7.2.1 (7-3)
+typedef struct
+{
+    uint16_t prev;  //previous task link
+    uint16_t reserved;
+    uint32_t esp0;
+    uint16_t ss0;
+    uint16_t reserved0;
+    uint32_t esp1;
+    uint16_t ss1;
+    uint16_t reserved1;
+    uint32_t esp2;
+    uint16_t ss2;
+    uint16_t reserved2;
+    uint32_t cr3;   //cr3 register, task paging
+    uint32_t eip;
+    uint32_t eflags;
+    uint32_t eax;
+    uint32_t ecx;
+    uint32_t edx;
+    uint32_t ebx;
+    uint32_t esp;
+    uint32_t ebp;
+    uint32_t esi;
+    uint32_t edi;
+    struct
+    {
+        uint16_t es;
+        uint16_t reserved3;
+        uint16_t cs;
+        uint16_t reserved4;
+        uint16_t ss;
+        uint16_t reserved5;
+        uint16_t ds;
+        uint16_t reserved6;
+        uint16_t fs;
+        uint16_t reserved7;
+        uint16_t gs;
+        uint16_t reserved8;
+        uint16_t ldt_sel;
+        uint16_t reserved9;
+    }sel;
+    uint16_t trap : 1; //debug trap
+    uint16_t reserved10 : 15;
+    uint16_t iomap;
+    uint32_t ssp;   //shadow stack pointer
+}TSS32;
+
+typedef struct
+{
+    uint16_t prev;  //previous task link
+    uint16_t sp0;
+    uint16_t ss0;
+    uint16_t sp1;
+    uint16_t ss1;
+    uint16_t sp2;
+    uint16_t ss2;
+    uint16_t ip;
+    uint16_t flags;
+    uint16_t ax;
+    uint16_t cx;
+    uint16_t dx;
+    uint16_t bx;
+    uint16_t sp;
+    uint16_t bp;
+    uint16_t si;
+    uint16_t di;
+    struct
+    {
+        uint16_t es;
+        uint16_t cs;
+        uint16_t ss;
+        uint16_t ds;
+        uint16_t ldt_sel;
+    }sel16;
+}TSS16;
+
+#endif

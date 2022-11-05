@@ -1,0 +1,98 @@
+!define BLANK ""
+
+TARGET = rwddos
+
+all: $(TARGET).exe
+
+clean: .symbolic
+    del output\*.obj
+    del $(TARGET).exe
+
+CC = wcc386
+CFLAGS = -za99 -w4 -e25 -zq -od -d2 -3r -bt=dos -mf -i..
+CXX = wpp386
+CXXFLAGS = -w4 -e25 -zq -od -d2 -3r -bt=dos -mf -xs -xr -i..
+
+{..\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\USBDDOS\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\USBDDOS\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\USBDDOS\DPMI\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+{..\USBDDOS\DPMI\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\USBDDOS\HCD\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\USBDDOS\HCD\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\USBDDOS\CLASS\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\USBDDOS\CLASS\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\RetroWav\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\RetroWav\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\RetroWav\Protocol\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\RetroWav\Protocol\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\RetroWav\Board\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\RetroWav\Board\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+{..\RetroWav\Platform\}.c{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+{..\RetroWav\Platform\}.cpp{output\}.obj: .AUTODEPEND
+    @echo $<
+    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+
+#arg list too big
+output\DOS_CDC.obj : ..\RetroWav\Platform\DOS_CDC.c
+    @echo $<
+    @cd output
+    @$(CC) $(CFLAGS) -i..\.. -fo=DOS_CDC.obj ..\$<
+    @cd ..
+
+$(TARGET).exe : output\DPMI.obj output\XMS.obj output\DPMI_WC.obj output\PCI.obj &
+output\CDC.obj output\DBGUTIL.obj &
+output\OHCI.obj output\UHCI.obj output\USB.obj output\USBTABLE.obj &
+output\Serial.obj output\RetroWav.obj output\DOS_CDC.obj output\OPL3.obj &
+output\MAIN.obj .AUTODEPEND output\EMM.obj
+ @%write output\$(TARGET).lk1 FIL output\DPMI.obj,output\PCI.obj,&
+output\CDC.obj,output\DBGUTIL.obj,output\OHCI.obj,output\UHCI.obj,output\USB.obj,output\USBTABLE.obj,&
+output\Serial.obj,output\RetroWav.obj,output\DOS_CDC.obj,output\OPL3.obj,&
+output\MAIN.obj,EMM.obj
+ @%append output\$(TARGET).lk1
+ @echo $(TARGET).exe
+ @wlink name $(TARGET) d all sys dos4g op maxe=25 op q @output\$(TARGET).lk1
+
