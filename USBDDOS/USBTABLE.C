@@ -29,16 +29,19 @@ USB_Table USBT =
             0x00,
             UHCI_InitController,
             UHCI_DeinitController,
+            UHCI_ISR,
         },
         //OHCI
         {
             0x10,
             OHCI_InitController,
             OHCI_DeinitController,
+            OHCI_ISR,
         },
         //EHCI
         {
             0x20,
+            NULL,
             NULL,
         },
     },
@@ -52,37 +55,37 @@ USB_Table USBT =
         0,0,
         //USBC_AUDIO            0x1
         0,0,
-        //USBC_CDC            0x2      //communication device class
+        //USBC_CDC              0x2      //communication device class
         #if USE_CDC
         USB_CDC_InitDevice, USB_CDC_DeinitDevice,
         #else
         0,0
         #endif
-        //USBC_HID            0x3
+        //USBC_HID              0x3
         0,0,
         //no 0x4 from spec
         0,0,
-        //USBC_PHYSICAL        0x5
+        //USBC_PHYSICAL         0x5
         0,0,
-        //USBC_STILLIMAGE        0x6
+        //USBC_STILLIMAGE       0x6
         0,0,
-        //USBC_PRINTER        0x7
+        //USBC_PRINTER          0x7
         0,0,
-        //USBC_MASSSTORAGE    0x8
+        //USBC_MASSSTORAGE      0x8
         #if USE_MSC
         0, 0,
         #else
         0, 0,
         #endif
-        //USBC_HUBCLASS        0x9
+        //USBC_HUBCLASS         0x9
         0,0,
-        //USBC_CDCDATA        0xA
+        //USBC_CDCDATA          0xA
         0,0,
         //USBC_SMARTCARD        0xB
         0,0,
         //no 0xC from spec
         0,0,
-        //USBC_SECURITYCONTENT 0xD
+        //USBC_SECURITYCONTENT  0xD
         0,0,
         //USBC_VEDIO            0xE
         0,0,

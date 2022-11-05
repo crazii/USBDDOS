@@ -31,7 +31,7 @@ uint16_t EMM_GetVersion(void)
     //printf("%04x %04x\n",r0.ax&0xF0, r0.ax&0x0F);
 
     int fd = 0;
-    int result = _dos_open("386MAX$$", O_RDONLY, &fd);
+    unsigned int result = _dos_open("386MAX$$", O_RDONLY, &fd);
     if(result == 0)
     {
         _dos_close(fd);
@@ -66,10 +66,10 @@ uint16_t EMM_GetVersion(void)
     r.w.dx = 0;
     r.w.cx = DOS_RCVDATA; //ioctl function
     r.w.ax = 0x4402;
-    r.w.flags = DPMI_CFLAG;
+    r.w.flags = CPU_CFLAG;
     //control code 2 and read version
     *buff = 2;
-    if( DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&DPMI_CFLAG) || r.w.ax != 2 )
+    if( DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&CPU_CFLAG) || r.w.ax != 2 )
     {
         _dos_close(fd);
         DPMI_DOSFree(mem);
@@ -121,26 +121,27 @@ typedef struct
 }EMM_IODT_FarAddr;
 
 #if defined(__DJ2__)
-static_assert(sizeof(GDT) == 8);
-static_assert(sizeof(GDTR) == 8);
-static_assert(sizeof(IDTR) == 8);
-static_assert(__builtin_offsetof(EMM_IODT_Header, oldcs) == 16);
-static_assert(__builtin_offsetof(EMM_IODT_Header, oldss) == 18);
-static_assert(__builtin_offsetof(EMM_IODT_Header, oldesp) == 20);
-static_assert(__builtin_offsetof(EMM_IODT_Header, gdtr) == 32);
+_Static_assert(sizeof(GDT) == 8, "incorrect size/alignment");
+_Static_assert(sizeof(GDTR) == 8, "incorrect size/alignment");
+_Static_assert(sizeof(IDTR) == 8, "incorrect size/alignment");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldcs) == 16, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldss) == 18, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldesp) == 20, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, gdtr) == 32, "incorrect offset");
 
-static_assert(__builtin_offsetof(EMM_IODT_Header, esp) == 40);
-static_assert(__builtin_offsetof(EMM_IODT_Header, wrapper) == 44);
-static_assert(__builtin_offsetof(EMM_IODT_Header, code_offset) == 48);
-static_assert(__builtin_offsetof(EMM_IODT_Header, tableOffset) == 52);
-static_assert(__builtin_offsetof(EMM_IODT_Header, tableCount) == 54);
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, esp) == 40, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, wrapper) == 44, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, code_offset) == 48, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, tableOffset) == 52, "incorrect offset");
+_Static_assert(__builtin_offsetof(EMM_IODT_Header, tableCount) == 54, "incorrect offset");
 #endif
 
 //protected mode ring0 entry for EMM386 callback
-extern "C" void __NAKED EMM_IOPortTrap_StartCode()
+__EXTERN void __NAKED EMM_IOPortTrap_StartCode()
 {
     _ASM_BEGIN16
-
+    _ASM(pushf)
+    _ASM(cli)
     _ASM(push ebx)
     _ASM(push ecx)
     _ASM(push edx)
@@ -186,7 +187,7 @@ _ASMLBL(found_entry:)
     _ASM2(mov bx, 0x20) //current ds
     _ASM2(mov ds, bx)
 
-    _ASM2(mov ebx, cr0) //disable paging. the stack provided by EMM386 might not be available anymore, we need a stack with physical base
+    _ASM2(mov ebx, cr0) //disable paging. the stack provided by EMM386 might not be available anymore, need a stack with physical base
     _ASM2(mov ebp, ebx)
     _ASM2(and ebx, 0x7FFFFFFF)
     _ASM2(mov cr0, ebx)
@@ -291,6 +292,7 @@ _ASMLBL(done:)
     _ASM(pop edx)
     _ASM(pop ecx)
     _ASM(pop ebx)
+    _ASM(popf)
     _ASM_RETF
 
     //the tricky part: inline assembly generate label in the exe's code space
@@ -322,7 +324,7 @@ void __NAKED EMM_IOPortTrap_Install_V86End() {} //dummy function
 
 static DPMI_ADDRESSING EMM_Addressing;
 static DPMI_ADDRESSING EMM_OldAddressing;
-extern "C" uint32_t __CDECL EMM_IOPortTrap_WrapperC(uint32_t handler32, uint32_t port, uint32_t val, uint32_t out)//handler not pointer for compatile reason (BC)
+__EXTERN uint32_t __CDECL EMM_IOPortTrap_WrapperC(uint32_t handler32, uint32_t port, uint32_t val, uint32_t out)//handler not pointer for compatile reason (BC)
 {
     DPMI_SetAddressing(&EMM_Addressing, &EMM_OldAddressing);
     EMM_IOTRAP_HANDLER handler = (EMM_IOTRAP_HANDLER)(uintptr_t)handler32;
@@ -332,7 +334,7 @@ extern "C" uint32_t __CDECL EMM_IOPortTrap_WrapperC(uint32_t handler32, uint32_t
 }
 //RETF wrapper function for client, port trap handler code will call this entry
 static /*uint32_t*/ void __NAKED EMM_IOPortTrap_Wrapper()
-{//edx: port, ecx:inout 0-in. eax:data, ebx/bx: target function
+{ //edx: port, ecx:inout 0-in. eax:data, ebx/bx: target function. return eax.
     _ASM_BEGIN
     _ASM(push ecx)
     _ASM(push eax)
@@ -355,7 +357,7 @@ static /*uint32_t*/ void __NAKED EMM_IOPortTrap_Wrapper()
 
 //our code & data are in himem, we can allocate a seperate small segment and fill with
 //real mode TSR data & code and do TSR with almost 0 mem residence.
-BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count)
+BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count, EMM_IOPT* outputp iopt)
 {
     //build real mode block
     uint8_t buff[1024] = {0};
@@ -364,14 +366,14 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
     //header
     {
         //preserve header, write later, need allocate mem block to get linear address
-        offset += sizeof(EMM_IODT_Header);
-        offset = align(offset, 4);
+        offset = (uint16_t)(offset+sizeof(EMM_IODT_Header));
+        offset = (uint16_t)align(offset, 4);
     }
 
     //jump table
     uint16_t table_offset = offset;
     {
-        EMM_IODT_FarAddr* addr = new EMM_IODT_FarAddr[count];
+        EMM_IODT_FarAddr* addr = (EMM_IODT_FarAddr*)malloc(sizeof(EMM_IODT_FarAddr)*count);
         for(int i = 0; i < count; ++i)
         {
             addr[i].offset = (uintptr_t)iodt[i].handler;
@@ -380,31 +382,31 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
             //_LOG("IODT %d offset:%08lx\n", i, addr[i].offset);
         }
         memcpy(buff + offset, addr, sizeof(EMM_IODT_FarAddr)*count);
-        delete[] addr;
-        offset += (uint16_t)(sizeof(EMM_IODT_FarAddr)*count);
-        offset = align(offset, 4);
+        free(addr);
+        offset = (uint16_t)(offset + sizeof(EMM_IODT_FarAddr)*count);
+        offset = (uint16_t)align(offset, 4);
     }
 
     //handler entry code
     uint16_t code_offset = offset;
     size_t code_size = (uintptr_t)&EMM_IOPortTrap_EndCode - (uintptr_t)&EMM_IOPortTrap_StartCode;
     memcpy_c2d(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_StartCode, code_size);
-    offset += (uint16_t)code_size;
-    offset = align(offset, 4);
+    offset = (uint16_t)(offset+code_size);
+    offset = (uint16_t)align(offset, 4);
 
     //iodt
     uint16_t iodt_offset = offset;
     {
-        EMM_IODT_V86* v86iodt = new EMM_IODT_V86[count];
+        EMM_IODT_V86* v86iodt = (EMM_IODT_V86*)malloc(sizeof(EMM_IODT_V86)*count);
         for(int i = 0; i < count; ++i)
         {
             v86iodt[i].port = (uint16_t)iodt[i].port;
             v86iodt[i].offset = code_offset;
         }
         memcpy(buff + offset, v86iodt, sizeof(EMM_IODT_V86)*count);
-        delete[] v86iodt;
-        offset += (uint16_t)(sizeof(EMM_IODT_V86)*count);
-        offset = align(offset, 4);
+        free(v86iodt);
+        offset = (uint16_t)(offset + sizeof(EMM_IODT_V86)*count);
+        offset = (uint16_t)align(offset, 4);
     }
 
 #if EMM_IOTRAP_DIRECT_INT //not working in DOS/4GW.
@@ -416,15 +418,17 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
     uint16_t installfunc_offset = offset;
     size_t installcode_size = (uintptr_t)&EMM_IOPortTrap_Install_V86End - (uintptr_t)&EMM_IOPortTrap_Install_V86;
     memcpy_c2d(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_Install_V86, installcode_size);
-    offset += (uint16_t)installcode_size;
+    offset = (uint16_t)(offset + installcode_size);
     //_LOG("installation code size:%d\n", installcode_size);
 #endif
 
-    offset = align(offset, 16);
+    offset = (uint16_t)align(offset, 16);
     assert(offset >= 16 && offset <= 1024);
     //_LOG("TSR memory: %d bytes\n", offset);
 
-    uint32_t mem = DPMI_HighMalloc(offset>>4, FALSE);//TODO:use UMB to avoid fragments. UMB need paging, addr != physical addr.
+    uint32_t mem = DPMI_HighMalloc((uint16_t)(offset>>4), FALSE);//TODO:use UMB to avoid fragments. UMB need paging,
+    //another way is to use LH, and then right before TSR, copy this code to overwrite app DOS memory below PSP.
+    //but LH may load the app into UMB which need paging too.
     uint32_t segment = (mem&0xFFFFL);
 
     { //write header
@@ -461,7 +465,7 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
         #endif
         header.gdt[1].granuarity = 1;
         header.gdt[1].limit_low = (uint16_t)(cs_limit&0xFFFF);
-        header.gdt[1].limit_high = (uint8_t)(cs_limit >> 16);
+        header.gdt[1].limit_high = (cs_limit >> 16)&0xF;
         header.gdt[1].base_low = (uint16_t)(cs_base&0xFFFF);
         header.gdt[1].base_middle = (uint8_t)(cs_base>>16);
         header.gdt[1].base_high = (uint8_t)(cs_base>>24);
@@ -472,7 +476,7 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
         header.gdt[2].CE = 0;   //expand up
         header.gdt[2].type = 0; //data
         header.gdt[2].limit_low = (uint16_t)(ds_limit&0xFFFF);
-        header.gdt[2].limit_high = (uint8_t)(ds_limit >> 16);
+        header.gdt[2].limit_high = (ds_limit >> 16)&0xF;
         header.gdt[2].base_low = (uint16_t)(ds_base&0xFFFF);
         header.gdt[2].base_middle = (uint8_t)(ds_base>>16);
         header.gdt[2].base_high = (uint8_t)(ds_base>>24);
@@ -544,18 +548,42 @@ BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count
 
     r.w.cs = r.w.ds; //cs==ds or it will fail
     r.w.ip = installfunc_offset;
-    r.w.flags = DPMI_CFLAG; //EMM386 will not set CF on failure, only clear it on success.
+    r.w.flags = CPU_CFLAG; //EMM386 will not set CF on failure, only clear it on success.
 
 #if EMM_IOTRAP_DIRECT_INT
-    if(DPMI_CallRealModeINT(0x2F, &r) != 0 || (r.flags&DPMI_CFLAG))
+    if(DPMI_CallRealModeINT(0x2F, &r) != 0 || (r.flags&CPU_CFLAG))
 #else
     //not supported by DOS/4GW, supported by Causeway or DOS/4GW Professional. Causeway still freeze on client
-    if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&DPMI_CFLAG))
+    if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
 #endif
     {
         //DBG_DumpREG(&r);
+        memset(iopt, 0, sizeof(*iopt));
         return FALSE;
     }
 
+    iopt->memory = mem;
+    iopt->func = installfunc_offset;
+    iopt->handle = r.w.ax;
     return TRUE;
+}
+
+BOOL EMM_Uninstall_IOPortTrap(EMM_IOPT* inputp iopt)
+{
+    BOOL result = TRUE;
+    DPMI_REG r = {0};
+    r.w.bx = 1;
+    r.w.si = iopt->handle;
+    r.w.ds = (uint16_t)(iopt->memory&0xFFFFL);
+    r.w.cs = r.w.ds;
+    r.w.ip = iopt->func;
+    r.w.flags = CPU_CFLAG;
+
+    if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
+    {
+        //DBG_DumpREG(&r);
+        result = FALSE;
+    }
+    DPMI_HighFree(iopt->memory);
+    return result;
 }

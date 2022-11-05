@@ -3,7 +3,7 @@
 #include "USBDDOS/PLATFORM.H"
 #include "USBDDOS/DPMI/DPMI.H"
 
-#if __cplusplus
+#ifdef __cplusplus
 extern "C"
 {
 #endif
@@ -17,13 +17,22 @@ typedef struct EMM_IODispatchTable
     EMM_IOTRAP_HANDLER handler;
 }EMM_IODT;
 
+typedef struct EMM_IOPorTrap
+{
+    uint32_t memory;
+    uint16_t func;
+    uint16_t handle;
+}EMM_IOPT;
+
 //get EMM version
 uint16_t EMM_GetVersion(void);
 
 //I/O virtualize
-BOOL EMM_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count);
+BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count, EMM_IOPT* outputp iopt);
 
-#if __cplusplus
+BOOL EMM_Uninstall_IOPortTrap(EMM_IOPT* inputp iopt);
+
+#ifdef __cplusplus
 }
 #endif
 

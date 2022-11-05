@@ -21,8 +21,10 @@
 #include <go32.h>
 #include <stubinfo.h>
 #include "coff.h"
+#include "USBDDOS/DBGUTIL.H"
 
-#define NEW_BASE_ALIGNMENT (64*1024)
+#pragma GCC diagnostic ignored "-Wpedantic"
+#define NEW_BASE_ALIGNMENT (64*1024UL)
 //#define NEW_BASE_ALIGNMENT (4*1024)
 
 static uint32_t ProgramOffset = 0xFFFFFFFF;//total offset
@@ -101,8 +103,13 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
             return FALSE;
         }
 
-        uintptr_t end0 = (uintptr_t)sbrk(0);
-        if(!stdout->_base)  //hack
+        void (*volatile pfree)(void*) = free; //prevent optimization
+        void*(*volatile pmalloc)(size_t) = malloc;
+        // |CODE|DATA|BSS|STACK|C HEAP|XMS_HEAP| (all fixed size)
+        pfree(pmalloc(NEW_BASE_ALIGNMENT));   //preserve space for C runtime heap
+        /*uintptr_t end0 = (uintptr_t)sbrk(0);
+        //printf("%08lx\n",_go32_info_block.size_of_transfer_buffer);
+        if(!stdout->_base)  //printf hack
         {
             stdout->_bufsiz = _go32_info_block.size_of_transfer_buffer;
             stdout->_base = malloc(stdout->_bufsiz);
@@ -110,33 +117,38 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
             stdout->_cnt = 0;
             stdout->_ptr = stdout->_base;
             //printf("pre alloc stdout buffer: %08lx, %08lx\n", end0, sbrk(0));
-        }
+        }*/
         uintptr_t end = (uintptr_t)sbrk(0);
         ProgramSize = (uintptr_t)max(end - ProgramOffset, ProgramSize);
 
         *poffset = ProgramOffset;
-        *psize = align(ProgramOffset+ProgramSize, NEW_BASE_ALIGNMENT);// - ProgramOffset;
+        *psize = align(ProgramOffset+ProgramSize, NEW_BASE_ALIGNMENT);
+        //sbrk(*psize - end);
+        //assert((uintptr_t)sbrk(0) == *psize);
+        if(*psize > (uintptr_t)sbrk(0) + 0x100)
+            pfree(pmalloc(*psize - (uintptr_t)sbrk(0) - 0x100));
         return FALSE;
     }
     *psize = align(*psize, NEW_BASE_ALIGNMENT);
     
     uint32_t offset = *poffset;
     uint32_t size = *psize;
+    assert(offset == ProgramOffset);
     
-    //TODO: shrink stack as we may not need too much space
+    //TODO: shrink stack as we may not need too much space?
     //TODO: custom keep of code & data like DOS TSR. we can do the TSR init on exit (we still need physical addr for driver before TSR)
     //printf("min stack: %08lx, min keep: %08lx\n", _stubinfo->minstack, _stubinfo->minkeep);
     //printf("%08lx, %08lx: %08lx\n", base, ProgramOffset, ProgramSize);
     
-    ProgramNewCS = __dpmi_create_alias_descriptor(_my_cs());
+    ProgramNewCS = (uint16_t)__dpmi_create_alias_descriptor(_my_cs());
     //int16_t ProgramNewCS = __dpmi_allocate_ldt_descriptors(1);
-    uint32_t ar = __dpmi_get_descriptor_access_rights(ProgramNewCS);
+    int32_t ar = __dpmi_get_descriptor_access_rights(ProgramNewCS);
     ar |= 0x08;  //code: 0x08
     __dpmi_set_descriptor_access_rights(ProgramNewCS,ar);
     __dpmi_set_segment_limit(ProgramNewCS, size-1);
     __dpmi_set_segment_base_address(ProgramNewCS, newbase);
     
-    ProgramNewDS = __dpmi_create_alias_descriptor(_my_ds());
+    ProgramNewDS = (uint16_t)__dpmi_create_alias_descriptor(_my_ds());
     __dpmi_set_segment_limit(ProgramNewDS, size-1);
     __dpmi_set_segment_base_address(ProgramNewDS, newbase);
 
@@ -158,6 +170,7 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
     //int eip;
     //asm("movl $., %0" :: "r"(eip) :"memory");
     //printf("%04x:%08lx, %08lx, %08lx, %08lx\n", fjmp[1], fjmp[0], newbase, size-1,eip);
+    //printf("src: %08lx, dest : %08lx, size: %08lx\n", base + ProgramOffset, newbase + ProgramOffset, ProgramSize);
     DPMI_CopyLinear(newbase + ProgramOffset, base + ProgramOffset, ProgramSize);    //after local vars inited
     //TODO: we could probably use physical remap instead of jump.
     asm("ljmp *%0" :: "m"(fjmp));
@@ -173,6 +186,8 @@ switch_space:
     __djgpp_base_address_old = __djgpp_base_address;
     __djgpp_ds_alias = ProgramNewDS;
     __djgpp_base_address = newbase;
+    //make address persistent
+    _crt0_startup_flags = (_crt0_startup_flags&~_CRT0_FLAG_UNIX_SBRK) | _CRT0_FLAG_NONMOVE_SBRK;
     return TRUE;
 }
 
@@ -193,14 +208,14 @@ BOOL DPMI_ShutdownTSR(void)
         /*asm __volatile__("pushw %0\n\t popw %%ds\n\t" ::"m"(ProgramOldDS));
         sbrk(end-oldend);
         asm __volatile__("pushw %0\n\t popw %%ds\n\t": :"m"(ProgramNewDS));*/
-        ProgramSize = end - ProgramOffset;
+        //ProgramSize = end - ProgramOffset;
     }
 
     __djgpp_exception_toggle();
     int x = __dpmi_get_and_disable_virtual_interrupt_state();
-    DPMI_CopyLinear(__djgpp_base_address_old + ProgramOffset, __djgpp_base_address + ProgramOffset, ProgramSize);
-    //uint32_t stack = SectionOffset[2] + SectionSize[2];
-    //DPMI_CopyLinear(__djgpp_base_address_old + stack, __djgpp_base_address + stack, ProgramSize-stack);
+    //DPMI_CopyLinear(__djgpp_base_address_old + ProgramOffset, __djgpp_base_address + ProgramOffset, ProgramSize);
+    uint32_t stack = SectionOffset[2] + SectionSize[2];
+    DPMI_CopyLinear(__djgpp_base_address_old + stack, __djgpp_base_address + stack, ProgramSize-stack);
     __dpmi_get_and_set_virtual_interrupt_state(x);
     __djgpp_exception_toggle();
 
@@ -213,10 +228,12 @@ switch_back:
     :
     :"m"(ProgramOldDS)
     :"memory");
+    /*
     __djgpp_ds_alias = __djgpp_ds_alias_old;
     __djgpp_base_address = __djgpp_base_address_old;
     __djgpp_ds_alias_old = 0;
     __djgpp_base_address_old = 0;
+    */
     __dpmi_free_ldt_descriptor(ProgramNewCS);
     __dpmi_free_ldt_descriptor(ProgramNewDS);
     ProgramNewCS = ProgramNewDS = 0;
@@ -228,34 +245,49 @@ BOOL DPMI_TSR()
 {
     __djgpp_exception_toggle();
     //free all old app memory
+    for(int i = 1; __djgpp_memory_handle_list[i].address; ++i)
+    {
+        __djgpp_sbrk_handle* h = &__djgpp_memory_handle_list[i];
+        _LOG("memory: %08lx, %08lx\n", h->address, __djgpp_base_address_old);
+        //if large block malloced after InitTSR (_CRT0_FLAG_NONMOVE_SBRK), it will apear here. don't free them
+        if(h->address == __djgpp_base_address_old)
+        {
+            _LOG("Free memory: %d\n", h->address, __djgpp_memory_handle_size[i]);
+            __dpmi_free_memory((unsigned)h->handle);
+            h->handle = 0;
+            h->address = 0;
+        }
+    }
+    _LOG("Free stub memory %08lx, addr: %08lx size: %08lx\n", __djgpp_memory_handle_list[0].handle, __djgpp_memory_handle_list[0].address, __djgpp_memory_handle_size[0]);
+    __dpmi_free_memory((unsigned)__djgpp_memory_handle_list[0].handle); //free stub memory
+    __djgpp_memory_handle_list[0].handle = 0;
+    __djgpp_memory_handle_list[0].address = 0;
+
     __dpmi_free_ldt_descriptor(ProgramOldCS);
     __dpmi_free_ldt_descriptor(ProgramOldDS);
     __dpmi_free_ldt_descriptor(__djgpp_ds_alias_old);
-/* TODO: hangs if install interrupt handler, go32 malloc large stack (~32k) will get states wrong */
-    for(__djgpp_sbrk_handle* h = &__djgpp_memory_handle_list[1]; h->address; ++h)
-    {
-        __dpmi_free_memory(h->handle);
-        h->handle = h->address = 0;
-    }
-//*/
-    __dpmi_free_memory(__djgpp_memory_handle_list[0].handle);//free stub memory
-    __djgpp_memory_handle_list[0].handle = __djgpp_memory_handle_list[0].address = 0;
 
     ProgramOldCS = 0;
     ProgramOldDS = 0;
     __djgpp_ds_alias_old = 0;
 
-    uint16_t size = 0;
+    __dpmi_meminfo mem;
+    mem.address = __djgpp_base_address;
+    mem.size = ProgramSize;
+    if( __dpmi_lock_linear_region(&mem) != 0)
+        return FALSE;
+
     DPMI_REG r = {0};
 
-    //printf("%08lx %08lx, %08lx\n", _go32_info_block.linear_address_of_transfer_buffer,
-    //    _go32_info_block.linear_address_of_original_psp, _go32_info_block.size_of_transfer_buffer);
+    _LOG("Transfer buffer: %08lx, PSP: %08lx, transfer buffer size: %08lx\n", _go32_info_block.linear_address_of_transfer_buffer,
+        _go32_info_block.linear_address_of_original_psp, _go32_info_block.size_of_transfer_buffer);
         
-    r.w.dx = (_go32_info_block.linear_address_of_transfer_buffer
+    r.w.dx = (uint16_t)((_go32_info_block.linear_address_of_transfer_buffer
         - _go32_info_block.linear_address_of_original_psp
-        + _go32_info_block.size_of_transfer_buffer) >> 4;
+        + _go32_info_block.size_of_transfer_buffer) >> 4);
 
-    //r.w.dx= 256>>4;
+    r.w.dx= 256>>4; //only psp
+    _LOG("TSR size: %d\n", r.w.dx<<4);
     r.w.ax = 0x3100;
     return DPMI_CallRealModeINT(0x21, &r) == 0; //won't return on success
 }

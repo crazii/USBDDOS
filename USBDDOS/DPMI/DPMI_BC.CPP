@@ -19,15 +19,17 @@
 #define DPMI_HIMEM 1
 #define DPMI_DEBUG 1
 
-static const int DPMI_NIFLAG = ~DPMI_IFLAG;
+//we need IF store on stack because only stack is copied on mode switch
+#undef CLIS
+#undef STIL
+static const int DPMI_NIFLAG = ~CPU_IFLAG;
+#define CLIS() __asm{pushf; cli;}
 
-#define STOREI __asm{pushf; cli;}
+/*#define STIL() __asm{push ax; push bp; pushf; pop ax; mov bp, sp;\
+xchg ax, [bp+4]; and ax, CPU_IFLAG; or [bp+4], ax;\
+pop bp; pop ax; popf;} //general case, preserves all registers*/
 
-/*#define LOADI __asm{push ax; push bp; pushf; mov bp, sp;\
-mov ax, [bp+6]; and ax, DPMI_IFLAG; or [bp], ax;\
-popf; pop bp; pop ax; add sp, 2;} //general case, preserves all registers*/
-
-#define LOADI __asm{ pop ax; and ax, DPMI_IFLAG;\
+#define STIL() __asm{ pop ax; and ax, CPU_IFLAG;\
 pushf; pop dx; and dx, DPMI_NIFLAG;\
 or dx, ax; push dx; popf;} //function exit case, uses ax,dx*/
 
@@ -133,14 +135,6 @@ static BOOL DPMI_IsV86() //should call before init pm
     return _AX;
 }
 
-static uint16_t DPMI_GetFlags()
-{
-    __asm {
-        pushf
-        pop ax
-    }
-    return _AX;
-}
 
 static void DPMI_RemapPIC(int vec) //wki.osdev.org/8259_PIC
 {
@@ -453,7 +447,7 @@ static BOOL DPMI_VCPIProtectedMode(void)
         add sp, 2
 
         pop ax  //note: V86 mode change involves flags change. don't popf directly, only keep IF. or VCPI will crash on return v86
-        and ax, DPMI_IFLAG//IF
+        and ax, CPU_IFLAG//IF
         pushf
         or word ptr ss:[bx], ax
         popf
@@ -499,7 +493,7 @@ static void DPMI_VCPIRealMode() //VCPI PM to RM
         call fword ptr es:DPMI_VCPIInterface
     VCPI_to_real:
         pop ax
-        and ax, DPMI_IFLAG//IF
+        and ax, CPU_IFLAG//IF
         pushf
         or word ptr ss:[bx], ax
         popf
@@ -513,7 +507,7 @@ static void DPMI_VCPIRealMode() //VCPI PM to RM
 static int16_t DPMI_SwitchProtectedMode(BOOL FullHimemCopy = FALSE)
 { //care on printf msg in mode switch, because printf will switch back and forth and cause recursion
     assert(!DPMI_PM);
-    STOREI;
+    CLIS();
 
     if(DPMI_V86)
     {
@@ -547,10 +541,10 @@ static int16_t DPMI_SwitchProtectedMode(BOOL FullHimemCopy = FALSE)
             mov fs, ax
             mov gs, ax
         }
-        //_LOG("FLAGS:%x\n", DPMI_GetFlags());
+        //_LOG("FLAGS:%x\n", CPU_FLAGS());
         #endif
     }
-    LOADI;
+    STIL();
     return DPMI_PM;
 }
 
@@ -558,7 +552,7 @@ static void DPMI_SwitchRealMode(BOOL FullHimemCopy = FALSE) //back to real/v86 m
 {
     if(!DPMI_PM)
         return;
-    STOREI;
+    CLIS();
 
     #if DPMI_HIMEM
     if(!FullHimemCopy)
@@ -587,7 +581,7 @@ static void DPMI_SwitchRealMode(BOOL FullHimemCopy = FALSE) //back to real/v86 m
 
     DPMI_PM = PM_NONE;
     DPMI_Addressing.selector = 0;
-    LOADI;
+    STIL();
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -782,8 +776,8 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256 (hi byt
     reg->w.flags &= 0x3ED7;
     reg->w.flags |= 0x3002;
     {//keep original IF
-        uint16_t flags = DPMI_GetFlags();
-        reg->w.flags &= ~((~flags)&DPMI_IFLAG);
+        uint16_t flags = CPU_FLAGS();
+        reg->w.flags &= ~((~flags)&CPU_IFLAG);
     }
     if(pm)
         DPMI_SwitchRealMode();
@@ -794,10 +788,10 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256 (hi byt
     #if DPMI_DEBUG && 0
     if(INTn < 256 && pm)
     {
-        if(!(DPMI_GetFlags()&DPMI_IFLAG))
+        if(!(CPU_FLAGS()&CPU_IFLAG))
         {
-            fprintf(stdout, "before %x, FLAGS :%x, reg.flags:%x\n", INTn, DPMI_GetFlags(), reg->w.flags);fflush(stdout);
-            CLI;
+            fprintf(stdout, "before %x, FLAGS :%x, reg.flags:%x\n", INTn, CPU_FLAGS(), reg->w.flags);fflush(stdout);
+            CLI();
             INTn |= 0xDB00;
         }
     }
@@ -850,8 +844,8 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256 (hi byt
     #if DPMI_DEBUG && 0
     if((INTn&0xFF00) == 0xDB00)
     {
-        fprintf(stdout, "after %x, FLAGS :%x, reg.flags:%x\n", (INTn&0xFF), DPMI_GetFlags(), reg->w.flags);fflush(stdout);
-        CLI;
+        fprintf(stdout, "after %x, FLAGS :%x, reg.flags:%x\n", (INTn&0xFF), CPU_FLAGS(), reg->w.flags);fflush(stdout);
+        CLI();
     }
     #endif
 
@@ -1022,21 +1016,21 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
 
             PTE ptetmp;//temporarily map it to end of 4M
             PTE_INIT(ptetmp, tbaddr);
-            CLI;
+            CLI();
             PTE pteold = DPMI_LoadPTE(DPMI_PageTable4M, 1023);
             DPMI_StorePTE(DPMI_PageTable4M, 1023, &ptetmp);
             __asm{ push eax; mov eax, cr3; mov cr3, eax; pop eax; } //flush TLB. TODO: invlpg(486+)
             DPMI_SetLinear(4L*1024L*1023L, 0, 4096); //clear mapped tb
             DPMI_StorePTE(DPMI_PageTable4M, 1023, &pteold);
             __asm{ push eax; mov eax, cr3; mov cr3, eax; pop eax; } //flush TLB. TODO: invlpg(486+)
-            STI;
+            STI();
         }
 
         if(DPMI_PM)
         {
             PTE ptetmp;//temporarily map it to end of 4M
             PTE_INIT(ptetmp, PDE_ADDR(pde));
-            CLI;
+            CLI();
             PTE pteold = DPMI_LoadPTE(DPMI_PageTable4M, 1023);
             DPMI_StorePTE(DPMI_PageTable4M, 1023, &ptetmp);
             __asm{ push eax; mov eax, cr3; mov cr3, eax; pop eax; } //flush TLB. TODO: invlpg(486+)
@@ -1044,12 +1038,13 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             {
                 PTE pte;
                 PTE_INIT(pte, (addr + (j<<12L)) ); //1:1 map
+                pte.disable_cache = 1; //for device memroy map
                 //_LOG("PTE: %08lx => %08lx\n", DPMI_LoadD(4L*1024L*1023L+j*4L), addr + (j<<12L));
                 DPMI_StorePTE(4L*1024L*1023L+j*sizeof(PTE), &pte);
             }
             DPMI_StorePTE(DPMI_PageTable4M, 1023, &pteold);
             __asm{ push eax; mov eax, cr3; mov cr3, eax; pop eax; } //flush TLB. TODO: invlpg(486+)
-            STI;
+            STI();
         }
         else
         { //real mode, taking effect after next switch to PM.
@@ -1069,7 +1064,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
     return physicaladdr;
 }
 
-void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment)
+void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
 {
     int8_t* ptr = (int8_t*)malloc(size + alignment + 2) + 2;
     uint16_t addr = DPMI_PTR2L(ptr);
@@ -1095,7 +1090,7 @@ void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment)
     return aligned;
 }
 
-void DPMI_MappedFree(void* ptr)
+void DPMI_DMAFree(void* ptr)
 {
     uint16_t offset = ((uint16_t*)ptr)[-1];
     free((int8_t*)ptr - offset);
@@ -1111,7 +1106,7 @@ uint32_t DPMI_DOSMalloc(uint16_t size)
     r.h.ah = 0x48;
     r.w.bx = size;
     DPMI_CallRealModeINT(0x21,&r);
-    seg = (r.w.flags&DPMI_CFLAG) ? 0 : r.w.ax;
+    seg = (r.w.flags&CPU_CFLAG) ? 0 : r.w.ax;
     return seg;
 }
 
@@ -1149,16 +1144,22 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return 0;
 }
 
-uint16_t DPMI_InstallISR(int i, void(*ISR)(void), uint16_t* outputp realCS, uint16_t* outputp realIP)
+uint16_t DPMI_InstallISR(int i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
 {
-    if(!DPMI_PM || i < 0 || i > 255 || realCS == NULL || realIP == NULL)
+    if(!DPMI_PM || i < 0 || i > 255 || handle == NULL)
         return -1;
 
     uint16_t off = (DPMI_PM) ? DPMI_LoadW(i*4) : *(uint16_t far*)MK_FP(0,i*4);
     uint16_t seg = (DPMI_PM) ? DPMI_LoadW(i*4+2) : *(uint16_t far*)MK_FP(0,i*4+2);
-    *realCS = seg;
-    *realIP = off;
-    //TODO: preserve GDT & IDT & page table into XMS, and preserve switching code in DOS to switch betwen rm/pm outside
+    handle->rm_cs = seg;
+    handle->rm_offset = off;
+    handle->cs = handle->offset = 0;
+    //TODO: preserve GDT & IDT & page table into XMS, and preserve switching code (RMCB) in DOS to switch betwen rm/pm outside
+    return -1;
+}
+
+uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
+{
     return -1;
 }
 
@@ -1185,7 +1186,7 @@ BOOL DPMI_TSR(void)
         DPMI_SwitchRealMode(TRUE);
     }
     DPMI_Cleanup();
-    //_LOG("FLAGS: %04x\n", DPMI_GetFlags());
+    //_LOG("FLAGS: %04x\n", CPU_FLAGS());
 
     int residence = DPMI_HIMEM ? 0 : (128L*1024L)>>4L; //resident 64K+64K if !Himem
     __asm {
@@ -1206,7 +1207,7 @@ unsigned _dos_open(const char _FAR* filename, unsigned flags, int* handle)
     r.w.dx = FP_OFF(filename);
     r.h.cl = 0;
     DPMI_CallRealModeINT(0x21,&r);
-    BOOL error = (r.w.flags&DPMI_CFLAG);
+    BOOL error = (r.w.flags&CPU_CFLAG);
     if(!error)
         *handle = r.w.ax;
     return error  ? r.w.ax : 0;
@@ -1221,7 +1222,7 @@ unsigned _dos_write(int fd, const void far* buf, unsigned len, unsigned _FAR* nw
     r.w.ds = FP_SEG(buf);
     r.w.dx = FP_OFF(buf);
     DPMI_CallRealModeINT(0x21, &r);
-    BOOL error = r.w.flags&DPMI_CFLAG;
+    BOOL error = r.w.flags&CPU_CFLAG;
     if(!error)
         *nwritten = r.w.ax;
     return error ? r.w.ax : 0;
@@ -1233,7 +1234,7 @@ unsigned _dos_close(int handle)
     r.w.bx = handle;
     r.h.ah = 0x3E;
     DPMI_CallRealModeINT(0x21, &r);
-    BOOL error = r.w.flags&DPMI_CFLAG;
+    BOOL error = r.w.flags&CPU_CFLAG;
     return error ? r.w.ax : 0;
 }
 
@@ -1247,7 +1248,7 @@ int ioctl(int handle, int func, void _FAR* argdx, int argcx)
     r.w.dx = FP_OFF(argdx);
     r.w.cx = argcx;
     DPMI_CallRealModeINT(0x21, &r);
-    BOOL error = r.w.flags&DPMI_CFLAG;
+    BOOL error = r.w.flags&CPU_CFLAG;
     if(!error)
         return r.w.ax;
     else

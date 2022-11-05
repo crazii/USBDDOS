@@ -5,7 +5,7 @@
 //USB Communication device class driver
 //https://www.usb.org/documents?search=&type%5B0%5D=55&items_per_page=50
 
-#if __cplusplus
+#ifdef __cplusplus
 extern "C"
 {
 #endif
@@ -86,7 +86,7 @@ typedef struct USB_CDC_DriverData
 {
     uint8_t bInterface;
     uint8_t bDataInterface;
-    uint8_t bDataEP[2];
+    void* bDataEP[2];
 }USB_CDC_DD;
 
 uint8_t USB_CDC_SetLineCoding(USB_Device* pDevice, USB_CDC_LINE_CODING* LineCoding);
@@ -99,9 +99,11 @@ BOOL USB_CDC_InitDevice(USB_Device* pDevice);
 
 BOOL USB_CDC_DeinitDevice(USB_Device* pDevice);
 
-BOOL USB_CDC_Transfer(USB_Device* pDevice, HCD_TxDir dir, uint8_t* inoroutp pBuffer, uint16_t length, uint16_t* outputp txlen);
+uint8_t USB_CDC_SyncTransfer(USB_Device* pDevice, HCD_TxDir dir, uint8_t* inoutp pBuffer, uint16_t length, uint16_t* outputp txlen);
 
-#if __cplusplus
+uint8_t USB_CDC_Transfer(USB_Device* pDevice, HCD_TxDir dir, uint8_t* inoutp pBuffer, uint16_t length,HCD_COMPLETION_CB nullable pCallback, void* nullable pContext);
+
+#ifdef __cplusplus
 }
 #endif
 

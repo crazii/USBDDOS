@@ -1,24 +1,29 @@
 #ifndef _HCD_H_
 #define _HCD_H_ 1
+#include "USBDDOS/PLATFORM.H"
 #include "USBDDOS/USBCFG.H"
 #include "USBDDOS/PCI.h"
 
 //host controler driver generic
 
-#define HCDBUFFER_SIZE 0x100
+#define USB_MAX_HC_TYPE 3   //only to support uhci, ohci, ehci
 
 struct HCD_HostControllerIterface;
 typedef struct HCD_HostControllerIterface HCD_Interface;
+struct HCD_RequestBlock;
+typedef struct HCD_RequestBlock HCD_Request;
 
-typedef struct  //device in HC's view
+typedef struct //device in HC's view
 {
     uint8_t         bHubPort; //0 based port index
     uint8_t         bAddress; //device address assigned outside by enumeration process
-    uint8_t         bEndpointSpeed;
-    uint8_t         bNumEndpoints;  //ep alllocated from HC
+    uint8_t         bSpeed;
+    uint8_t         bReserved;      //temp padding
+    HCD_Request* volatile pRequest;
     HCD_Interface*  pHCI;           //unique host controller data
     void*           pHCData;        //per device host controller data
 }HCD_Device;
+
 #define HCD_IS_DEVICE_VALID(device) ((device) != NULL && (device)->pHCData != NULL && (device)->pHCI != NULL)
 
 typedef enum HCD_TransferDirection
@@ -27,25 +32,44 @@ typedef enum HCD_TransferDirection
     HCD_TXR = 0x1,    //device to host
 }HCD_TxDir;
 
-typedef uint8_t (*HCD_CONTROL_FUNCTION) (HCD_Device* pDevice, uint8_t Endpoint, HCD_TxDir dir, uint8_t outputp pSetup[8], void* nullable pSetupData, uint16_t length); //setup always 8B by the spec
-typedef uint8_t (*HCD_TRANSFER_FUNCTION) (HCD_Device* pDevice, uint8_t Endpoint, HCD_TxDir dir, uint8_t* inoroutp pBuffer, uint16_t length, uint16_t* outputp txlen); //transfer dir are decided by endpoint address
+typedef void(*HCD_COMPLETION_CB) (HCD_Request* pRequest);
+
+typedef struct HCD_RequestBlock //TODO: use request block as transfer parameter? (like URB in OSes)
+{
+    HCD_Device* pDevice;
+    void* pBuffer;
+    void* pEndpoint;
+    HCD_COMPLETION_CB pFnCB; //user callback
+    void* pCBData;//user specified data
+    HCD_Request* pNext;
+    uint16_t size;      //required size in bytse
+    uint16_t transferred; //transferred size
+    uint8_t endpoint;   //endpoint addr (num)
+    uint8_t dir;        //HCD_TxDir
+    uint8_t error;      //error code
+    uint8_t padding[1]; //pad to 32 bytes
+    #if defined(__BC__)
+    uint16_t padding[6]; //TODO:
+    #endif
+}HCD_Request;
+
+//note: pSetupData & setup8 must be allocated with DPMI_DMAMalloc, or from device buffer
+typedef uint8_t (*HCD_CONTROL_FUNCTION) (HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t inputp setup8[8],
+    void* nullable pSetupData, uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData); //setup always 8B by the spec
+
+//note: pBuffer must be allocated with DPMI_DMAMalloc, or from device buffer
+typedef uint8_t (*HCD_TRANSFER_FUNCTION) (HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
+    uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
 
 typedef struct HCD_HostrControllerDriverMethod
 {
-    //note: pReqData must be allocated with DPMI, or from device buffer
     HCD_CONTROL_FUNCTION ControlTransfer;
-
-    //note: bufferPtr must be allocated with DPMI, or from device buffer
+    
     HCD_TRANSFER_FUNCTION IsochronousTransfer;
 
-    //note: bufferPtr must be allocated with DPMI, or from device buffer
     HCD_TRANSFER_FUNCTION BulkTransfer;
 
-    //note: bufferPtr must be allocated with DPMI, or from device buffer
     HCD_TRANSFER_FUNCTION InterruptTransfer;
-
-    //get control buffer for this device (per instance), in HCDBUFFER_SIZE
-    uint8_t* (*GetHCDBuffer)(HCD_Device* pDevice);
 
     uint16_t (*GetPortStatus)(HCD_Interface* pHCI, uint8_t port);
 
@@ -53,31 +77,51 @@ typedef struct HCD_HostrControllerDriverMethod
 
     BOOL (*InitDevice)(HCD_Device* pDevice);
 
-    BOOL (*CreateEndpoint)(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, uint8_t bTransferType, uint16_t MaxPacketSize, uint8_t bInterval);
-
     BOOL (*RemoveDevice)(HCD_Device* pDevice);
+
+    void* (*CreateEndpoint)(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, uint8_t bTransferType, uint16_t MaxPacketSize, uint8_t bInterval);
+
+    BOOL (*RemoveEndPoint)(HCD_Device* pDevice, void* pEndpoint);
 
 }HCD_Method;
 
+typedef struct HCD_HostControllerType
+{
+    uint32_t dwPI;    //program interface
+    BOOL (*InitController)(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);
+    BOOL (*DeinitController)(HCD_Interface* pHCI);
+    BOOL (*ISR)(HCD_Interface* pHCI); //DON'T do IO, memory allocation in ISR.
+}HCD_Type;
+
 typedef struct HCD_HostControllerIterface
-{    
+{
+    HCD_Type*       pType;  
     HCD_Method*     pHCDMethod; //host controller driver methods
     void*           pHCDData;   //host controller driver data
     PCI_Addr        PCIAddr;    //BDF,set by outside routine
     uint32_t        dwPhysicalAddress;   //physical memory address (not directly accessible)
-    uint32_t        dwBaseAddress;       //MMIO linear address
+    uint32_t        dwBaseAddress;       //IO port address or MMIO linear address
     HCD_Device*     DeviceList[HCD_MAX_DEVICE_COUNT];
     uint8_t         bNumPorts;
     uint8_t         bDevCount;
 }HCD_Interface;
 
-typedef struct HCD_HostControllerType
-{
-    uint32_t dwID;    //program interface id
-    BOOL (*InitController)(HCD_Interface* pHCI);
-    BOOL (*DeinitController)(HCD_Interface* pHCI);
-}HCD_Type;
+#define HCD_IS_CONTROLLER_VALID(phc) (phc != NULL && phc->pType != NULL && phc->pHCDMethod != NULL && phc->pHCDData != NULL)
 
-#define USB_MAX_HC_TYPE 3   //uhci, ohci, ehci
+BOOL HCD_InitController(HCD_Interface* pHCI, uint8_t bus, uint8_t dev, uint8_t func, HCD_Type* type, PCI_DEVICE* pPCIDev);
+
+BOOL HCD_DeinitController(HCD_Interface* pHCI);
+
+BOOL HCD_InitDevice(HCD_Interface* pHCI, HCD_Device* pDevice, uint8_t port, uint16_t portStatus);
+
+HCD_Device* HCD_FindDevice(HCD_Interface* pHCI, uint8_t address);
+
+BOOL HCD_RemoveDevice(HCD_Device* pDevice);
+
+//called internally by HC driver
+HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, void* pBuffer, uint16_t size, uint8_t endpoint, HCD_COMPLETION_CB pFnCB, void* pCallbackData);
+
+//invoke callback and remove the request entry
+BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode);
 
 #endif

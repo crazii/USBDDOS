@@ -60,5 +60,5 @@ extern void retrowave_opl3_reset(RetroWaveContext *ctx);
 extern void retrowave_opl3_mute(RetroWaveContext *ctx);
 
 #ifdef __cplusplus
-};
+}
 #endif

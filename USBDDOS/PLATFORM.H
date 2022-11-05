@@ -1,7 +1,6 @@
 #ifndef _PLATFORM_H_
 #define _PLATFORM_H_
 
-
 #if defined(__BORLANDC__) || defined(__BCPLUSPLUS__)
 #define __BC__ 1
 #elif defined(__WATCOMC__) || defined(__WATCOM_CPLUSPLUS__)
@@ -10,22 +9,6 @@
 #if (__DJGPP__ == 2)
 #define __DJ2__ 1
 #endif
-#endif
-
-#define nullable
-#define outputp
-#define inoutp
-#define inoroutp
-#define inputp
-
-#define unused(x) (void)x
-
-//align down
-#define align(x,a) (((x)+(a)-1)&(~((a)-1)))
-
-//log should be disabled or write to file in final shipping. use output function (printf/puts) to show msg to user.
-#ifndef _LOG_ENABLE
-#define _LOG_ENABLE 1
 #endif
 
 #if defined(__BC__)
@@ -46,7 +29,7 @@ typedef unsigned long uint32_t;
 typedef int16_t intptr_t;   //only use tiny or small model by default. if large mmemory is used, be care about far pointer and not to use this, use FP_SEG/FP_OFF
 typedef uint16_t uintptr_t;
 
-#define _ASM_BEGIN __asm {
+#define _ASM_BEGIN __asm { 
 #define _ASM_END }
 #define _ASM(x) x;
 #define _ASMLBL(x) }x __asm { x //the first label makes compiler happy and the second used by TASM when offset used
@@ -61,20 +44,15 @@ typedef uint16_t uintptr_t;
 #define _ASM_BEGIN32 _ASM_BEGIN16 _TEXT ends; _TEXT32 segment public use32 'CODE'; assume cs:_TEXT32;
 #define _ASM_END32 _TEXT32 ends; _TEXT segment; assume cs:_TEXT;_ASM_END16
 
-#define NOP __asm nop
-#define CLI __asm cli
-#define STI __asm sti
+#define NOP() __asm nop
+#define CLI() __asm cli
+#define STI() __asm sti
+static uint32_t BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
+static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
 
 #define __NAKED //not supported on BC3.1. uncheck 'standard stack frame' might work but it is implicit: no frame when no param&local vars.
                 //#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
 #define __CDECL __cdecl
-
-#if _LOG_ENABLE
-#define _LOG printf
-#else
-inline int _nolog(...){return 0;}
-#define _LOG _nolog
-#endif
 
 //copy code to data. as long as the compiler doesn't touch the PM segment selector
 #define memcpy_c2d(src, dest, size) do{\
@@ -90,7 +68,7 @@ inline int _nolog(...){return 0;}
 
 //looks ugly. only if we can work preprocessing with raw string literals (R"()")
 //raw string can work with preprocessor using gcc -E or cpp in the triditional way. need a special pass for file with asm
-#define _ASM_BEGIN asm __volatile__(".intel_syntax noprefix\n\t"
+#define _ASM_BEGIN asm __volatile__(".intel_syntax noprefix\n\t" 
 #define _ASM_END ".att_syntax noprefix");
 #define _ASM(...) #__VA_ARGS__"\n\t"
 #define _ASMLBL _ASM
@@ -98,23 +76,19 @@ inline int _nolog(...){return 0;}
 #define _ASM_OPERAND_SIZE _ASM(.byte 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
 #define _ASM_RETF _ASM(retf)
 
-#define _ASM_BEGIN16 _ASM_BEGIN ".code16\n\t"
+#define _ASM_BEGIN16 _ASM_BEGIN ".code16\n\t" 
 #define _ASM_END16 ".code32\n\t" _ASM_END
 #define _ASM_BEGIN32 _ASM_BEGIN
 #define _ASM_END32 _ASM_END
 
-#define NOP asm __volatile__("nop")
-#define CLI asm __volatile__("cli")
-#define STI asm __volatile__("sti")
+#define NOP() asm __volatile__("nop")
+#define CLI() asm __volatile__("cli")
+#define STI() asm __volatile__("sti")
+static inline uint32_t BSF(uint32_t x) {uint32_t i; asm("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
+static inline uint16_t _CPU_FLAGS(void) { uint32_t flags = 0; asm("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
 
 #define __NAKED __attribute__((naked))
 #define __CDECL __attribute__((cdecl))
-
-#if _LOG_ENABLE
-#define _LOG(...) do{ printf(__VA_ARGS__); fflush(stdout); } while(0)
-#else
-#define _LOG(...)
-#endif
 
 #define memcpy_c2d memcpy
 
@@ -123,7 +97,7 @@ inline int _nolog(...){return 0;}
 #include <stdint.h>
 #include <stddef.h>
 
-#define _ASM_BEGIN __asm {
+#define _ASM_BEGIN __asm { 
 #define _ASM_END }
 #define _ASM(...) __VA_ARGS__;
 #define _ASMLBL _ASM
@@ -137,18 +111,14 @@ inline int _nolog(...){return 0;}
 #define _ASM_BEGIN32 _ASM_BEGIN 
 #define _ASM_END32 _ASM_END
 
-#define NOP __asm nop
-#define CLI __asm cli
-#define STI __asm sti
+#define NOP() __asm nop
+#define CLI() __asm cli
+#define STI() __asm sti
+static uint32_t BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
+static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
 
 #define __NAKED __declspec(naked)
 #define __CDECL __cdecl
-
-#if _LOG_ENABLE
-#define _LOG(...) do{ printf(__VA_ARGS__); fflush(stdout); } while(0)
-#else
-#define _LOG(...)
-#endif
 
 #define memcpy_c2d memcpy
 
@@ -159,22 +129,9 @@ inline int _nolog(...){return 0;}
 #include <stddef.h>
 
 //make text editor happy. i.e. vscode
-#define delay(n)
-
-#define inp(port) 0
-#define inpw(port) 0
-#define inpd(port) 0
-
-#define outp(port)
-#define outpw(port)
-#define outpd(port)
-
-#define _dos_open(s, m, fd) 0
-#define _dos_close(fd)
-
-#define _ASM_BEGIN __asm {
+#define _ASM_BEGIN { 
 #define _ASM_END }
-#define _ASM(...) __VA_ARGS__
+#define _ASM(...) 
 #define _ASM2 _ASM
 #define _ASMLBL _ASM
 
@@ -182,10 +139,31 @@ inline int _nolog(...){return 0;}
 #define _ASM_END16 _ASM_END
 #define _ASM_BEGIN32 _ASM_BEGIN
 #define _ASM_END32 _ASM_END
+#define _ASM_OPERAND_SIZE
+#define _ASM_RETF
 
-#define NOP
-#define CLI
-#define STI
+//not defined
+extern void NOP();
+extern void CLI();
+extern void STI();
+extern uint32_t BSF(uint32_t x);
+extern uint16_t _CPU_FLAGS(void);
+
+extern void delay(int);
+extern uint8_t inp(uint16_t port);
+extern uint16_t inpw(uint16_t port);
+extern uint32_t inpd(uint16_t port);
+extern void outp(uint16_t port, uint8_t val);
+extern void outpw(uint16_t port, uint16_t val);
+extern void outpd(uint16_t port, uint32_t val);
+extern int _dos_open(const char* file, int mode, int* fd);
+extern int _dos_close(int fd);
+
+extern uint16_t _DS;
+extern uint16_t _CS;
+extern uint16_t _AX;
+extern uint8_t _AH;
+extern uint8_t _AL;
 
 #define __far
 #define far
@@ -193,19 +171,30 @@ inline int _nolog(...){return 0;}
 #define __NAKED
 #define __CDECL
 
-#define _LOG(...)
-
+#define memcpy_c2d memcpy
 #define _fmemset memset
+
 #define FP_SEG(x) ((uintptr_t)(x))
 #define FP_OFF(x) ((uintptr_t)(x))
 #define MK_FP(x,y) (NULL)
-#define _DS 0
-#define _CS 0
-#define _AX 0
-#define _AH 0
-#define _AL 0
 
 #endif
+
+#ifdef __cplusplus
+#define __EXTERN extern "C"
+#else
+#define __EXTERN extern
+#endif
+
+#define nullable
+#define outputp
+#define inoutp
+#define inputp
+
+#define unused(x) (void)x
+
+//align down
+#define align(x,a) ((unsigned)((x)+(a)-1)&(unsigned)(~((a)-1)))
 
 typedef enum {FALSE, TRUE}BOOLEAN;
 typedef int BOOL;
@@ -214,6 +203,17 @@ typedef int BOOL;
 #undef max
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
+
+#define CPU_CFLAG 0x0001
+#define CPU_IFLAG 0x0200
+
+static inline uint16_t CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &_CPU_FLAGS; return VFN();}
+
+//CLI is not enough. this works for normal code and driver code during intrrupt(which keeps IF always 0)
+//CLIS will store IF and do cli.
+#define CLIS() int _iflag = (CPU_FLAGS()&CPU_IFLAG); CLI()
+//STIL will load IF
+#define STIL() do { if(_iflag) STI(); } while(0)
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 3.4.5 (3-9)
 typedef struct //segment descriptors
@@ -281,6 +281,7 @@ typedef struct//bc3.1 doesn't support 32bit bitfields
     uint16_t address_low : 4;   //
     uint16_t address_high;
 }PDE,PTE;
+
 /*#define PDE_INIT(pde, addr) do{\
     (pde).present = 1;\
     (pde).writable = 1;\

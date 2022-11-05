@@ -143,7 +143,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
 }
 
 #if !USE_DLMALLOC
-void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment)
+void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
 {
     //don't do malloc as TSR
     //temporary: use dos alloc to get physial address which equal linear on DOS/4GW
@@ -174,7 +174,7 @@ void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment)
     return aligned;
 }
 
-void DPMI_MappedFree(void* ptr)
+void DPMI_DMAFree(void* ptr)
 {
     uint16_t selector = ((uint16_t*)ptr)[-1];
     __dpmi_free_dos_memory(selector);
@@ -182,12 +182,12 @@ void DPMI_MappedFree(void* ptr)
 
 #else
 
-void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment/* = 4*/)
+void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
 {
     return mspace_memalign(DOS_Space, alignment, size);
 }
 
-void DPMI_MappedFree(void* ptr)
+void DPMI_DMAFree(void* ptr)
 {
     return mspace_free(DOS_Space, ptr);
 }
@@ -222,11 +222,16 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return (uint16_t)__dpmi_simulate_real_mode_procedure_iret(i, (__dpmi_regs*)reg);
 }
 
-uint16_t DPMI_InstallISR(int i, void(*ISR)(void), uint16_t* outputp realCS, uint16_t* outputp realIP)
+uint16_t DPMI_InstallISR(int i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
 {
-    if(!DPMI_PM || i < 0 || i > 255 || realCS == NULL || realIP == NULL)
+    if(!DPMI_PM || i < 0 || i > 255 || handle == NULL)
         return -1;
-    //there's no easy way to do this. TODO:
+    //TODO:
+    return -1;
+}
+
+uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
+{
     return -1;
 }
 

@@ -85,7 +85,7 @@ extern void retrowave_flush(RetroWaveContext *ctx);
 extern uint8_t retrowave_invert_byte(uint8_t val);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif //_RETROWAVE_H_

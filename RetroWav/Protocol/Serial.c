@@ -49,7 +49,7 @@ extern "C" {
 #endif
 
 uint32_t retrowave_protocol_serial_packed_length(uint32_t len_in) {
-    return ceil((double)len_in * 8 / 7) + 2;
+    return (len_in * 8 + 6) / 7 + 2;
 }
 
 uint32_t retrowave_protocol_serial_pack(const void *_buf_in, uint32_t len_in, void *_buf_out) {
@@ -63,20 +63,20 @@ uint32_t retrowave_protocol_serial_pack(const void *_buf_in, uint32_t len_in, vo
     out_cursor += 1;
 
     {
-    uint8_t shift_count = 0;
+    uint32_t shift_count = 0;
 
     while(in_cursor < len_in) {
-        uint8_t cur_byte_out = buf_in[in_cursor] >> shift_count;
+        uint8_t cur_byte_out = (uint8_t)(buf_in[in_cursor] >> shift_count);
         if (in_cursor > 0) {
-            cur_byte_out |= (buf_in[in_cursor - 1] << (8 - shift_count));
+            cur_byte_out |= (uint8_t)(buf_in[in_cursor - 1] << (8 - shift_count));
         }
 
         cur_byte_out |= 0x01;
         buf_out[out_cursor] = cur_byte_out;
 
-        shift_count += 1;
-        in_cursor += 1;
-        out_cursor += 1;
+        shift_count += 1U;
+        in_cursor += 1U;
+        out_cursor += 1U;
         if (shift_count > 7) {
             shift_count = 0;
             in_cursor -= 1;
@@ -84,7 +84,7 @@ uint32_t retrowave_protocol_serial_pack(const void *_buf_in, uint32_t len_in, vo
     }
 
     if (shift_count) {
-        buf_out[out_cursor] = buf_in[in_cursor - 1] << (8 - shift_count);
+        buf_out[out_cursor] = (uint8_t)(buf_in[in_cursor - 1] << (8 - shift_count));
         buf_out[out_cursor] |= 0x01;
         out_cursor += 1;
     }

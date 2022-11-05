@@ -2,7 +2,7 @@
 #define _DPMI_XMS_H_
 #include "USBDDOS/PLATFORM.H"
 
-#if __cplusplus
+#ifdef __cplusplus
 extern "C"
 {
 #endif
@@ -20,7 +20,7 @@ uint16_t XMS_AllocUMB(uint16_t size16B);
 
 BOOL XMS_FreeUMB(uint16_t segment);
 
-#if __cplusplus
+#ifdef __cplusplus
 }
 #endif
 

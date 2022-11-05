@@ -390,18 +390,15 @@ static uint32_t DPMI_DOSUMB(uint32_t input, BOOL alloc, BOOL UMB)
     DPMI_REG r = {0};
 
     //try DOS alloc with UMB link
-    if(UMB)
-    {
-        r.h.ah = 0x58;
-        r.h.al = 0x02;  //get
-        DPMI_CallRealModeINT(0x21, &r);
-        UMBlinkstate = r.h.al;  //backup state
+    r.h.ah = 0x58;
+    r.h.al = 0x02;  //get
+    DPMI_CallRealModeINT(0x21, &r);
+    UMBlinkstate = r.h.al;  //backup state
 
-        r.h.ah = 0x58;
-        r.h.al = 0x03;  //set
-        r.w.bx = 0x1;
-        DPMI_CallRealModeINT(0x21, &r);
-    }
+    r.h.ah = 0x58;
+    r.h.al = 0x03;  //set
+    r.w.bx = (uint16_t)UMB; //unlink UMB (LH will set UMB need set it back)
+    DPMI_CallRealModeINT(0x21, &r);
 
     r.h.ah = 0x58;
     r.h.al = 0x0;   //get
@@ -423,16 +420,12 @@ static uint32_t DPMI_DOSUMB(uint32_t input, BOOL alloc, BOOL UMB)
     r.w.bx = strategy;
     DPMI_CallRealModeINT(0x21, &r); //restore strategy
 
-    if(UMB)
-    {
-        r.h.ah = 0x58;
-        r.h.al = 0x03;
-        r.w.bx = UMBlinkstate;
-        DPMI_CallRealModeINT(0x21, &r);
-    }
+    r.h.ah = 0x58;
+    r.h.al = 0x03;
+    r.w.bx = UMBlinkstate;
+    DPMI_CallRealModeINT(0x21, &r);
     return result;
 }
-
 
 uint32_t DPMI_HighMalloc(uint16_t size, BOOL UMB)
 {

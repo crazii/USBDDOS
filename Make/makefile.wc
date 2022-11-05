@@ -16,65 +16,38 @@ CXXFLAGS = -w4 -e25 -zq -od -d2 -3r -bt=dos -mf -xs -xr -i..
 {..\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\USBDDOS\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\USBDDOS\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\USBDDOS\DPMI\}.c{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
-{..\USBDDOS\DPMI\}.cpp{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\USBDDOS\HCD\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\USBDDOS\HCD\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\USBDDOS\CLASS\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\USBDDOS\CLASS\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\RetroWav\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\RetroWav\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\RetroWav\Protocol\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\RetroWav\Protocol\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\RetroWav\Board\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\RetroWav\Board\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 {..\RetroWav\Platform\}.c{output\}.obj: .AUTODEPEND
     @echo $<
     @$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
-{..\RetroWav\Platform\}.cpp{output\}.obj: .AUTODEPEND
-    @echo $<
-    @$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
 
 #arg list too big
 output\DOS_CDC.obj : ..\RetroWav\Platform\DOS_CDC.c

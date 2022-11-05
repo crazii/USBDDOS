@@ -84,7 +84,7 @@ void retrowave_io_init(RetroWaveContext *ctx) {
 
         uint8_t i;
         for (i=0x20; i<0x28; i++) {
-            uint8_t addr = i << 1;
+            uint8_t addr = (uint8_t)(i << 1);
 
             init_sequence_1[0] = init_sequence_2[0] = init_sequence_3[0] = addr;
             ctx->callback_io(ctx->user_data, 1e6, init_sequence_1, NULL, sizeof(init_sequence_1));
@@ -124,14 +124,3 @@ void retrowave_flush(RetroWaveContext *ctx) {
     }
 }
 
-uint8_t retrowave_invert_byte(uint8_t val) {
-    uint8_t ret = 0;
-
-    uint8_t i;
-    for (i=0; i<8; i++) {
-        uint8_t bit = (val >> i) & 1U;
-        ret ^= (-bit ^ ret) & (1UL << (7-i));
-    }
-
-    return ret;
-}

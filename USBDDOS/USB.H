@@ -2,64 +2,9 @@
 #define _USBD_H_
 #include "USBDDOS/HCD/HCD.H"
 
-#define BIT0    0x01L
-#define BIT1    0x02L
-#define BIT2    0x04L
-#define BIT3    0x08L
-#define BIT4    0x10L
-#define BIT5    0x20L
-#define BIT6    0x40L
-#define BIT7    0x80L
-#define BIT8    0x100L
-#define BIT9    0x200L
-#define BIT10   0x400L
-#define BIT11   0x800L
-#define BIT12   0x1000L
-#define BIT13   0x2000L
-#define BIT14   0x4000L
-#define BIT15   0x8000L
-#define BIT16   0x10000L
-#define BIT17   0x20000L
-#define BIT18   0x40000L
-#define BIT19   0x80000L
-#define BIT20   0x100000L
-#define BIT21   0x200000L
-#define BIT22   0x400000L
-#define BIT23   0x800000L
-#define BIT24   0x1000000L
-#define BIT25   0x2000000L
-#define BIT26   0x4000000L
-#define BIT27   0x8000000L
-#define BIT28   0x10000000L
-#define BIT29   0x20000000L
-#define BIT30   0x40000000L
-#define BIT31   0x80000000L
-
-#if __cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
-
-///PID
-#define    OUTPID   0xe1
-#define    INPID    0x69
-#define    SOFPID   0xa5
-#define    SETUPPID 0x2d
-
-#define    DATA0PID 0xc3
-#define    DATA1PID 0x4b
-#define    DATA2PID 0x87
-#define    MDATAPID 0x0f
-
-#define    ACKPID   0xd2
-#define    NAKPID   0x5a
-#define    STALLPID 0x1e
-#define    NYETPID  0x96
-
-#define    PREPID    0x3c
-#define    ERRPID    0x3c
-#define    SPLITPID  0x78
-#define    PINGPID   0xb4
-#define    RESERVEDPID   0xF0
 
 //bmRequestType
 #define USB_REQ_WRITE           0        //host to dev
@@ -126,14 +71,6 @@ extern "C" {
 #define OHCITYPE    2
 #define EHCITYPE    4
 
-#define USB_ENDPOINT_TRANSFER_TYPE_CTRL 0
-#define USB_ENDPOINT_TRANSFER_TYPE_ISOC 1
-#define USB_ENDPOINT_TRANSFER_TYPE_BULK 2
-#define USB_ENDPOINT_TRANSFER_TYPE_INTR 3
-
-#define USB_FRAME_SIZE_LOWSPEED 1280    //max bandwith during 1 frame
-#define USB_ISO_FRAME_SIZE_LOWSPEED 1152 //90%
-
 typedef struct USB_DeviceDescriptor
 {
     uint8_t     bLength;
@@ -164,7 +101,7 @@ typedef struct USB_Endpoint_Descriptor
             uint8_t Num : 4;
             uint8_t Reserved : 3;
             uint8_t Dir : 1;   //1:in, 0:out
-        }bEndpointAddressFlags;
+        }bEndpointAddressBits;
     };
 
     union
@@ -176,7 +113,7 @@ typedef struct USB_Endpoint_Descriptor
             uint8_t SyncType : 2;
             uint8_t UsageType : 2;
             uint8_t Reserved : 2;
-        }bmAttributesFlags;
+        }bmAttributesBits;
     };
 
     union
@@ -245,18 +182,6 @@ typedef enum USB_DeviceState
     DS_Ready,   //driver installed
 }USB_DevState;
 
-#define USB_PORT_SPEEDMASK 0x0FL
-#define USB_PORT_ATTACHED 0x10L    //readonly
-#define USB_PORT_ENABLE   0x20L
-#define USB_PORT_SUSPEND  0x40L
-#define USB_PORT_RESET    0x80L
-#define USB_PORT_DISABLE  0x100L
-#define USB_PORT_CONNECT_CHANGE 0x200L   //write it will clear the bit
-//read only
-#define    USB_PORT_Low_Speed_Device   1
-#define    USB_PORT_Full_Speed_Device  2
-#define    USB_PORT_High_Speed_Device  4
-
 //USB stack: hc => usb => class
 typedef struct
 {
@@ -266,14 +191,20 @@ typedef struct
     char            sProduct[32];
     char            sSerialNumber[32];
     USB_ConfigDesc* pConfigList;
+    void**          pEndpoints;         //pre-created endpoints
+    USB_EndpointDesc** pEndpointDesc;   //1:1 map to pEndpoints
+    void*           pDefaultControlEP;  //default control pipe (ep0)
+    uint8_t*        pDeviceBuffer;      //USB_DEVBUFFER_SIZE
+    uint8_t*        pSetup;             //8 byte setup buffer
+    uint8_t         bNumEndpoints;
     uint8_t         bCurrentConfig;
-    uint8_t         bStatus;    //device status: default, addressed, configured
+    uint8_t         bStatus; //device status: default, addressed, configured
 
-    void*           pDriverData;// device driver data    
+    void*           pDriverData; // device driver data    
 }USB_Device;
 
-//hc device to usb device (static_cast)
-#define HC2USB(hcd) (USB_Device*)(((uintptr_t)(hcd)) - offsetof(USB_Device, HCDDevice))
+//hc device to usb device
+#define HC2USB(hcd) ((USB_Device*)(((uintptr_t)(hcd)) - offsetof(USB_Device, HCDDevice)))
 
 //generic class driver
 typedef struct USB_ClassDriver
@@ -305,11 +236,21 @@ extern USB_Table USBT;
 
 void USB_Init(void);
 
-BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func);
+//start requst and return immediately. pRequest & pBuffer are copied so is free to release
+uint8_t USB_SendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer, HCD_COMPLETION_CB pFnCallback, void* pCallbackData); //send request to endpoint 0
 
-BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex);
+//wait on result. will enable interrupt, not aviable in interrupt handler
+uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer);
 
-uint8_t USB_SendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer); //send request to endpoint 0
+//start transfer and return immediately. pBuffer are copied so is free to release
+uint8_t USB_Transfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer, uint16_t length, HCD_COMPLETION_CB pFnCallback, void* pCallbackData);
+
+//wait on result. will enable interrupt, not aviable in interrupt handler
+uint8_t USB_SyncTransfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer, uint16_t length, uint16_t* txlen);
+
+void* USB_FindEndpoint(USB_Device* pDevice, USB_EndpointDesc* pDesc);
+
+USB_EndpointDesc* USB_GetEndpointDesc(USB_Device* pDevice, void* pEndpoint);
 
 BOOL USB_SetConfiguration(USB_Device* pDevice, uint8_t configuration);
 
@@ -317,7 +258,7 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 
 void USB_ShowDeviceInfo(USB_Device* pDevice);
 
-#if __cplusplus
+#ifdef __cplusplus
 }
 #endif
 

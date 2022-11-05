@@ -18,11 +18,12 @@ extern "C" {
 
 typedef struct {
     void* device;
+    RetroWaveContext *ctx;
 }RetroWavePlatform_DOS_CDC;
 
-extern int retrowave_init_dos_cdc(RetroWaveContext *ctx, void *device);
+extern int retrowave_init_dos_cdc(RetroWaveContext *ctx);
 extern void retrowave_deinit_dos_cdc(RetroWaveContext *ctx);
 
 #ifdef __cplusplus
-};
+}
 #endif

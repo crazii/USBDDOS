@@ -3,14 +3,12 @@
 #include "USBDDOS/HCD/HCD.H"
 
 //pci configuration space
-#define OCH_REGISTER_CMD        0x04
-#define OHCI_REGISTER_BAR       0x10    //BAR_OHCI
+#define OHCI_REGISTER_BAR       0x10    //BAR_OHCI (BAR0)
 
-//BAR_OHCI
 #define HcRevision              0L
 
-#define HcControl               4L
-#define ControlBulkServiceRatio (BIT0 | BIT1)
+#define HcControl               4L  //HcControl Register
+#define ControlBulkServiceRatio (BIT0 | BIT1)   //HcControl bits
 #define PeriodicListEnable      BIT2
 #define IsochronousEnable       BIT3
 #define ControlListEnable       BIT4
@@ -24,18 +22,25 @@
 #define InterruptRouting        BIT8
 #define HostControllerFunctionalState (BIT6 | BIT7)
 #define HostControllerFunctionalState_SHIFT 6
-#define USBRESET                0L
-#define USBRESUME               1L
-#define USBOPERATIONAL          2L
-#define USBSUSPEND              3L
+#define USBRESET                0UL
+#define USBRESUME               1UL
+#define USBOPERATIONAL          2UL
+#define USBSUSPEND              3UL
 
 #define HcInterruptStatus       0x0CL
+#define ScheduleOverrun         BIT0
 #define WriteBackDoneHead       BIT1
 #define StartofFrame            BIT2
+#define ResumeDetected          BIT3
+#define UnrecoverableError      BIT4
+#define FrameNumberOverflow     BIT5
 #define RootHubStatusChange     BIT6
+#define OwnershipChange         BIT30
 
-#define HcInterruptEnable       0x10L
-#define HcInterruptDisable      0x14L
+#define HcInterruptEnable       0x10L   //bits as HcInterruptStatus, plus MasterInterruptEnable
+#define HcInterruptDisable      0x14L   //bits as HcInterruptStatus, plus MasterInterruptEnable
+#define MasterInterruptEnable   BIT31
+
 #define HcHCCA                  0x18L
 #define HcPeriodCurrentED       0x1CL
 #define HcControlHeadED         0x20L
@@ -78,13 +83,13 @@
 #define PortOverCurrentIndicatorChange BIT19
 #define PortResetStatusChange   BIT20
 
-#define PIDFROMTD               0 //for ed PIN
+#define PIDFROMTD               0 //for control ED PID
 #define PIDSETUP                0
 #define PIDOUT                  1
 #define PIDIN                   2
 #define PIDINVERT(pid)          (3-pid)
 
-//control uint32_t
+//control words
 #define OHCI_CW_NO_INTERRUPT   7    //delay counter, 111 means disable donehead interrupt
 #define OHCI_CW_DATATOGGLE_CARRY    0
 #define OHCI_CW_DATATOGGLE_DATA0    2 //10b
@@ -98,78 +103,80 @@
 #define OHCI_CC_ERROR_PID_CHECK_FAILURE 0x6L
 #define OHCI_CC_NOT_ACCESSED    0xEL    //'untouched'mark. both E,F are OK, inited by host driver
 
-//configs
-#define OHCI_TD_CIRCLE_QUEUE_SIZE 16 //TODO: pre-allocation waste memory.
-#define OHCI_TD_USE_CIRCLE_QUEUE (OHCI_TD_CIRCLE_QUEUE_SIZE > 1)
-#define OHCI_TD_BUFFER_SIZE 128 //0~8192 according to the spec (max 1 page crossing, need aligned to 4K if large than 4K)
+//0~8192 according to the spec (max 1 page crossing, need aligned to 4K if large than 4K) for each TD.
+#define OHCI_MAX_TD_BUFFER_SIZE 4096
+#define OHCI_NULL_TD_PHYSICAL_ADDR 0
+//magic to distinguish TD from ISO_TD. make sure LSB 1 bits is 1, so that it won't conflict with Offset field of ISO_TD. 
+//#define OHCI_TD_MAGIC (((uint32_t)('O')<<24) | ((uint32_t)('H' | 0x1)<<16) | (('C')<<8) | ('I') | 0x1)
 
-#if __cplusplus
+#ifdef __cplusplus
 extern "C"
 {
 #endif
+struct OHCI_TransferDescriptor;
+typedef struct OHCI_TransferDescriptor OHCI_TD;
+struct OHCI_IsochronousTransferDescriptor;
+typedef struct OHCI_IsochronousTransferDescriptor OHCI_ISO_TD;
+struct OHCI_EndpointDescriptor;
+typedef struct OHCI_EndpointDescriptor OHCI_ED;
 
-typedef struct OHCI_TRANSFER_DESCRIPTOR
+typedef struct OHCI_TransferDescriptor
 {
     union
     {
         uint32_t ControlFlags;
-        //use 16bit bitfield for 16bit compiler compatibility i.e. Borland C
-        struct
+        struct //use 16bit bitfield for 16bit compiler compatibility i.e. Borland C
         {
-            uint16_t Reserved1;
-            uint16_t Reserved2 : 2;
+            uint16_t Reserved1; //aviable to HCD (but not modifiable during processing)
+            uint16_t Reserved2 : 2; //aviable to HCD (but not modifiable during processing)
             uint16_t BufferRounding : 1;
             uint16_t PID : 2;
             uint16_t DelayInterrupt : 3;
             uint16_t DataToggle : 2;
             uint16_t ErrorCount : 2;
             uint16_t ConditionCode : 4;
-        }Control;
+        }ControlBits;
     };
-
     uint32_t  CurrentBufferP;
     uint32_t  NextTD;
     uint32_t  BufferEnd;
 
-    //extension
-    uint32_t PhysicalAddr;
-    union
-    {
-        struct OHCI_TRANSFER_DESCRIPTOR* pNext;
-        uint32_t Alignment16Compiler; //for BC
-    };
-    union
-    {
-        void* Buffer;
-        uint32_t Alignment16Compiler2; //for BC
-    };
-    uint32_t BufferPhysicalAddr;
-
-    static struct OHCI_TRANSFER_DESCRIPTOR* NULLTD;
+    //extension. the OHCI spec only need the alignment as 16
+    void* Unused[2];
+#if defined(__BC__)
+    uint16_t padding[4];
+#endif
+    OHCI_TD* pNext; //Match the location of ISO TD
+    HCD_Request* pRequest;
 }OHCI_TD;
 
-#define OHCI_MAX_ISO_FRAME 8    //max frame for a iso TD
+#define OHCI_MAX_ISO_FRAME 4    //max frame for a ISO TD. 8 by spec, reserve last 4 for custom information
 typedef struct OHCI_IsochronousTransferDescriptor
 {
     union
     {
-        uint32_t ControlFlags;      //condition code in it will be updated by hc
+        uint32_t ControlFlags; //condition code in it will be updated by hc
         struct
         {
             uint16_t StartFrame;
             uint16_t Reserved1 : 5;
+
             uint16_t DelayInterrupt : 3;
             uint16_t FrameCount : 3;
             uint16_t Reserved2 : 1;
             uint16_t ConditionCode : 4;
-        }Control;
+        }ControlBits;
     };
     uint32_t BufferPage;
     uint32_t NextTD;
     uint32_t BufferEnd;
 
-    uint16_t Offset[8]; //max 8 frames data by the spec
-    
+    uint16_t Offset[OHCI_MAX_ISO_FRAME]; //max frames data by the spec
+#if defined(__BC__)
+    uint16_t padding[2];
+#endif
+    OHCI_TD* pNext;
+    HCD_Request* pRequest;
 }OHCI_ISO_TD;
 
 typedef struct OHCI_EndpointDescriptor
@@ -177,7 +184,6 @@ typedef struct OHCI_EndpointDescriptor
     union
     {
         uint32_t  ControlFlags;
-        //use 16bit bitfield for 16bit compiler compatibility i.e. Borland C
         struct
         {
             uint16_t FunctionAddress : 7;
@@ -187,61 +193,52 @@ typedef struct OHCI_EndpointDescriptor
             uint16_t Skip : 1;      //Skip: don't process
             uint16_t Format : 1;    //Format: Isochronous mode ED
             uint16_t MaxPacketSize : 11;
-            uint16_t Reserved : 5;
-        }Control;
+            //uint16_t Reserved : 5; //reserved for HCD
+            uint16_t TransferType : 2; //HCD
+            uint16_t Unsued : 3;    //HCD
+        }ControlBits;
     };
-
     uint32_t  TailP;
     uint32_t  HeadP;
     uint32_t  NextED;
 
-    //extension. the OHCI spec doesn't need the size to be 16, but only alignment to 16
-    //or we can think it as a virtual wrapper parent struct with additional fields
-    struct OHCI_EndpointDescriptor* pPrev;
-    struct OHCI_EndpointDescriptor* pNext;
-    //head element link
+    //extension
+    OHCI_ED* pPrev;
     union
     {
-        OHCI_TD* pTD;
-        OHCI_ISO_TD* pIsoTD;
+        OHCI_TD* pTail;         //tail TD
+        OHCI_ISO_TD* pISOTail;  //tail ISO TD
     };
+    void* Unused[2];
 #if defined(__BC__)
-    uint16_t Unused[2];
-    uint16_t TransferType;    //borland c will write whole uint16_t of single bitfield and doesn't support unamed struct
-    uint32_t PhysicalAddr;
-#else
-    union
-    {
-        uint32_t PhysicalAddr;
-        uint32_t TransferType : 2;
-    };
+    uint16_t padding[4];
 #endif
 }OHCI_ED;
 
 #if defined(__DJ2__)
-static_assert(sizeof(OHCI_ED) == 32);
-static_assert(sizeof(OHCI_TD) == 32);
-static_assert(sizeof(OHCI_ISO_TD) == 32);
+_Static_assert(sizeof(OHCI_ED) == 32, "size missmatch");
+_Static_assert(sizeof(OHCI_TD) == 32, "size missmatch");
+_Static_assert(sizeof(OHCI_ISO_TD) == 32, "size missmatch");
 #endif
 
 typedef struct
 {
-    uint32_t        InterruptTable[32]; //HccaInterrruptTable
-    uint16_t        wFrameNumber;
-    uint16_t        wPad1;
-    uint32_t        dwDoneHead;
-    uint32_t        bufferTemp[30];//reserve
+    uint32_t InterruptTable[32]; //HccaInterrruptTable
+    uint16_t wFrameNumber;
+    uint16_t wPadding;
+    uint32_t dwDoneHead;
+    uint32_t Reserved[29];
+    uint32_t dwPadding; //extra custom padding to 256
 }OHCI_HCCA_BLOCK;
 
 typedef struct OHCI_HostControllerData //per hc data
 {
     OHCI_HCCA_BLOCK HCCA; //hcca, 256-aligned
-
     OHCI_ED ControlHead;
     OHCI_ED BulkHead;
 
     //periodic data, isochronous and interrupt
-    //interval frames, 32ms for full speed (1frame=1ms), 4ms for high speed (1frame=0.125ms)
+    //interval frames, 1ms~32ms for full speed (1frame=1ms), 0.125ms~4ms for high speed (1frame=0.125ms)
     OHCI_ED ED32ms;
     OHCI_ED ED16ms;
     OHCI_ED ED8ms;
@@ -257,36 +254,31 @@ typedef struct OHCI_HostControllerData //per hc data
     OHCI_ED* ED4msTail;
     OHCI_ED* ED2msTail;
     OHCI_ED* ED1msTail;
+
+    uint32_t FrameNumberHigh;
 }OHCI_HCData;
 
 typedef struct OHCI_HostControllerDeviceData //per device data
 {
-    //control ed, used before/after addressed. addres 0 not essentially point to this device, only guaranteed a reset opertation during enumeration.
+    //default control pipe (ed0), used before/after addressed.
     OHCI_ED ControlED;
-    OHCI_TD ControlSetup;
-    OHCI_TD ControlData;
-    OHCI_TD ControlStatus;
-
-    uint8_t Setup[8];
-    //data
-    OHCI_ED* DataED;
-    OHCI_TD** DataTD;
-    uint8_t bNumEndpoints;
-    uint8_t bUsedEndpoint;
-
-    uint8_t Buffer[HCDBUFFER_SIZE];
+    
 }OHCI_HCDeviceData;
 
-BOOL OHCI_InitController(HCD_Interface* pHCI);
+BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);
 BOOL OHCI_DeinitController(HCD_Interface* pHCI);
+BOOL OHCI_ISR(HCD_Interface* pHCI);
 
-uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, uint8_t Endpoint, HCD_TxDir dir, uint8_t outputp pSetup[8], void* nullable pSetupData, uint16_t length);
+uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t inputp setup8[8],
+    void* nullable pSetupData, uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
 
-uint8_t OHCI_IsochronousTransfer(HCD_Device* pDevice, uint8_t Endpoint, HCD_TxDir dir, uint8_t* inoroutp pBuffer, uint16_t length, uint16_t* outputp txlen);
+uint8_t OHCI_IsochronousTransfer(HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
+    uint16_t length, HCD_COMPLETION_CB nullable pCB, void* nullable pCBData);
 
-uint8_t OHCI_DataTransfer(HCD_Device* pDevice, uint8_t Endpoint, HCD_TxDir dir, uint8_t* inoroutp pBuffer, uint16_t length, uint16_t* outputp txlen);
+uint8_t OHCI_DataTransfer(HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
+    uint16_t length, HCD_COMPLETION_CB nullable pCB, void* nullable pCBData);
 
-#if __cplusplus
+#ifdef __cplusplus
 }
 #endif
 

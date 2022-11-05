@@ -1,30 +1,33 @@
 #include "USBDDOS/DPMI/DPMI.h"
 #if defined(__DJ2__)
-#include "USBDDOS/DPMI/XMS.H"
 #include <conio.h>
 #include <stdlib.h>
 #include <dpmi.h>
 #include <sys/farptr.h>
 #include <sys/segments.h>
+#include <sys/exceptn.h>
 #include <crt0.h>
 #include <assert.h>
+#include <signal.h>
 #include <stdio.h>
+#include "USBDDOS/DPMI/XMS.H"
+#include "USBDDOS/DBGUTIL.H"
 
 extern DPMI_ADDRESSING DPMI_Addressing;
 
-int _crt0_startup_flags = _CRT0_FLAG_LOCK_MEMORY | _CRT0_FLAG_FILL_DEADBEEF;
+int _crt0_startup_flags = _CRT0_FLAG_FILL_DEADBEEF | _CRT0_FLAG_UNIX_SBRK | _CRT0_FLAG_LOCK_MEMORY;
 
 static uint32_t DPMI_DSBase = 0;
 static uint32_t DPMI_DSLimit = 0;
+static BOOL DPMI_TSR_Inited = 0;
 static uint16_t DPMI_Selector4G;
-static int16_t DPMI_TSR_Inited = 0;
 
 typedef struct _AddressMap
 {
     uint32_t Handle;
-    int32_t LinearAddr;
-    int32_t PhysicalAddr;
-    int32_t Size;
+    uint32_t LinearAddr;
+    uint32_t PhysicalAddr;
+    uint32_t Size;
 }AddressMap;
 
 #define ADDRMAP_TABLE_SIZE (256 / sizeof(AddressMap))
@@ -32,7 +35,7 @@ typedef struct _AddressMap
 static AddressMap AddresMapTable[ADDRMAP_TABLE_SIZE];
 static int AddressMapCount = 0;
 
-static void AddAddressMap(const __dpmi_meminfo* info, int32_t PhysicalAddr)
+static void AddAddressMap(const __dpmi_meminfo* info, uint32_t PhysicalAddr)
 {
     if(AddressMapCount == ADDRMAP_TABLE_SIZE)
     {
@@ -58,12 +61,24 @@ static __dpmi_meminfo XMS_Info;
 #endif
 #define ONLY_MSPACES 1
 #define NO_MALLOC_STATS 1
-#define USE_LOCKS 0
+#define USE_LOCKS 1
+#define LACKS_SCHED_H 1
 #define HAVE_MMAP 0
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma push_macro("DEBUG")
+#undef DEBUG
+#define DEBUG 0
 #include "dlmalloc.c.h"
-static const int32_t XMS_HEAP_SIZE = 1024*1024*16;
+#pragma pop_macro("DEBUG")
+
+#define XMS_HEAP_SIZE (1024*1024*4)  //maxium around 64M (actual size less than 64M)
+_Static_assert((uint16_t)(XMS_HEAP_SIZE/1024) == (uint32_t)(XMS_HEAP_SIZE/1024), "XMS_HEAP_SIZE must be < 64M");
 static mspace XMS_Space;
 static uint32_t XMS_Physical;
+#if DEBUG
+static uint32_t XMS_Allocated;
+#endif
 static uint16_t XMS_Handle; //handle to XMS API
 
 //http://www.delorie.com/djgpp/v2faq/faq18_13.html choice 3
@@ -79,19 +94,23 @@ static void Init_XMS()
     uint32_t size = 0;
     uint32_t offset = 0;
     DPMI_InitTSR(0, 0, &offset, &size);
-    size = align(size, 4096);
 
-    XMS_Handle = XMS_Alloc((size+XMS_HEAP_SIZE)/1024, &XMS_Physical);
+    //notify runtime of brk change
+    sbrk(XMS_HEAP_SIZE);
+    __dpmi_get_segment_base_address(_my_ds(), &DPMI_DSBase); //_CRT0_FLAG_UNIX_SBRK may have re-allocation
+
+    assert((uint16_t)((size+XMS_HEAP_SIZE)/1024) == (uint32_t)((size+XMS_HEAP_SIZE)/1024)); //check overflow
+    XMS_Handle = XMS_Alloc((uint16_t)((size+XMS_HEAP_SIZE)/1024), &XMS_Physical);
     if(XMS_Handle == 0)
         exit(1);
 
     XMS_Bias = offset >= 4096 ? 4096 : 0; //re-enable null pointer page fault
     uint32_t XMSBase = DPMI_MapMemory(XMS_Physical, size + XMS_HEAP_SIZE);
-    _LOG("XMS base %08lx, XMS lbase %08lx Pool base %08lx\n", XMS_Physical, XMSBase, XMS_Physical+size);
     DPMI_TSR_Inited = DPMI_InitTSR(DPMI_DSBase, XMSBase - XMS_Bias, &offset, &size);
     _LOG("TSR inited.\n");
     int ds; //reload ds incase this function inlined and ds optimized as previous
     asm __volatile__("mov %%ds, %0":"=r"(ds)::"memory");
+    //_LOG("ds: %02x, limit: %08lx, new limit: %08lx\n", ds, __dpmi_get_segment_limit(ds), size-1);
     assert(__dpmi_get_segment_limit(ds) == size-1);
     __dpmi_set_segment_limit(ds, size + XMS_HEAP_SIZE - 1);
     XMS_Space = create_mspace_with_base((void*)size, XMS_HEAP_SIZE, 0);
@@ -99,14 +118,16 @@ static void Init_XMS()
     //update mapping
     DPMI_DSBase = XMSBase - XMS_Bias;
     DPMI_DSLimit = size + XMS_HEAP_SIZE;
+    _LOG("XMS base %08lx, XMS lbase %08lx XMS heap base %08lx\n", XMS_Physical, XMSBase, XMS_Physical+size);
     #else
     //the idea is to allocate XMS memory in physical addr and mapped it after current ds's limit region,
     //then expand current ds' limit so that the mapped addr are within the current ds segment,
     //and the mapped data can be directly accessed as normal pointer (near ptr)
     //another trick is to use dlmalloc with mapped based ptr to allocate arbitary memory.
-    XMS_Handle = XMS_Alloc(XMS_HEAP_SIZE/1024, &XMS_Physical);
+    XMS_Handle = XMS_Alloc((XMS_HEAP_SIZE+4096)/1024, &XMS_Physical);
     if(XMS_Handle == 0)
         exit(1);
+    XMS_Physical = align(XMS_Physical, 4096);
     __dpmi_meminfo info = {0};
     info.size = XMS_HEAP_SIZE;
     #if 0     //Not supported by CWSDPMI and Windows, but by DPMIONE or HDPMI
@@ -124,7 +145,7 @@ static void Init_XMS()
     __dpmi_meminfo info2 = info;
     info2.address = 0;
     info2.size = XMS_HEAP_SIZE / 4096;
-    if( __dpmi_map_device_in_memory_block(&info2, XMS_Physical) == -1)
+    if( __dpmi_map_device_in_memory_block(&info2, XMS_Physical) == -1) //supported by CWSDPMI and others
     {
         XMS_Free(XMS_Handle);
         printf("Error: Failed to map XMS memory %08lx, %08lx.\n", info.address, info.size);
@@ -134,17 +155,25 @@ static void Init_XMS()
     XMS_Info = info;
     info.handle = -1;
     AddAddressMap(&info, XMS_Physical);
-    __dpmi_set_segment_limit(_my_ds(), XMSBase + XMS_HEAP_SIZE - 1);
-    //printf("DSBase: %08lx, XMS at physical base: %08lx\n", DPMI_DSBase, XMS_Physical);
+    __dpmi_set_segment_limit(_my_ds(), XMSBase - DPMI_DSBase + XMS_HEAP_SIZE - 1);
+    __dpmi_set_segment_limit(__djgpp_ds_alias, XMSBase - DPMI_DSBase + XMS_HEAP_SIZE - 1); //interrupt used.
+    _LOG("XMS base %08lx, XMS lbase %08lx offset %08lx\n", XMS_Physical, XMSBase, XMSBase - DPMI_DSBase);
     XMS_Space = create_mspace_with_base((void*)(XMSBase - DPMI_DSBase), XMS_HEAP_SIZE, 0);
     #endif
+}
+
+void sig_handler(int signal)
+{
+    exit(-1);   //perform DPMI clean up on atexit
 }
 
 void DPMI_Init(void)
 {
     atexit(&DPMI_Shutdown);
+    //signal(SIGINT, sig_handler);
+    signal(SIGABRT, sig_handler);
     
-    DPMI_Selector4G = __dpmi_allocate_ldt_descriptors(1);
+    DPMI_Selector4G = (uint16_t)__dpmi_allocate_ldt_descriptors(1);
     __dpmi_set_segment_base_address(DPMI_Selector4G, 0);
     __dpmi_set_segment_limit(DPMI_Selector4G, 0xFFFFFFFF);
     DPMI_Addressing.selector = DPMI_Selector4G;
@@ -155,8 +184,14 @@ void DPMI_Init(void)
 
     Init_XMS();
 
+    __dpmi_meminfo info;    //1:1 map DOS memory. (0~640K). TODO: get 640K~1M mapping from VCPI
+    info.handle = -1;
+    info.address = 0;
+    info.size = 640L*1024L;
+    AddAddressMap(&info, 0);
+    
     /*
-    int32_t* ptr = (int32_t*)DPMI_MappedMalloc(256,16);
+    int32_t* ptr = (int32_t*)DPMI_DMAMalloc(256,16);
     *ptr = 0xDEADBEEF;
     int32_t addr = DPMI_PTR2L(ptr);
     int32_t val = DPMI_LoadD(addr);
@@ -171,7 +206,12 @@ void DPMI_Init(void)
 static void DPMI_Shutdown(void)
 {
     #if NEW_IMPL
-    //printf("cleanup TSR...\n"); fflush(stdout);
+    _LOG("Cleanup TSR...\n");
+    uint32_t size = mspace_mallinfo(XMS_Space).uordblks;
+    #if DEBUG
+    size = XMS_Allocated;
+    #endif
+    _LOG("XMS heap allocated: %d\n", size);
     if(DPMI_TSR_Inited)
     {
         DPMI_ShutdownTSR();
@@ -181,7 +221,7 @@ static void DPMI_Shutdown(void)
     #else
     //libc may expand this limit, if we restore it to a smaller value, it may cause crash
     //__dpmi_set_segment_limit(_my_ds(), DPMI_DSLimit);
-    //printf("free mapped XMS space...\n"); fflush(stdout);
+    _LOG("Free mapped XMS space...\n");
     if(XMS_Info.handle != 0)
     {
         __dpmi_free_memory(XMS_Info.handle);
@@ -189,11 +229,11 @@ static void DPMI_Shutdown(void)
     }
     #endif
 
-    //printf("free mapped space...\n"); fflush(stdout);
+    _LOG("Free mapped space...\n");
     for(int i = 0; i < AddressMapCount; ++i)
     {
         AddressMap* map = &AddresMapTable[i];
-        if(map->Handle == -1)//XMS mapped
+        if(map->Handle == ~0UL)//XMS mapped
             continue;
         __dpmi_meminfo info;
         info.handle = map->Handle;
@@ -202,7 +242,7 @@ static void DPMI_Shutdown(void)
         __dpmi_free_physical_address_mapping(&info);
     }
     AddressMapCount = 0;
-    //printf("free XMS memory...\n"); fflush(stdout);
+    _LOG("Free XMS memory...\n");
     if(XMS_Handle != 0)
     {
         XMS_Free(XMS_Handle);
@@ -269,20 +309,40 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
     return 0;
 }
 
-void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment/* = 4*/)
+void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
 {
+    #if DEBUG
+    CLIS();
+    XMS_Allocated += size;
+    uint8_t* ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+8) + 8;
+    uintptr_t addr = (uintptr_t)ptr;
+    uint32_t offset = align(addr, alignment) - addr;
+    uint32_t* uptr = (uint32_t*)(ptr + offset);
+    uptr[-1] = size;
+    uptr[-2] = offset + 8;
+    STIL();
+    assert(align((uintptr_t)uptr, alignment) == (uintptr_t)uptr);
+    return uptr;
+    #else
     return mspace_memalign(XMS_Space, alignment, size);
+    #endif
 }
 
-void DPMI_MappedFree(void* ptr)
+void DPMI_DMAFree(void* ptr)
 {
-    return mspace_free(XMS_Space, ptr);
+    #if DEBUG
+    uint32_t* uptr = (uint32_t*)ptr;
+    XMS_Allocated -= uptr[-1];
+    mspace_free(XMS_Space, (uint8_t*)ptr - uptr[-2]);
+    #else
+    mspace_free(XMS_Space, ptr);
+    #endif
 }
 
 uint32_t DPMI_DOSMalloc(uint16_t size)
 {
     int selector = 0;
-    uint16_t segment = __dpmi_allocate_dos_memory(size, &selector);
+    uint16_t segment = (uint16_t)__dpmi_allocate_dos_memory(size, &selector);
     if(segment != -1)
         return (selector << 16) | segment;
     else
@@ -312,23 +372,48 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return (uint16_t)__dpmi_simulate_real_mode_procedure_iret((__dpmi_regs*)reg);
 }
 
-uint16_t DPMI_InstallISR(int i, void(*ISR)(void), uint16_t* outputp realCS, uint16_t* outputp realIP)
+uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
 {
-    if(i < 0 || i > 255 || realCS == NULL || realIP == NULL)
+    if(i < 0 || i > 255 || handle == NULL)
         return -1;
         
+    _go32_dpmi_seginfo go32pa;
+    go32pa.pm_selector = (uint16_t)_my_cs();
+    go32pa.pm_offset = (uintptr_t)ISR;
+    _go32_interrupt_stack_size = 2048; //512 minimal
+    if( _go32_dpmi_allocate_iret_wrapper(&go32pa) != 0)
+        return -1;
+
     __dpmi_raddr ra;
     __dpmi_get_real_mode_interrupt_vector(i, &ra);
-    *realCS = ra.segment;
-    *realIP = ra.offset16;
+    __dpmi_paddr pa;
+    __dpmi_get_protected_mode_interrupt_vector(i, &pa);
 
-    _go32_dpmi_seginfo go32pa;
-    go32pa.pm_selector = _my_cs();
-    go32pa.pm_offset = (uintptr_t)ISR;
-    _go32_interrupt_stack_size = 1024;  //no need 32k stack. and it will crash. @see DPMI_TSR.C, 234
-    _go32_dpmi_allocate_iret_wrapper(&go32pa);
+    handle->offset = pa.offset32;
+    handle->cs = pa.selector;
+    handle->rm_cs = ra.segment;
+    handle->rm_offset = ra.offset16;
+    handle->extra = go32pa.pm_offset;
+    handle->n = i;
 
-    return _go32_dpmi_set_protected_mode_interrupt_vector(i, &go32pa);
+    return (uint16_t)_go32_dpmi_set_protected_mode_interrupt_vector(i, &go32pa);
+}
+
+uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
+{
+     _go32_dpmi_seginfo go32pa;
+     go32pa.pm_selector = handle->cs;
+     go32pa.pm_offset = handle->offset;
+     int result = _go32_dpmi_set_protected_mode_interrupt_vector(handle->n, &go32pa);
+
+    /* don't need restore real mode. dpmi server will do it.
+    __dpmi_raddr ra;
+    ra.segment = handle->rm_cs;
+    ra.offset16 = handle->rm_offset;
+    result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;*/
+
+    go32pa.pm_offset = handle->extra;
+    return (uint16_t)(_go32_dpmi_free_iret_wrapper(&go32pa) | result);
 }
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)

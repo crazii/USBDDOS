@@ -5,10 +5,6 @@
 //a DPMI wrapper for different compilers. Borland C++, DJGPP, WatCom etc.
 //the porpose of this file is to hide all __dpmi* or int 31h calls from outside
 
-#define DPMI_CFLAG 0x1
-#define DPMI_IFLAG 0x200
-
-
 typedef union {
 struct
 {
@@ -73,7 +69,17 @@ typedef struct//TSR/callback usage. state for linear DPMI_Load*/DPMI_Store*/DPMI
     uint16_t physical; //1: physical addr instead of virutal. used when not called through DPMI/DPMI context unavailable, and no paging
 }DPMI_ADDRESSING;
 
-#if __cplusplus
+typedef struct //old interrupt handler info retuended by install isr. 
+{
+    uint32_t extra;
+    uint32_t offset;
+    uint16_t cs;
+    uint16_t rm_offset;
+    uint16_t rm_cs;
+    uint8_t n; //INTn
+}DPMI_ISR_HANDLE;
+
+#ifdef __cplusplus
 extern "C"
 {
 #endif
@@ -126,21 +132,19 @@ void* DPMI_L2PTR(uint32_t addr);
 
 #else //stub
 
-//convert a linear (virtual) addr to physical addr (current segment)
+//convert a linear (virtual) addr to physical addr
 uint32_t DPMI_L2P(uint32_t addr);
-
-//convert a physical addr to linear addr (current segment)
+//convert a physical addr to linear addr
 uint32_t DPMI_P2L(uint32_t addr);
-
 //convert a ptr to linear (page mapped) addr
 uint32_t DPMI_PTR2L(void* ptr);
-
 void* DPMI_L2PTR(uint32_t addr);
 
 #endif
 
-//conversion between ptr & physical addr
+//convert ptr to physical addr
 #define DPMI_PTR2P(ptr) DPMI_L2P(DPMI_PTR2L(ptr))
+//convert physical addr to ptr
 #define DPMI_P2PTR(addr) DPMI_L2PTR(DPMI_P2L(addr))
 
 //return virtual mapped memory in linear space, usually for device IO
@@ -151,8 +155,8 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size);
 //memory allocated with this function is guaranteed to work with DPMI_L2P/DPMI_P2L
 //use this function if you want map between virtual addr and physical addr, meant for driver/device IO
 //malloc is recommended for normal memory allocation.
-void* DPMI_MappedMalloc(unsigned int size, unsigned int alignment);
-void DPMI_MappedFree(void* ptr);
+void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment);
+void DPMI_DMAFree(void* ptr);
 
 //allocate DOS conventional memory (below 640K)
 //input: size in paragraphs (16 bytes)
@@ -161,11 +165,12 @@ void DPMI_MappedFree(void* ptr);
 uint32_t DPMI_DOSMalloc(uint16_t size);
 void DPMI_DOSFree(uint32_t segment);
 
-//RM call
+//RM call. return 0 on succeed.
 uint16_t DPMI_CallRealModeRETF(DPMI_REG* reg);
 uint16_t DPMI_CallRealModeINT(uint8_t i, DPMI_REG* reg);
 uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg);
-uint16_t DPMI_InstallISR(int i, void(*ISR)(void), uint16_t* outputp realCS, uint16_t* outputp realIP); //return rm ivt
+uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle);
+uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle);
 
 //TSR/callback usage
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc);
@@ -230,16 +235,15 @@ void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size);
 
 //topdown allocation of DPMI_DOSMalloc, from high address (640K/1024K downwards).
 //input: size in paragraphs (16 bytes)
-//UMB: use UMB memory (640K~1024K). memory may not be 1:1 mapped.
+//UMB: use UMB memory (640K~1024K), memory may not be 1:1 mapped.
 //note: only conventional 640K is 1:1 mapped.
 //UMB returned addr not essentially equals to physical addr
 //do not use UMB if physical addr is needed.
 //output: segment address
-//not working with DPMI_L2P/DPMI_P2L
 uint32_t DPMI_HighMalloc(uint16_t size, BOOL UMB);
 void DPMI_HighFree(uint32_t segment);
 
-#if __cplusplus
+#ifdef __cplusplus
 }
 #endif
 
