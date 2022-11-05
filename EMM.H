@@ -28,7 +28,7 @@ typedef struct EMM_IOPorTrap
 uint16_t EMM_GetVersion(void);
 
 //I/O virtualize
-BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count, EMM_IOPT* outputp iopt);
+BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt, uint16_t count, EMM_IOPT* outputp iopt);
 
 BOOL EMM_Uninstall_IOPortTrap(EMM_IOPT* inputp iopt);
 

@@ -128,11 +128,11 @@ void PCI_WriteDWord(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg, uint32_
 
 void PCI_ReadDevice(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* device)
 {
-    memset(device, 0, sizeof(PCI_DEVICE));
-    if (PCI_ReadWord(bus, dev, func, 0x00) == 0xFFFF)
-        return;
-    for(int i = 0; i < 64; ++i)
-        device->registers[i] = PCI_ReadDWord(bus, dev, func, (uint8_t)(i * 4));
+	memset(device, 0, sizeof(PCI_DEVICE));
+	if (PCI_ReadWord(bus, dev, func, 0x00) == 0xFFFF)
+		return;
+	for(int i = 0; i < 64; ++i)
+		device->Registers[i] = PCI_ReadDWord(bus, dev, func, (uint8_t)(i * 4));
 }
 
 uint32_t PCI_Sizing(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg)

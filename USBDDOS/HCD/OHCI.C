@@ -33,8 +33,8 @@ HCD_Method OHCI_Method =
 {
     &OHCI_ControlTransfer,
     &OHCI_IsochronousTransfer,
-    &OHCI_DataTransfer,
-    &OHCI_DataTransfer,
+	&OHCI_DataTransfer,
+	&OHCI_DataTransfer,
     &OHCI_GetPortStatus,
     &OHCI_SetPortStatus,
     &OHCI_InitDevice,
@@ -52,14 +52,14 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 #endif
     // enable MMIO
     PCI_CMD cmd;
-    cmd.reg16 = pPCIDev->header.Command;
+    cmd.reg16 = pPCIDev->Header.Command;
     cmd.bits.BusMaster = 1;
     cmd.bits.IOSpace = 0;
     cmd.bits.MemorySpace = 1;
     cmd.bits.InterruptDisable = 0;
     PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
     // map to linear
-    pHCI->dwPhysicalAddress = pPCIDev->header.Device.Base0 & 0xffffffe0;                                            // BAR0
+	pHCI->dwPhysicalAddress = pPCIDev->Header.DevHeader.Device.Base0 & 0xffffffe0;                                            // BAR0
     uint32_t size = PCI_Sizing(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, OHCI_REGISTER_BAR); // should be 4K according to the spec
     pHCI->dwBaseAddress = DPMI_MapMemory(pHCI->dwPhysicalAddress, size);
     _LOG("OHCI BAR address: %08lx, mapped address %08lx, size: %08lx\n", pHCI->dwPhysicalAddress, pHCI->dwBaseAddress, size);
@@ -94,9 +94,9 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 
     pHCI->pHCDMethod = &OHCI_Method;
     pHCI->pHCDData = DPMI_DMAMalloc(sizeof(OHCI_HCData), 256);
-    OHCI_HCData* pHCDData = (OHCI_HCData*)pHCI->pHCDData;
-    memset(pHCDData, 0, sizeof(OHCI_HCData));
-    _LOG("Initial memory usage: %d\n", sizeof(OHCI_HCData));
+	OHCI_HCData* pHCDData = (OHCI_HCData*)pHCI->pHCDData;
+	memset(pHCDData, 0, sizeof(OHCI_HCData));
+	_LOG("HCDDData %08x, Initial memory usage: %d\n", pHCDData, sizeof(OHCI_HCData));
 
     // port power on
     if(DPMI_LoadD(dwBase + HcRhDescriptorA) & PowerSwitchingMode)
@@ -133,7 +133,7 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 
     // controller goto the USBOPERATIONAL state.
     DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState, (USBOPERATIONAL << HostControllerFunctionalState_SHIFT));
-    //DPMI_MaskD(dwBase + HcInterruptEnable, ~0UL, StartofFrame); //1ms interval. not needed for now.
+	//DPMI_MaskD(dwBase + HcInterruptEnable, ~0UL, StartofFrame); //1ms interval. not needed for now.
     DPMI_MaskD(dwBase + HcControl, ~InterruptRouting, 0UL);
 
     pHCDData->ControlTail = &pHCDData->ControlHead;
@@ -168,13 +168,13 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
         return FALSE;
     uint32_t dwIOBase = pHCI->dwBaseAddress;
     OHCI_HCData* pHCDData = (OHCI_HCData*)pHCI->pHCDData;
-    uint32_t interrupt = DPMI_LoadD(dwIOBase + HcInterruptStatus) & DPMI_LoadD(dwIOBase + HcInterruptEnable);
-    //_LOG("OHCI ISR: interrupt: %x, donehead:%x\n", interrupt, pHCDData->HCCA.dwDoneHead);
-    if(pHCDData->HCCA.dwDoneHead == 0 && interrupt == 0)
-        return FALSE;
-    DPMI_StoreD(dwIOBase + HcInterruptDisable, MasterInterruptEnable); // disable all interrupt
+	uint32_t Interrupt = DPMI_LoadD(dwIOBase + HcInterruptStatus) & DPMI_LoadD(dwIOBase + HcInterruptEnable);
+	//_LOG("OHCI ISR: interrupt: %x, donehead:%x\n", interrupt, pHCDData->HCCA.dwDoneHead);
+	if(pHCDData->HCCA.dwDoneHead == 0 && Interrupt == 0)
+		return FALSE;
+	DPMI_StoreD(dwIOBase + HcInterruptDisable, MasterInterruptEnable); // disable all interrupt
 
-    uint32_t context = pHCDData->HCCA.dwDoneHead ? (WriteBackDoneHead | ((pHCDData->HCCA.dwDoneHead & 0x1)*interrupt)) : interrupt;
+	uint32_t context = pHCDData->HCCA.dwDoneHead ? (WriteBackDoneHead | ((pHCDData->HCCA.dwDoneHead & 0x1)*Interrupt)) : Interrupt;
     if(context & StartofFrame)
     {
         DPMI_StoreD(dwIOBase + HcInterruptStatus, StartofFrame);
@@ -203,10 +203,10 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
         context &= ~ResumeDetected;
     }
     if(context & WriteBackDoneHead) // note: no interupt for control transfer, and interrupt only for last TD of a single transfer request.
-    {
-        OHCI_ISR_ProcessDoneQueue(pHCI, pHCDData->HCCA.dwDoneHead & ~0x1UL);
+	{
+		OHCI_ISR_ProcessDoneQueue(pHCI, pHCDData->HCCA.dwDoneHead & ~0x1UL);
         pHCDData->HCCA.dwDoneHead = 0;
-        DPMI_StoreD(dwIOBase + HcInterruptStatus, WriteBackDoneHead);
+		DPMI_StoreD(dwIOBase + HcInterruptStatus, WriteBackDoneHead);
         context &= ~WriteBackDoneHead;
     }
     if(context & RootHubStatusChange) // TODO: device attach/removed
@@ -251,7 +251,7 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     OHCI_TD* pSetup = pED->pTail;
     OHCI_BuildTD(pSetup, PIDSETUP, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA0, DPMI_PTR2P(setup8), 8, pData);
     pSetup->pRequest = pRequest;
-    // check status
+	// check status
     assert(pED->TailP == pED->HeadP && pED->TailP == DPMI_PTR2P(pSetup)); // empty ED. (tailp==headp)
     assert(pSetup->NextTD == DPMI_PTR2P(pData) && pData->NextTD == DPMI_PTR2P(pStatus) && pStatus->NextTD == DPMI_PTR2P(pEmptyTail));
     // start transfer
@@ -281,23 +281,23 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     }
     delay(1);
     uint8_t errorCode = i == TIME_OUT ? 0xFF : pStatus->ControlBits.ConditionCode; // note: TDs will be deleted in ISR in unpredictable time, need CLI to prevent it.
-    if(errorCode != 0)
-    {
-        printf("control transfer not complete, error: 0x%02x\n", errorCode);
-        printf("Address: %d, Endpoint: %d, size: %d\n", pED->ControlBits.FunctionAddress, pED->ControlBits.EndPoint, pED->ControlBits.MaxPacketSize);
-        printf("Setup: "); DBG_DumpB(setup8, 8, NULL);
-        DBG_Flush(&db);
-        printf("ED TD after transation:\n");
-        printf("%08lx: ", DPMI_PTR2P(pED)); DBG_DumpPD(DPMI_PTR2P(pED), 4, NULL);
-        printf("%08lx: ", DPMI_PTR2P(pSetup)); DBG_DumpPD(DPMI_PTR2P(pSetup), 4, NULL);
-        printf("%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, NULL);
-        printf("%08lx: ", DPMI_PTR2P(pStatus)); DBG_DumpPD(DPMI_PTR2P(pStatus), 4, NULL);
-    }
-    STIL();
-    DPMI_StoreD(dwIOBase + HcInterruptEnable, MasterInterruptEnable);
-    return errorCode;
+	if(errorCode != 0)
+	{
+		printf("control transfer not complete, error: 0x%02x\n", errorCode);
+		printf("Address: %d, Endpoint: %d, size: %d\n", pED->ControlBits.FunctionAddress, pED->ControlBits.EndPoint, pED->ControlBits.MaxPacketSize);
+		printf("Setup: "); DBG_DumpB(setup8, 8, NULL);
+		DBG_Flush(&db);
+		printf("ED TD after transation:\n");
+		printf("%08lx: ", DPMI_PTR2P(pED)); DBG_DumpPD(DPMI_PTR2P(pED), 4, NULL);
+		printf("%08lx: ", DPMI_PTR2P(pSetup)); DBG_DumpPD(DPMI_PTR2P(pSetup), 4, NULL);
+		printf("%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, NULL);
+		printf("%08lx: ", DPMI_PTR2P(pStatus)); DBG_DumpPD(DPMI_PTR2P(pStatus), 4, NULL);
+	}
+	STIL();
+	DPMI_StoreD(dwIOBase + HcInterruptEnable, MasterInterruptEnable);
+	return errorCode;
 #endif
-    return 0;
+	return 0;
 }
 
 uint8_t OHCI_IsochronousTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer, uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
@@ -322,128 +322,128 @@ uint8_t OHCI_IsochronousTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir
         uint8_t FrameCount = (uint8_t)((size + MaxLen - 1) / MaxLen);
         assert(FrameCount <= OHCI_MAX_ISO_FRAME);
         OHCI_ISO_TD* pNext = (OHCI_ISO_TD*)USB_TAlloc32(sizeof(OHCI_ISO_TD));
-        memset(pNext, 0, sizeof(OHCI_ISO_TD));
+		memset(pNext, 0, sizeof(OHCI_ISO_TD));
         uint8_t DelayInterrupt = (transferred + size != length) ? OHCI_CW_NO_INTERRUPT : 0;
         OHCI_BuildISOTD(pED->pISOTail, StartFrame, FrameCount, DelayInterrupt, MaxLen, BufferAddress + transferred, size, pNext);
-        pED->pISOTail->pRequest = pRequest; // add request ptr to everty TD incase error occors
-        transferred = (uint16_t)(transferred + size);
-        StartFrame = (uint16_t)(StartFrame + FrameCount + 1);
-        pED->pISOTail = pNext;
-    }
-    // start transfer
-    pED->TailP = DPMI_PTR2P(pED->pISOTail);
-    STIL();
-    return 0;
+		pED->pISOTail->pRequest = pRequest; // add request ptr to everty TD incase error occors
+		transferred = (uint16_t)(transferred + size);
+		StartFrame = (uint16_t)(StartFrame + FrameCount + 1);
+		pED->pISOTail = pNext;
+	}
+	// start transfer
+	pED->TailP = DPMI_PTR2P(pED->pISOTail);
+	STIL();
+	return 0;
 }
 
 uint8_t OHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer, uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
 {
-    OHCI_ED* pED = (OHCI_ED*)pEndpoint;
-    // sanity check
-    if(!pCB || !length || !pBuffer || !pED || !pED->pTail || (pED->ControlBits.Direction != (dir ? PIDIN : PIDOUT)) || (((uintptr_t)pBuffer) & 0x3) != 0 || (pED->ControlBits.TransferType != USB_ENDPOINT_TRANSFER_TYPE_BULK && pED->ControlBits.TransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR))
-    {
+	OHCI_ED* pED = (OHCI_ED*)pEndpoint;
+	// sanity check
+	if(!pCB || !length || !pBuffer || !pED || !pED->pTail || (pED->ControlBits.Direction != (dir ? PIDIN : PIDOUT)) || (((uintptr_t)pBuffer) & 0x3) != 0 || (pED->ControlBits.TransferType != USB_ENDPOINT_TRANSFER_TYPE_BULK && pED->ControlBits.TransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR))
+	{
         _LOG("Error transfer endpoint: %08p, pointer:%08p, type:%d\n", pEndpoint, pED ? pED : 0, pED ? pED->ControlBits.TransferType : -1);
         return 0xFF;
     }
     CLIS();
-    HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, pED->ControlBits.EndPoint, pCB, pCBData);
-    uint32_t dwIOBase = pDevice->pHCI->dwBaseAddress;
-    uint32_t BufferAddress = DPMI_PTR2P(pBuffer);
-    uint32_t transferred = 0;
-    while(transferred < length)
-    {
-        uint16_t len = min(OHCI_MAX_TD_BUFFER_SIZE, (uint16_t)(length - transferred));
-        OHCI_TD* pNext = (OHCI_TD*)USB_TAlloc32(sizeof(OHCI_TD));
-        memset(pNext, 0, sizeof(OHCI_TD));
-        uint8_t DelayInterrupt = (transferred + len != length) ? OHCI_CW_NO_INTERRUPT : 0;
-        OHCI_BuildTD(pED->pTail, pED->ControlBits.Direction, DelayInterrupt, OHCI_CW_DATATOGGLE_CARRY, BufferAddress + transferred, len, pNext);
-        pED->pTail->pRequest = pRequest; // add request ptr to everty TD incase error occors
-        transferred += len;
-        pED->pTail = pNext;
-    }
-    // start transfer (advance TailP)
-    pED->TailP = DPMI_PTR2P(pED->pTail);
-    STIL();
-    if(pED->ControlBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK) // endpoint already connected to bulk head, issue the command
-        DPMI_MaskD(dwIOBase + HcCommandStatus, ~0UL, BulkListFilled);
-    return 0;
+	HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, pED->ControlBits.EndPoint, pCB, pCBData);
+	uint32_t BufferAddress = DPMI_PTR2P(pBuffer);
+	uint16_t transferred = 0;
+	while(transferred < length)
+	{
+		uint16_t len = min(OHCI_MAX_TD_BUFFER_SIZE, (uint16_t)(length - transferred));
+		OHCI_TD* pNext = (OHCI_TD*)USB_TAlloc32(sizeof(OHCI_TD));
+		memset(pNext, 0, sizeof(OHCI_TD));
+		uint8_t DelayInterrupt = (transferred + len != length) ? OHCI_CW_NO_INTERRUPT : 0;
+		OHCI_BuildTD(pED->pTail, pED->ControlBits.Direction, DelayInterrupt, OHCI_CW_DATATOGGLE_CARRY, BufferAddress + transferred, len, pNext);
+		pED->pTail->pRequest = pRequest; // add request ptr to everty TD incase error occors
+		transferred = (uint16_t)(transferred + len);
+		pED->pTail = pNext;
+	}
+	// start transfer (advance TailP)
+	pED->TailP = DPMI_PTR2P(pED->pTail);
+	STIL();
+	if(pED->ControlBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK) // endpoint already connected to bulk head, issue the command
+		DPMI_MaskD(pDevice->pHCI->dwBaseAddress + HcCommandStatus, ~0UL, BulkListFilled);
+	return 0;
 }
 
 void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead)
 {
+	unused(pHCI);
     if(dwDoneHead == 0)
         return;
-    //_LOG("Process done queue: %08lx\n", dwDoneHead);
-    OHCI_TD* pList = NULL;
-    do //reverse done queue to processed order
-    {
-        OHCI_TD* pTD = (OHCI_TD*)DPMI_P2PTR(dwDoneHead); // could be an ISO_TD
-        dwDoneHead = pTD->NextTD;
-        pTD->pNext = pList;
-        pList = pTD;
-    } while(dwDoneHead);
+	//_LOG("PDQ %08lx ", dwDoneHead);
+	OHCI_TD* pList = NULL;
+	do //reverse done queue to processed order
+	{
+		OHCI_TD* pTD = (OHCI_TD*)DPMI_P2PTR(dwDoneHead); // could be an ISO_TD
+		dwDoneHead = pTD->NextTD;
+		pTD->pNext = pList;
+		pList = pTD;
+	} while(dwDoneHead);
 
-    while(pList != NULL)
-    {
-        OHCI_TD* pTD = pList;
-        pList = pList->pNext;
-        uint8_t ccode = pTD->ControlBits.ConditionCode;
-        BOOL interrupt = pTD->ControlBits.DelayInterrupt == 0; // final TD of a transfer request (not tail of quueue)
-        HCD_Request* pRequest = pTD->pRequest;
-        OHCI_ED* pED = pRequest ? (OHCI_ED*)pRequest->pEndpoint : NULL;
+	while(pList != NULL)
+	{
+		OHCI_TD* pTD = pList;
+		pList = pList->pNext;
+		uint8_t ccode = pTD->ControlBits.ConditionCode;
+		BOOL Interrupt = pTD->ControlBits.DelayInterrupt == 0; // final TD of a transfer request (not tail of quueue)
+		HCD_Request* pRequest = pTD->pRequest;
+		OHCI_ED* pED = pRequest ? (OHCI_ED*)pRequest->pEndpoint : NULL;
 
-        if(ccode) // error: enpoint halted, remove all pending TODO: could continue on some senarios
-        {
-            //_LOG("ERROR: %d\n", ccode);
-            OHCI_TD* pNext = pTD->pNext;
-            while(pNext && pNext->pRequest == pRequest) //reset finished entries with the same request from pList
-            {
-                pNext->pRequest = NULL;
-                pNext = pNext->pNext;
-            }
-            if(pED)
-            {
-                pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP);
-                while(pNext != pED->pTail) //remove pending entries with the same request from ED
-                {
-                    OHCI_TD* p = pNext->pNext;
-                    if(pNext->pRequest == pRequest)
-                    {
-                        if(pNext != pTD)
-                            USB_TFree32(pNext);
-                    }
-                    else
-                        break; //request are consecutive
-                    pNext = p;
-                }
-                pED->HeadP = DPMI_PTR2P(pNext);
-            }
-        }
-        assert(!pED || pTD != pED->pTail);  //pTail always empty (un processed)
-        if((interrupt || ccode) && pRequest)
-        {
-            uint16_t actualLen = pTD->CurrentBufferP == 0 ? pRequest->size : (uint16_t)(pTD->CurrentBufferP - DPMI_PTR2P(pRequest->pBuffer));
-            //_LOG("callback: %08lx, %08lx, error: 0x%02x\n", pTD->CurrentBufferP, DPMI_PTR2P(pRequest->pBuffer), ccode);
-            HCD_InvokeCallBack(pRequest, actualLen, ccode);
-        }
-        //_LOG("Free TD: %08lx\n", pTD);
-        USB_TFree32(pTD);
-    }
+		if(ccode) // error: enpoint halted, remove all pending TODO: could continue on some senarios
+		{
+			//_LOG("ERROR: %d\n", ccode);
+			OHCI_TD* pNext = pTD->pNext;
+			while(pNext && pNext->pRequest == pRequest) //reset finished entries with the same request from pList
+			{
+				pNext->pRequest = NULL;
+				pNext = pNext->pNext;
+			}
+			if(pED)
+			{
+				pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP);
+				while(pNext != pED->pTail) //remove pending entries with the same request from ED
+				{
+					OHCI_TD* p = pNext->pNext;
+					if(pNext->pRequest == pRequest)
+					{
+						if(pNext != pTD)
+							USB_TFree32(pNext);
+					}
+					else
+						break; //request are consecutive
+					pNext = p;
+				}
+				pED->HeadP = DPMI_PTR2P(pNext);
+			}
+		}
+		assert(!pED || pTD != pED->pTail);  //pTail always empty (un processed)
+		if((Interrupt || ccode) && pRequest)
+		{
+			uint16_t actualLen = pTD->CurrentBufferP == 0 ? pRequest->size : (uint16_t)(pTD->CurrentBufferP - DPMI_PTR2P(pRequest->pBuffer));
+			//_LOG("callback: %08lx, %08lx, error: 0x%02x\n", pTD->CurrentBufferP, DPMI_PTR2P(pRequest->pBuffer), ccode);
+			HCD_InvokeCallBack(pRequest, actualLen, ccode);
+		}
+		//_LOG("Free TD: %08lx\n", pTD);
+		USB_TFree32(pTD);
+	}
 }
 
 uint16_t OHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
 {
-    uint32_t dwBase = pHCI->dwBaseAddress;
-    uint32_t status = DPMI_LoadD(dwBase + HcRhPort1Status + port * 4U);
+	uint32_t dwBase = pHCI->dwBaseAddress;
+	uint32_t status = DPMI_LoadD(dwBase + HcRhPort1Status + port * 4U);
 
-    uint16_t result = 0;
-    if(status & PortEnableStatus)
-        result |= USB_PORT_ENABLE;
+	uint16_t result = 0;
+	if(status & PortEnableStatus)
+		result |= USB_PORT_ENABLE;
     else
         result |= USB_PORT_DISABLE;
 
     if(status & CurrentConnectStatus)
-        result |= USB_PORT_ATTACHED;
+		result |= USB_PORT_ATTACHED;
 
     if(status & PortSuspendStatus)
         result |= USB_PORT_SUSPEND;
@@ -523,16 +523,16 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 BOOL OHCI_InitDevice(HCD_Device* pDevice)
 {
     pDevice->pHCData = DPMI_DMAMalloc(sizeof(OHCI_HCDeviceData), 16);
-    OHCI_HCDeviceData* pDD = (OHCI_HCDeviceData*)pDevice->pHCData;
-    memset(pDD, 0, sizeof(OHCI_HCDeviceData));
-    _LOG("Device memory usage: %d\n", sizeof(OHCI_HCDeviceData));
-    
-    uint8_t address = pDevice->bAddress;
-    uint8_t lowspeed = (pDevice->bSpeed == USB_PORT_Low_Speed_Device) ? 1 : 0;
-    OHCI_BuildED(&pDD->ControlED, address, 0, PIDFROMTD, lowspeed, 4);
-    assert(pDD->ControlED.ControlBits.FunctionAddress == pDevice->bAddress);
-    OHCI_HCData* pHCDData = (OHCI_HCData*)pDevice->pHCI->pHCDData;
-    OHCI_AddEDToTail(&pHCDData->ControlTail, &pDD->ControlED);
+	OHCI_HCDeviceData* pDD = (OHCI_HCDeviceData*)pDevice->pHCData;
+	memset(pDD, 0, sizeof(OHCI_HCDeviceData));
+	_LOG("Device %08x, memory usage: %d\n", pDD, sizeof(OHCI_HCDeviceData));
+
+	uint8_t address = pDevice->bAddress;
+	uint8_t lowspeed = (pDevice->bSpeed == USB_PORT_Low_Speed_Device) ? 1 : 0;
+	OHCI_BuildED(&pDD->ControlED, address, 0, PIDFROMTD, lowspeed, 4);
+	assert(pDD->ControlED.ControlBits.FunctionAddress == pDevice->bAddress);
+	OHCI_HCData* pHCDData = (OHCI_HCData*)pDevice->pHCI->pHCDData;
+	OHCI_AddEDToTail(&pHCDData->ControlTail, &pDD->ControlED);
     return TRUE;
 }
 
@@ -682,7 +682,7 @@ void OHCI_BuildTD(OHCI_TD* pTD, uint8_t PID, uint8_t DelayInterrupt, uint8_t Dat
     pTD->BufferEnd = BufferAddr ? BufferAddr + length - 1 : 0;
 
     // extension
-    pTD->pNext = pNext;
+	pTD->pNext = pNext;
 }
 
 void OHCI_BuildISOTD(OHCI_ISO_TD* pTD, uint16_t StartFrame, uint8_t FrameCount, uint8_t DelayInterrupt, uint16_t PacketSize, uint32_t BufferAddr, uint32_t length, OHCI_ISO_TD* pNext)

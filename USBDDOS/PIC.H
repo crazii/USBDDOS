@@ -10,8 +10,8 @@
 #define PIC_IRQ0_VEC 0x08   //PIC master
 #define PIC_IRQ8_VEC 0x70   //PIC slave
 
-#define PIC_IRQ2VEC(irq) ((uint8_t)(irq < 8 ? PIC_IRQ0_VEC + irq : PIC_IRQ8_VEC + (irq - 8)))
-#define PIC_VEC2IRQ(ivec) ((uint8_t)(ivec < PIC_IRQ0_VEC + 8 ? ivec - 8 : ivec - PIC_IRQ8_VEC + 8))
+#define PIC_IRQ2VEC(irq) ((uint8_t)((irq) < 8 ? PIC_IRQ0_VEC + (irq) : PIC_IRQ8_VEC + ((irq) - 8)))
+#define PIC_VEC2IRQ(ivec) ((uint8_t)((ivec) < PIC_IRQ0_VEC + 8 ? (ivec) - 8 : (ivec) - PIC_IRQ8_VEC + 8))
 
 #ifdef __cplusplus
 extern "C"

@@ -2,9 +2,10 @@
 #define _UHCI_H_
 #include "USBDDOS/HCD/HCD.H"
 
-#define USBBASE 0x20    //0x20~0x23, IO Space Base Address register
-#define LEGSUP 0xC0     //0xC0~0xC1, legacy support register
-#define USBSMIEN BIT4   //usb smi enable
+#define USBBASE 	0x20    //0x20~0x23, IO Space Base Address register (PCI BAR4)
+#define LEGSUP 		0xC0    //0xC0~0xC1, legacy support register
+#define USBSMIEN 	BIT4    //usb smi enable
+#define USBPIRQDEN  BIT13
 
 ///PID
 #define    OUTPID   0xe1
@@ -54,23 +55,29 @@
 #define CS_C_ERR3             (3L<<27)
 
 //token
-#define TK_DataToggle         BIT19
+#define TK_DataToggle       BIT19
+#define TK_NullLength       0x7FF
 
 // UHCI register
-#define USBCMD              0x00
-#define USBSTS              0x02
-#define USBINTR             0x04
-#define FRNUM               0x06
-#define FLBASEADD           0x08    //frame list base addr
-#define SOF                 0x0c
-#define PORTBASE            0x10
+#define USBCMD              0x00	//command, 16bit
+#define USBSTS              0x02    //status, 16bit
+#define USBINTR             0x04	//interrupt enable,16bit
+#define FRNUM               0x06    //frame number, 16bit (10bit used, 0~1024)
+#define FLBASEADD           0x08    //frame list base addr, 32bit
+#define SOF                 0x0c	//start of frame modify, 8bit
+#define PORTSC	            0x10
 #define PORT1               0x10
 #define PORT2               0x12
 
-//USBCMD     
-#define RS                  0x01
-#define HCRESET             0x02
-#define GRESET              0x04
+//USBCMD
+#define RS                  BIT0	//run/stop
+#define HCRESET             BIT1
+#define GRESET              BIT2	//global reset
+#define EGSM				BIT3	//enter global suspend
+#define FGR					BIT4	//force global resume
+#define SWDBG				BIT5	//software debug
+#define CF					BIT6	//configure flag(HCD only)
+#define MAXP				BIT7	//max packet 0:32bytes, 1:64bytes
 
 //USBSTS
 #define USBINT              BIT0    //USBSTS bit 0
@@ -79,6 +86,7 @@
 #define USBHSERROR          BIT3    //host system error
 #define USBHCERROR          BIT4    //host controller error
 #define USBINTMASK          (BIT0|BIT1|BIT2|BIT3|BIT4)
+#define USBHCHALTED			BIT5	//HCHalted
 
 //PORT1 PORT2
 
@@ -152,12 +160,21 @@ typedef struct UHCI_TransferDescriptor
         uint32_t Token;
         struct
         {
+            #if defined(__BC__)
             uint16_t PID : 8;
             uint16_t DeviceAddress : 7;
             uint16_t Endpoint : 4;
             uint16_t DataToggle : 1;
             uint16_t Reserved : 1;
-            uint16_t MaxLen : 11;
+            uint16_t MaxLen : 11; //0x7FF=NULL
+            #else
+            uint32_t PID : 8;
+            uint32_t DeviceAddress : 7;
+            uint32_t Endpoint : 4;
+            uint32_t DataToggle : 1;
+            uint32_t Reserved : 1;
+            uint32_t MaxLen : 11; //0x7FF=NULL
+            #endif
         }TokenBits; 
     };
     uint32_t BufferPointer;
@@ -216,13 +233,13 @@ typedef struct UHCI_HostControllerDriverData
     UHCI_QH* InteruptTail[3];
     UHCI_QH* ControlTail;
     UHCI_QH* BulkTail;
-    uint32_t dwHcdDataArea;// memory address.
+    uint32_t dwFrameListBase;// memory address.
+    uint16_t wFrameListHandle; //xms handle
 }UHCI_HCData;
 
 typedef struct UHCI_HostControllerDeviceData
 {
     UHCI_QH ControlQH;
-    UHCI_TD ControlTD[3];
 }UHCI_HCDeviceData;
 
 BOOL UHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);

@@ -5,11 +5,15 @@
 #define USB_MAX_HC_COUNT        8
 #define USBC_MAX_DRIVER         0x10        //class driver [0,USBC_PERSONHEALTHCARE]
 #define USB_MAX_VENDOR_DRIVER   0x10  //not used yet
-#define USB_DEVBUFFER_SIZE  0x100
+#define USB_DEVBUFFER_SIZE      0x100
 
 //constants
 #define HCD_MAX_DEVICE_COUNT 15     //device per root hub by spec
+#if defined(__BC__)
+#define USB_MAX_DEVICE_COUNT 15     //save 16 bit memory
+#else
 #define USB_MAX_DEVICE_COUNT 127    //no need to change, max address 127
+#endif
 
 #define USB_ENDPOINT_TRANSFER_TYPE_CTRL 0
 #define USB_ENDPOINT_TRANSFER_TYPE_ISOC 1
@@ -17,8 +21,8 @@
 #define USB_ENDPOINT_TRANSFER_TYPE_INTR 3
 
 //for full speed & low speed
-#define USB_FRAME_SIZE_FULLSPEED 1024    //max bandwith during 1 frame, theoretical 1280
-#define USB_ISO_FRAME_SIZE_FULLSPEED 921 //90%
+#define USB_FRAME_SIZE_FULLSPEED        1024    //max bandwith during 1 frame, theoretical 1280
+#define USB_ISO_FRAME_SIZE_FULLSPEED    921 //90%
 
 //port status
 #define USB_PORT_SPEEDMASK 0x0FL    //(R)

@@ -82,7 +82,7 @@ typedef struct
     uint16_t PMemoryLimit;      //prefetchable memory limit
     uint32_t PMemoryBase32;     //upper 32 bit
     uint32_t PMemoryLimit32;    //upper 32 bit
-    uint16_t IOBase16;          //upper 16 bit
+	uint16_t IOBase16;          //upper 16 bit
     uint16_t IOLimt16;          //upper 16 bit
     uint8_t Capabilities;
     uint8_t Reserved[3];
@@ -127,7 +127,7 @@ typedef struct
     uint16_t Status;
     uint8_t RevisionID;
     uint8_t PInterface;         //register-level programming interface
-    uint8_t SubClass;
+	uint8_t SubClass;
     uint8_t Class;
     uint8_t CacheLineSize;
     uint8_t LatencyTimer;
@@ -139,15 +139,15 @@ typedef struct
         PCI_DEVICE_HEADER Device;
         PCI_PCI_BRIDGE_HEADER PCIBridge;
         PCI_CARDBUS_BRIDGE_HEADER CardBusBridge;
-    };
+	}DevHeader;
 
 }PCI_HEADER;
 
 typedef union
 {
-    PCI_HEADER header;
-    uint32_t registers[64];
-    uint8_t offset[256];
+	PCI_HEADER Header;
+	uint32_t Registers[64];
+	uint8_t Offset[256];
 }PCI_DEVICE;
 
 //command register
@@ -172,7 +172,7 @@ typedef union
     }bits;
 }PCI_CMD;
 
-#define PCI_REGISTER_IRQ 0xF //word: IRQ & INTPIN
+#define PCI_REGISTER_IRQ 0xF //word: IRQ (low byte) & INTPIN
 
 uint8_t PCI_ReadByte(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
 uint16_t PCI_ReadWord(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);

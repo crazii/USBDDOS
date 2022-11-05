@@ -11,6 +11,7 @@
 #endif
 #endif
 
+//compiler specific preprossor directive
 #if defined(__BC__)
 
 #if !defined(__TINY__) && !defined(__SMALL__)
@@ -26,17 +27,25 @@ typedef unsigned short uint16_t;
 typedef long int32_t;
 typedef unsigned long uint32_t;
 
-typedef int16_t intptr_t;   //only use tiny or small model by default. if large mmemory is used, be care about far pointer and not to use this, use FP_SEG/FP_OFF
+typedef int16_t intptr_t;   //only use tiny or small model. far pointer not supported by this type.
 typedef uint16_t uintptr_t;
 
-#define _ASM_BEGIN __asm { 
+#define __NAKED //not supported on BC3.1. uncheck 'standard stack frame' might work but it is implicit: no frame when no param&local vars.
+				//#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
+#define __CDECL __cdecl
+#ifdef __cplusplus
+#define __INLINE inline
+#else
+#define __INLINE
+#endif
+
+#define _ASM_BEGIN __asm {
 #define _ASM_END }
 #define _ASM(x) x;
 #define _ASMLBL(x) }x __asm { x //the first label makes compiler happy and the second used by TASM when offset used
 #define _ASM2(x,y) x,y;
 #define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
-#define _ASM_RETF _ASM2(mov sp, bp) _ASM(pop bp) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump
-
+#define _ASM_RETF _ASM(leave) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump
 
 #define _ASM_BEGIN16 _ASM_BEGIN
 #define _ASM_END16 _ASM_END
@@ -47,24 +56,23 @@ typedef uint16_t uintptr_t;
 #define NOP() __asm nop
 #define CLI() __asm cli
 #define STI() __asm sti
-static uint32_t BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
-static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
-
-#define __NAKED //not supported on BC3.1. uncheck 'standard stack frame' might work but it is implicit: no frame when no param&local vars.
-                //#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
-#define __CDECL __cdecl
+static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, eax} return i; }//386+ (386 included)
+#define PLTFM_CPU_FLAGS() _FLAGS
 
 //copy code to data. as long as the compiler doesn't touch the PM segment selector
 #define memcpy_c2d(src, dest, size) do{\
-    void far* fdest = MK_FP(_DS, FP_OFF(src));\
-    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
-    _fmemcpy(fdest, fsrc, size);\
+	void far* fdest = MK_FP(_DS, FP_OFF(src));\
+	void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+	_fmemcpy(fdest, fsrc, size);\
 }while(0)
-
 
 #elif defined(__DJ2__)
 #include <stdint.h>
 #include <stddef.h>
+
+#define __NAKED __attribute__((naked))
+#define __CDECL __attribute__((cdecl))
+#define __INLINE inline
 
 //looks ugly. only if we can work preprocessing with raw string literals (R"()")
 //raw string can work with preprocessor using gcc -E or cpp in the triditional way. need a special pass for file with asm
@@ -84,11 +92,9 @@ static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
 #define NOP() asm __volatile__("nop")
 #define CLI() asm __volatile__("cli")
 #define STI() asm __volatile__("sti")
-static inline uint32_t BSF(uint32_t x) {uint32_t i; asm("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
-static inline uint16_t _CPU_FLAGS(void) { uint32_t flags = 0; asm("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
-
-#define __NAKED __attribute__((naked))
-#define __CDECL __attribute__((cdecl))
+static inline uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; asm("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
+static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint32_t flags = 0; asm("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
+static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
 
 #define memcpy_c2d memcpy
 
@@ -97,7 +103,11 @@ static inline uint16_t _CPU_FLAGS(void) { uint32_t flags = 0; asm("pushf\n\t" "p
 #include <stdint.h>
 #include <stddef.h>
 
-#define _ASM_BEGIN __asm { 
+#define __NAKED __declspec(naked)
+#define __CDECL __cdecl
+#define __INLINE inline
+
+#define _ASM_BEGIN __asm {
 #define _ASM_END }
 #define _ASM(...) __VA_ARGS__;
 #define _ASMLBL _ASM
@@ -114,19 +124,23 @@ static inline uint16_t _CPU_FLAGS(void) { uint32_t flags = 0; asm("pushf\n\t" "p
 #define NOP() __asm nop
 #define CLI() __asm cli
 #define STI() __asm sti
-static uint32_t BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
-static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
-
-#define __NAKED __declspec(naked)
-#define __CDECL __cdecl
+static uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
+static uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {pushf; pop ax;} return _AX; }
+static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
 
 #define memcpy_c2d memcpy
 
 #else //stub
+#if !defined(_WIN32) && !defined(__linux__)   //make editor happy
 #error "Not supported."
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <stddef.h>
+
+#define __NAKED
+#define __CDECL
+#define __INLINE
 
 //make text editor happy. i.e. vscode
 #define _ASM_BEGIN { 
@@ -146,8 +160,8 @@ static uint16_t _CPU_FLAGS(void) { __asm {pushf; pop ax;} return _AX; }
 extern void NOP();
 extern void CLI();
 extern void STI();
-extern uint32_t BSF(uint32_t x);
-extern uint16_t _CPU_FLAGS(void);
+extern uint32_t PLTFM_BSF(uint32_t x);
+extern uint16_t PLTFM_CPU_FLAGS(void);
 
 extern void delay(int);
 extern uint8_t inp(uint16_t port);
@@ -161,24 +175,33 @@ extern int _dos_close(int fd);
 
 extern uint16_t _DS;
 extern uint16_t _CS;
+extern uint16_t _SS;
+extern uint16_t _SP;
 extern uint16_t _AX;
 extern uint8_t _AH;
 extern uint8_t _AL;
 
 #define __far
 #define far
-
-#define __NAKED
-#define __CDECL
+#define _FAR 
+#define near 
+#define _FARFUNC 
+#define _Cdecl 
+#define _pascal
+#define stackavail() 0
 
 #define memcpy_c2d memcpy
 #define _fmemset memset
+#define _fmemcpy memcpy
 
 #define FP_SEG(x) ((uintptr_t)(x))
 #define FP_OFF(x) ((uintptr_t)(x))
 #define MK_FP(x,y) (NULL)
 
-#endif
+#endif //compiler specific preprossor directive
+
+
+//general preprossor directive
 
 #ifdef __cplusplus
 #define __EXTERN extern "C"
@@ -194,7 +217,7 @@ extern uint8_t _AL;
 #define unused(x) (void)x
 
 //align down
-#define align(x,a) ((unsigned)((x)+(a)-1)&(unsigned)(~((a)-1)))
+#define align(x,a) ((uint32_t)((x)+(a)-1)&(uint32_t)(~((a)-1)))
 
 typedef enum {FALSE, TRUE}BOOLEAN;
 typedef int BOOL;
@@ -204,23 +227,24 @@ typedef int BOOL;
 #define min(x,y) ((x)<(y)?(x):(y))
 #define max(x,y) ((x)>(y)?(x):(y))
 
-#define CPU_CFLAG 0x0001
-#define CPU_IFLAG 0x0200
+#define CPU_CFLAG 0x0001    //carry flag (CF)
+#define CPU_IFLAG 0x0200    //interrupt flag (IF)
 
-static inline uint16_t CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &_CPU_FLAGS; return VFN();}
+#define BSF PLTFM_BSF
+#define CPU_FLAGS() PLTFM_CPU_FLAGS()
 
-//CLI is not enough. this works for normal code and driver code during intrrupt(which keeps IF always 0)
+//CLI is not enough. this works for normal code. but driver code during intrrupt (which keeps IF always 0) don't do CLI
 //CLIS will store IF and do cli.
-#define CLIS() int _iflag = (CPU_FLAGS()&CPU_IFLAG); CLI()
+#define CLIS() int FLTFM_IFlag = (CPU_FLAGS()&CPU_IFLAG); CLI()
 //STIL will load IF
-#define STIL() do { if(_iflag) STI(); } while(0)
+#define STIL() do { if(FLTFM_IFlag) STI(); } while(0)
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 3.4.5 (3-9)
 typedef struct //segment descriptors
 {
     uint16_t limit_low;
     uint16_t base_low;
-    uint8_t base_middle;
+	uint8_t base_middle;
 
     uint8_t accessed : 1;
     uint8_t read_write : 1; //read for code, write for data
@@ -262,43 +286,40 @@ typedef struct
     //easy alignment
     uint16_t unused; //make clear of size/alignment, care about the offset (2)
     uint16_t size;
-    uint32_t offset;
+    uint32_t offset; //linear offset (page mapped)
 }GDTR, LDTR, IDTR;
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, Charpter 4: Paging
-typedef struct//bc3.1 doesn't support 32bit bitfields
+typedef union//bc3.1 doesn't support 32bit bitfields
 {
-    uint16_t present : 1;       //
-    uint16_t writable : 1;      //R/W
-    uint16_t user : 1;          //1: user, 0: system
-    uint16_t writethrough : 1;  //PWT
-    uint16_t disable_cache: 1;  //PCD
-    uint16_t accessed : 1;      //A
-    uint16_t dirty : 1;         //D
-    uint16_t PS_PAT : 1;        //PS page size: 4M for pde, need Pentium Pro (CPUID). PAT Page Attribute Table: for pte(PIII+). both not used.
-    uint16_t global: 1;         //G valid when PGE(bit7) set in cr4
-    uint16_t ignored : 3;       //user feilds
-    uint16_t address_low : 4;   //
-    uint16_t address_high;
+    uint32_t value;
+    struct
+    {
+        uint16_t present : 1;       //
+        uint16_t writable : 1;      //R/W
+        uint16_t user : 1;          //1: user, 0: system
+        uint16_t writethrough : 1;  //PWT
+        uint16_t disable_cache: 1;  //PCD
+        uint16_t accessed : 1;      //A
+        uint16_t dirty : 1;         //D
+        uint16_t PS_PAT : 1;        //PS page size: 4M for pde, need Pentium Pro (CPUID). PAT Page Attribute Table: for pte(PIII+). both not used.
+        uint16_t global: 1;         //G valid when PGE(bit7) set in cr4
+        uint16_t ignored : 3;       //user feilds
+        uint16_t address_low : 4;   //
+        uint16_t address_high;
+    }bits;
 }PDE,PTE;
 
-/*#define PDE_INIT(pde, addr) do{\
-    (pde).present = 1;\
-    (pde).writable = 1;\
-    (pde).user = 1;\
-    (pde).address_low = (addr) >> 12L;\
-    (pde).address_high = (addr) >> 16L;\
-}while(0) //good readibility but generate bad code */
-
-#define PDE_INIT(pde, addr) do{\
-    *(uint32_t*)&(pde) = (((uint32_t)(addr))&~0xFFFL) | 0x7L;\
+#define PDE_INIT(addr) { ((addr)&~0xFFFL) | 0x7L }
+#define PDE_ADDR(pde) ((pde).value&~0xFFFL)
+//for old compiler support
+#define PDE_INITA(pde, addr) do{\
+    (pde).value = (((uint32_t)(addr))&~0xFFFL) | 0x7L;\
 }while(0)
 
-#define PDE_ADDR(pde) ((*(uint32_t*)&pde)&~0xFFFL)
-
 #define PTE_INIT PDE_INIT
+#define PTE_INITA PDE_INITA
 #define PTE_ADDR PDE_ADDR
-
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 7.2.1 (7-3)
 typedef struct
@@ -310,7 +331,7 @@ typedef struct
     uint16_t reserved0;
     uint32_t esp1;
     uint16_t ss1;
-    uint16_t reserved1;
+	uint16_t reserved1;
     uint32_t esp2;
     uint16_t ss2;
     uint16_t reserved2;

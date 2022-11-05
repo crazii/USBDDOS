@@ -295,54 +295,54 @@ void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size)
         push esi
         push edi
         push ebx
-        mov esi, dword ptr src
-        mov edi, dword ptr dest
-        mov ecx, dword ptr size
-        mov edx, ecx
-        and ecx, 0xFFFFFFFC
-        and edx, 0x3
-        xor ebx, ebx
-    }
+		mov esi, dword ptr src
+		mov edi, dword ptr dest
+		mov ecx, dword ptr size
+		mov edx, ecx
+		and ecx, 0xFFFFFFFC
+		and edx, 0x3
+		xor ebx, ebx
+	}
 loop4b:
-    __asm {
-        mov eax, dword ptr ds:[esi+ebx]
-        mov dword ptr ds:[edi+ebx], eax
-        add ebx, 4
-        cmp ebx, ecx
-        jne loop4b
+	__asm {
+		mov eax, dword ptr ds:[esi+ebx]
+		mov dword ptr ds:[edi+ebx], eax
+		add ebx, 4
+		cmp ebx, ecx
+		jne loop4b
 
-        test edx, edx
-        jz end
-        add esi, ebx
-        add edi, ebx
-        xor ebx, ebx
-    }
+		test edx, edx
+		jz end
+		add esi, ebx
+		add edi, ebx
+		xor ebx, ebx
+	}
 loop1b:
-    __asm {
-        mov al, byte ptr ds:[esi+ebx]
-        mov byte ptr ds:[edi+ebx], al
-        inc ebx
-        cmp ebx, edx
-        jne loop1b
-    }
+	__asm {
+		mov al, byte ptr ds:[esi+ebx]
+		mov byte ptr ds:[edi+ebx], al
+		inc ebx
+		cmp ebx, edx
+		jne loop1b
+	}
 end:
-    __asm {
-        pop ebx
-        pop edi
-        pop esi
-    }
-    RESTORE_DS();
+	__asm {
+		pop ebx
+		pop edi
+		pop esi
+	}
+	RESTORE_DS();
 }
 
 void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size)
 {
-    LOAD_DS();
-    __asm {
-        push edi
-        push ebx
-        mov al, byte ptr val
-        mov ah, al
-        mov bx, ax
+	LOAD_DS();
+	__asm {
+		push edi
+		push ebx
+		mov al, byte ptr val
+		mov ah, al
+		mov bx, ax
         shl eax, 16
         mov ax, bx
 

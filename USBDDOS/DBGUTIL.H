@@ -7,7 +7,7 @@
 #define DUMP_BUFF_SIZE 1024U
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #elif DEBUG != 0
 #undef DEBUG
 #define DEBUG 1

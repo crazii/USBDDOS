@@ -183,6 +183,8 @@ typedef enum USB_DeviceState
 }USB_DevState;
 
 //USB stack: hc => usb => class
+
+//USB device struct
 typedef struct
 {
     HCD_Device      HCDDevice;  //HC device inheritance (C compatible aggregation)

@@ -80,7 +80,9 @@ uint16_t EMM_GetVersion(void)
     DPMI_DOSFree(mem);
     return ver;
 #else
+#if !defined(_WIN32) && !defined(__linux__)   //make editor happy
     #error not supported.
+#endif
 #endif
  }
 
@@ -157,7 +159,7 @@ __EXTERN void __NAKED EMM_IOPortTrap_StartCode()
     _ASM2(mov bp, word ptr ds:[52]) //table offset
     _ASM(dec si)
 _ASMLBL(jmptable_loop:) //for(int i = talbeCount-1; i >= 0; --i)
-    _ASM2(mov di, word ptr ds:[ebp + 6 + esi*8])//port
+    _ASM2(mov di, word ptr ds:[ebp + 6 + esi*8]) //port
     _ASM2(cmp dx, di)
     _ASM(je found_entry)
     _ASM(dec si)
@@ -357,7 +359,7 @@ static /*uint32_t*/ void __NAKED EMM_IOPortTrap_Wrapper()
 
 //our code & data are in himem, we can allocate a seperate small segment and fill with
 //real mode TSR data & code and do TSR with almost 0 mem residence.
-BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16_t count, EMM_IOPT* outputp iopt)
+BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt, uint16_t count, EMM_IOPT* outputp iopt)
 {
     //build real mode block
     uint8_t buff[1024] = {0};
@@ -554,10 +556,10 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* iodt, uint16
     if(DPMI_CallRealModeINT(0x2F, &r) != 0 || (r.flags&CPU_CFLAG))
 #else
     //not supported by DOS/4GW, supported by Causeway or DOS/4GW Professional. Causeway still freeze on client
-    if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
+	if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
 #endif
     {
-        //DBG_DumpREG(&r);
+		//DBG_DumpREG(&r);
         memset(iopt, 0, sizeof(*iopt));
         return FALSE;
     }

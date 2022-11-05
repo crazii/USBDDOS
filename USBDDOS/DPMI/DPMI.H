@@ -149,6 +149,7 @@ void* DPMI_L2PTR(uint32_t addr);
 
 //return virtual mapped memory in linear space, usually for device IO
 //get the device IO memory in physical space and map it to the linear space to access it
+//input physical addr must < 1M (0x100000)
 //http://www.delorie.com/djgpp/v2faq/faq18_7.html
 uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size);
 
@@ -169,6 +170,7 @@ void DPMI_DOSFree(uint32_t segment);
 uint16_t DPMI_CallRealModeRETF(DPMI_REG* reg);
 uint16_t DPMI_CallRealModeINT(uint8_t i, DPMI_REG* reg);
 uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg);
+//install interrupt service routine. use normal return, no need to do IRET.
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle);
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle);
 
