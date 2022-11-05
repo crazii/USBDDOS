@@ -665,6 +665,26 @@ BOOL DPMI_TSR(void)
 }
 
 //PM to RM translation for debug output
+int _Cdecl _FARFUNC puts(const char* str)
+{
+	if(str == NULL)
+		return 0;
+	DPMI_REG r = {0};
+	while(*str)
+	{
+		r.h.ah = 0x0E;
+		r.h.al = *str;
+		DPMI_CallRealModeINT(0x10, &r);
+		if(*str =='\n')
+		{
+			r.h.ah = 0x0E;
+			r.h.al = '\r';
+			DPMI_CallRealModeINT(0x10, &r);
+		}
+		++str;
+	}
+}
+
 int _Cdecl _FARFUNC printf(const char* fmt, ...)
 {
 	static int recursion_gard = 0;
@@ -687,7 +707,6 @@ int _Cdecl _FARFUNC printf(const char* fmt, ...)
 			return 0;
 		}
 		#endif
-
 		DPMI_REG r = {0};
 		for(int i = 0; i < len; ++i)
 		{

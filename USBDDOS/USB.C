@@ -429,7 +429,17 @@ USB_EndpointDesc* USB_GetEndpointDesc(USB_Device* pDevice, void* pEndpoint)
             return pDevice->pEndpointDesc[i];
     }
     assert(FALSE);
-    return NULL;
+	return NULL;
+}
+
+uint8_t USB_GetConfigDescriptor(USB_Device* pDevice, uint8_t* buffer, uint16_t length)
+{
+	if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice) || buffer == NULL || length == 0)
+		return 0xFF;
+	USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length)}; //get TotalLength first
+	uint8_t result = USB_SyncSendRequest(pDevice, &Request, buffer);
+	assert(result == 0);
+	return result;
 }
 
 BOOL USB_SetConfiguration(USB_Device* pDevice, uint8_t configuration)
@@ -473,7 +483,7 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
     uint16_t i = 0;
     while(i < length)
     {
-        uint8_t len = *(pBuffer + i);
+		uint8_t len = *(pBuffer + i);
         uint8_t descType = *(pBuffer + (i+1));
         if(descType == USB_DT_CONFIGURATION)
         {
@@ -491,33 +501,54 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
         }
         else if(descType == USB_DT_INTERFACE)
         {
-            ++InterfaceIndex;
-            EndpointIndex = -1;
-            assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces);
+			++InterfaceIndex;
+			EndpointIndex = -1;
+			assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces);
 
-            USB_InterfaceDesc *pInterfaceDesc = (USB_InterfaceDesc*)(pBuffer + i);
-            pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex] = *(USB_InterfaceDesc*)(pBuffer + i);
-            if (pDevice->Desc.bDeviceClass == 0)
-            {
-                pDevice->Desc.bDeviceClass = pInterfaceDesc->bInterfaceClass;
-                pDevice->Desc.bDeviceSubClass = pInterfaceDesc->bInterfaceSubClass;
-                pDevice->Desc.bDeviceProtocol = pInterfaceDesc->bInterfaceProtocol;
-            }
+			USB_InterfaceDesc *pInterfaceDesc = (USB_InterfaceDesc*)(pBuffer + i);
+			pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex] = *(USB_InterfaceDesc*)(pBuffer + i);
+			if (pDevice->Desc.bDeviceClass == 0)
+			{
+				pDevice->Desc.bDeviceClass = pInterfaceDesc->bInterfaceClass;
+				pDevice->Desc.bDeviceSubClass = pInterfaceDesc->bInterfaceSubClass;
+				pDevice->Desc.bDeviceProtocol = pInterfaceDesc->bInterfaceProtocol;
+			}
 
-            uint8_t EndPointNum = pInterfaceDesc->bNumEndpoints;
-            USB_EndpointDesc* pEndPointDesc = (USB_EndpointDesc*)malloc(sizeof(USB_EndpointDesc)*EndPointNum);
-            memset(pEndPointDesc, 0, sizeof(USB_EndpointDesc)*EndPointNum);
-            pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints = pEndPointDesc;
-        }
-        else if(descType == USB_DT_ENDPOINT)
-        {
-            ++EndpointIndex;
-            assert(EndpointIndex < pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].bNumEndpoints);
-            pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints[EndpointIndex] = *(USB_EndpointDesc*)(pBuffer+i);
-        }
+			uint8_t EndPointNum = pInterfaceDesc->bNumEndpoints;
+			USB_EndpointDesc* pEndPointDesc = (USB_EndpointDesc*)malloc(sizeof(USB_EndpointDesc)*EndPointNum);
+			memset(pEndPointDesc, 0, sizeof(USB_EndpointDesc)*EndPointNum);
+			pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints = pEndPointDesc;
+			pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].offset = i;
+		}
+		else if(descType == USB_DT_ENDPOINT)
+		{
+			++EndpointIndex;
+			assert(EndpointIndex < pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].bNumEndpoints);
+			pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints[EndpointIndex] = *(USB_EndpointDesc*)(pBuffer+i);
+		}
 		i = (uint16_t)(i + len);
-    }
-    return TRUE;
+	}
+	return TRUE;
+}
+
+BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, uint16_t length)
+{
+    if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice) || pBuffer == NULL || length == 0)
+        return FALSE;
+	uint8_t* Buffer = pDevice->pDeviceBuffer;
+	memset(Buffer, 0, USB_DEVBUFFER_SIZE);
+	assert((void*)Buffer != (void*)pBuffer); //need a separate string buffer
+	USB_Request Request = {USB_REQ_READ|USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, (uint16_t)((USB_DT_STRING << 8) + bID), USB_LANG_ID_ENG, 1U}; //get length first
+	if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
+	{
+		Request.wLength = Buffer[0];
+		if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
+		{
+			wcstombs(pBuffer, (wchar_t*)(Buffer+2), min(length-1U, Buffer[0]));
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 void USB_ShowDeviceInfo(USB_Device* pDevice)
@@ -536,18 +567,18 @@ void USB_ShowDeviceInfo(USB_Device* pDevice)
         {
             printf("    Interface %d: Class %d, Subclass: %d, Endpoint Count: %d\n", j,
                 pDevice->pConfigList[i].pInterfaces[j].bInterfaceClass,
-                pDevice->pConfigList[i].pInterfaces[j].bInterfaceSubClass,
-                pDevice->pConfigList[i].pInterfaces[j].bNumEndpoints);
-            for(int k = 0; k < pDevice->pConfigList[i].pInterfaces[j].bNumEndpoints; ++k)
-            {
-                USB_EndpointDesc epd = pDevice->pConfigList[i].pInterfaces[j].pEndpoints[k];
-                printf("        Endpoint %d: Address: %02xh, Type: %d, MaxPacketSize: %d, Interval: %d\n", k,
-                    epd.bEndpointAddress, epd.bmAttributesBits.TransferType, epd.wMaxPacketSizeFlags.Size, epd.bInterval);
-            }
-        }
-    }
+				pDevice->pConfigList[i].pInterfaces[j].bInterfaceSubClass,
+				pDevice->pConfigList[i].pInterfaces[j].bNumEndpoints);
+			for(int k = 0; k < pDevice->pConfigList[i].pInterfaces[j].bNumEndpoints; ++k)
+			{
+				USB_EndpointDesc epd = pDevice->pConfigList[i].pInterfaces[j].pEndpoints[k];
+				printf("        Endpoint %d: Address: %02xh, Type: %d, MaxPacketSize: %d, Interval: %d\n", k,
+					epd.bEndpointAddress, epd.bmAttributesBits.TransferType, epd.wMaxPacketSizeFlags.Size, epd.bInterval);
+			}
+		}
+	}
 
-    return;
+	return;
 }
 
 static void USB_EnumerateDevices()
@@ -608,89 +639,75 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
 	// 2nd reset
 	pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
 
-    // set device address.
-    // before set address, nothing can be done except get desc.
-    // the device will be adressed state
-    _LOG("USB: set device address\n");
-    USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, address, 0, 0};
-    result = USB_SyncSendRequest(pDevice, &Request2, NULL);
-    delay(2); // spec required.
-    if(result != 0)
-    {
-        assert(FALSE);
-        return FALSE;
-    }
-    pDevice->bStatus = DS_Addressed;
-    pDevice->HCDDevice.bAddress = address;
-    pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
-    pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0); //update EP0 device address
+	// set device address.
+	// before set address, nothing can be done except get desc.
+	// the device will be adressed state
+	_LOG("USB: set device address\n");
+	USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, address, 0, 0};
+	result = USB_SyncSendRequest(pDevice, &Request2, NULL);
+	delay(2); // spec required.
+	if(result != 0)
+	{
+		assert(FALSE);
+		return FALSE;
+	}
+	pDevice->bStatus = DS_Addressed;
+	pDevice->HCDDevice.bAddress = address;
+	pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
+	pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0); //update EP0 device address
 
-    // get desc again, for last time we may only get 8 bytes accord spec usb 2.0 section 5.5.3.
-    _LOG("USB: get full descriptor\n");
-    USB_Request Request3 = {USB_REQ_READ | USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, USB_DT_DEVICE << 8, 0, sizeof(USB_DeviceDesc)};
-    result = USB_SyncSendRequest(pDevice, &Request3, Buffer);
-    if(result != 0)
-    {
-        assert(FALSE);
-        return FALSE;
-    }
-    pDevice->Desc = *pDesc;
-    //desc details
-    if (pDevice->Desc.biManufacture || pDevice->Desc.biProduct || pDevice->Desc.biSerialNumber)
-    {
-        USB_Request Request4 = {USB_REQ_READ|USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, (USB_DT_STRING << 8), USB_LANG_ID_ENG, USB_DEVBUFFER_SIZE};
+	// get desc again, for last time we may only get 8 bytes accord spec usb 2.0 section 5.5.3.
+	_LOG("USB: get full descriptor\n");
+	USB_Request Request3 = {USB_REQ_READ | USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, USB_DT_DEVICE << 8, 0, sizeof(USB_DeviceDesc)};
+	result = USB_SyncSendRequest(pDevice, &Request3, Buffer);
+	if(result != 0)
+	{
+		assert(FALSE);
+		return FALSE;
+	}
+	pDevice->Desc = *pDesc;
+	//desc details
+	if (pDevice->Desc.biManufacture || pDevice->Desc.biProduct || pDevice->Desc.biSerialNumber)
+	{
+		// get manufacturer string
+		if (pDevice->Desc.biManufacture)
+			USB_GetDescriptorString(pDevice, pDevice->Desc.biManufacture, pDevice->sManufacture, sizeof(pDevice->sManufacture));
+		// get product string
+		if (pDevice->Desc.biProduct)
+			USB_GetDescriptorString(pDevice, pDevice->Desc.biProduct, pDevice->sProduct, sizeof(pDevice->sProduct));
+		// get serial number string
+		if (pDevice->Desc.biSerialNumber)
+			USB_GetDescriptorString(pDevice, pDevice->Desc.biSerialNumber, pDevice->sSerialNumber, sizeof(pDevice->sSerialNumber));
+	}
+	//get config desc
+	_LOG("USB: get config descriptor\n");
+	USB_Request Request5 = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, 9}; //get TotalLength first
+	result = USB_SyncSendRequest(pDevice, &Request5, Buffer);
+	if(result != 0)
+	{
+		assert(FALSE);
+		return FALSE;
+	}
+	uint16_t TotalLength = ((USB_ConfigDesc*)Buffer)->wTotalLength;
+	uint8_t* DescBuffer = Buffer;
+	if(TotalLength > USB_DEVBUFFER_SIZE)
+		DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 8);
 
-        // get manufacturer string
-        if (pDevice->Desc.biManufacture)
-        {
-            Request4.wValue = (uint16_t)((USB_DT_STRING << 8) + pDevice->Desc.biManufacture);
-            if (USB_SyncSendRequest(pDevice, &Request4, Buffer) == 0)
-                wcstombs(pDevice->sManufacture, (wchar_t*)(Buffer+2), min(sizeof(pDevice->sManufacture)-1, Buffer[0]));
-        }
-        // get product string
-        if (pDevice->Desc.biProduct)
-        {
-            Request4.wValue = (uint16_t)((USB_DT_STRING << 8) + pDevice->Desc.biProduct);
-            if (USB_SyncSendRequest(pDevice, &Request4, Buffer) == 0)
-                wcstombs(pDevice->sProduct, (wchar_t*)(Buffer+2), min(sizeof(pDevice->sProduct)-1, Buffer[0]));
-        }
-        // get serial number string
-        if (pDevice->Desc.biSerialNumber)
-        {
-            Request4.wValue = (uint16_t)((USB_DT_STRING << 8) + pDevice->Desc.biSerialNumber);
-            if (USB_SyncSendRequest(pDevice, &Request4, Buffer) == 0)
-                wcstombs(pDevice->sSerialNumber, (wchar_t*)(Buffer+2), min(sizeof(pDevice->sSerialNumber)-1, Buffer[0]));
-        }
-    }
-    //get config desc
-    _LOG("USB: get config descriptor\n");
-    USB_Request Request5 = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, 9}; //get TotalLength first
-    result = USB_SyncSendRequest(pDevice, &Request5, Buffer);
-    if(result != 0)
-    {
-        assert(FALSE);
-        return FALSE;
-    }
-    uint16_t TotalLength = ((USB_ConfigDesc*)Buffer)->wTotalLength;
-    uint8_t* DescBuffer = Buffer;
-    if(TotalLength > USB_DEVBUFFER_SIZE)
-        DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 8);
-
-    Request5.wLength = TotalLength;
-    result = USB_SyncSendRequest(pDevice, &Request5, DescBuffer);
-    if(result != 0)
-    {
-        printf("Error get device config: %d\n", result);
-        assert(FALSE);
-        return FALSE;
+	Request5.wLength = TotalLength;
+	result = USB_SyncSendRequest(pDevice, &Request5, DescBuffer);
+	if(result != 0)
+	{
+		printf("Error get device config: %d\n", result);
+		assert(FALSE);
+		return FALSE;
 	}
 	USB_ParseConfiguration(DescBuffer, TotalLength, pDevice);
 	if(DescBuffer != Buffer)
 		DPMI_DMAFree(DescBuffer);
 
-    // set device config. only available in addressed state
-    // the device will be configured state (enabled)
-    _LOG("USB: set config\n");
+	// set device config. only available in addressed state
+	// the device will be configured state (enabled)
+	_LOG("USB: set config\n");
     USB_Request Request6 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_CONFIGURATION, 0, 0, 0};
     Request6.wValue = pDevice->pConfigList[pDevice->bCurrentConfig].bConfigValue;
 	result = USB_SyncSendRequest(pDevice, &Request6, NULL);
@@ -735,7 +752,7 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
         pDevice->pEndpointDesc[i] = epd;
 
         if(++currentEP >= pCurrentInterface->bNumEndpoints)
-        {
+		{
             ++pCurrentInterface;
             currentEP = 0;
         }
@@ -768,6 +785,7 @@ void USB_ISR(void)
 	if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
 	{
 		PIC_SendEOI();
+		//_LOG("EOI");
 		return;
 	}
 
@@ -799,17 +817,18 @@ void USB_ISR_Wraper(void)
 	_ASM_BEGIN _ASM(pushad) _ASM_END//just make it safe
 	USB_InISR = TRUE;
 
-    USB_ISR();
+	USB_ISR();
 
-    USB_InISR = FALSE;
+	USB_InISR = FALSE;
 	_ASM_BEGIN _ASM(popad) _ASM_END
 }
 
 void USB_Completion_SyncCallback(HCD_Request* pRequest)
 {
-    USB_SyncCallbackResult* pResult = (USB_SyncCallbackResult*)pRequest->pCBData;
+	USB_SyncCallbackResult* pResult = (USB_SyncCallbackResult*)pRequest->pCBData;
 	pResult->Length = pRequest->transferred;
-	//_LOG("ERROR:%x\n", pRequest->error);
+	//if(pRequest->error)
+	//	_LOG("ERROR:%x\n", pRequest->error);
     pResult->ErrorCode = pRequest->error;
     pResult->Finished = TRUE;
 }
@@ -824,7 +843,7 @@ void USB_Completion_UserCallback(HCD_Request* pRequest)
     pRequest->pCBData = pUserData->pCBData;
     pRequest->pBuffer = pUserData->pUserBuffer;
     HCD_COMPLETION_CB pCB = pUserData->pCB;
-    USB_TFree32(pUserData);
+	USB_TFree32(pUserData);
     if(pCB)
         pCB(pRequest);
 }

@@ -3,7 +3,7 @@
 #include "USBDDOS/USB.H"
 
 //USB Communication device class driver
-//https://www.usb.org/documents?search=&type%5B0%5D=55&items_per_page=50
+//https://www.usb.org/document-library/class-definitions-communication-devices-12
 
 #ifdef __cplusplus
 extern "C"
@@ -82,12 +82,29 @@ typedef struct {
 #define USBP_CDC_DATA_HOST_BASED_DRIVER             0xFD
 #define USBP_CDC_DATA_IN_PROTOCOL_UNIT_FUNCTIONAL_DESCRIPTOR 0xFE
 
-typedef struct USB_CDC_DriverData
+//caps
+//ACM caps
+#define USBCAP_CDC_ACM_COMM_FEATURE BIT0
+#define USBCAP_CDC_ACM_LINE_CODING  BIT1 //line state & line coding
+#define USBCAP_CDC_ACM_SEND_BREAK	BIT2
+#define USBCAP_CDC_ACM_NETWORK_CONNECTION BIT3 //noification
+
+//functional desc for bInterface (bDataInterface doesn't have desc by the spec)
+typedef struct //ACM
 {
-    uint8_t bInterface;
-    uint8_t bDataInterface;
-    void* bDataEP[2];
-}USB_CDC_DD;
+	uint8_t bFunctionLength;
+	uint8_t bDescriptorType; //USB_DT_CSINTERFACE
+	uint8_t bDescriptorSubtype; //USBC_CDCSC_ABSTRACT_CONTROL_MODEL
+	uint8_t bmCapabilities;
+}USB_CDC_ACM_Desc;
+
+typedef struct
+{
+	uint8_t bInterface;
+	uint8_t bDataInterface;
+	void* bDataEP[2];
+	USB_CDC_ACM_Desc ACMDesc;
+}USB_CDC_DriverData;
 
 uint8_t USB_CDC_SetLineCoding(USB_Device* pDevice, USB_CDC_LINE_CODING* LineCoding);
 

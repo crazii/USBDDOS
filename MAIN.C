@@ -169,7 +169,7 @@ int main()
 	retrowave_io_init(&MAIN_RWContext);
 	retrowave_opl3_reset(&MAIN_RWContext);
 
-	printf("Installing...\n");
+	puts("Installing...\n");
 	if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
 	{
 		printf("IO trap installation failed.\n");
@@ -181,15 +181,15 @@ int main()
 	{
 		BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
 		assert(unstalled);
-		printf("Failed to insteall interrupt handler.\n");
+		puts("Failed to insteall interrupt handler.\n");
 		return 1;
 	}
 	MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
 	MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
 	#endif
 
-    if(!DPMI_TSR())
-        printf("TSR Installation failed.\n");
+	if(!DPMI_TSR())
+		puts("TSR Installation failed.\n");
     
     BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
     assert(unstalled);

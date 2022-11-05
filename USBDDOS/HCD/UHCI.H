@@ -8,26 +8,26 @@
 #define USBPIRQDEN  BIT13
 
 ///PID
-#define    OUTPID   0xe1
-#define    INPID    0x69
-#define    SOFPID   0xa5
-#define    SETUPPID 0x2d
+#define OUTPID   0xe1
+#define INPID    0x69
+#define SOFPID   0xa5
+#define SETUPPID 0x2d
 
-#define    DATA0PID 0xc3
-#define    DATA1PID 0x4b
-#define    DATA2PID 0x87
-#define    MDATAPID 0x0f
+#define DATA0PID 0xc3
+#define DATA1PID 0x4b
+#define DATA2PID 0x87
+#define MDATAPID 0x0f
 
-#define    ACKPID   0xd2
-#define    NAKPID   0x5a
-#define    STALLPID 0x1e
-#define    NYETPID  0x96
+#define ACKPID   0xd2
+#define NAKPID   0x5a
+#define STALLPID 0x1e
+#define NYETPID  0x96
 
-#define    PREPID    0x3c
-#define    ERRPID    0x3c
-#define    SPLITPID  0x78
-#define    PINGPID   0xb4
-#define    RESERVEDPID  0xF0
+#define PREPID    0x3c
+#define ERRPID    0x3c
+#define SPLITPID  0x78
+#define PINGPID   0xb4
+#define RESERVEDPID  0xF0
 
 //  invalid QH, TD; means last QH, TD
 #define TerminateFlag   0x01
@@ -85,8 +85,8 @@
 #define USBRESUMEDETECT     BIT2
 #define USBHSERROR          BIT3    //host system error
 #define USBHCERROR          BIT4    //host controller error
-#define USBINTMASK          (BIT0|BIT1|BIT2|BIT3|BIT4)
 #define USBHCHALTED			BIT5	//HCHalted
+#define USBINTMASK          (BIT0|BIT1|BIT2|BIT3|BIT4)
 
 //PORT1 PORT2
 

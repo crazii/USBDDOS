@@ -33,14 +33,15 @@ extern "C" {
 #define USB_REQ_SYNCH_FRAME     12
 
 //Descriptor Types , wValue
-#define  USB_DT_DEVICE          1
-#define  USB_DT_CONFIGURATION   2
-#define  USB_DT_STRING          3
-#define  USB_DT_INTERFACE       4
-#define  USB_DT_ENDPOINT        5
-#define  USB_DT_DEVICE_QUALIFIER  6
-#define  USB_DT_OTHER_SPEED_CONFIGURATION 7
-#define  USB_DT_INTERFACE_POWER 8
+#define USB_DT_DEVICE          1
+#define USB_DT_CONFIGURATION   2
+#define USB_DT_STRING          3
+#define USB_DT_INTERFACE       4
+#define USB_DT_ENDPOINT        5
+#define USB_DT_DEVICE_QUALIFIER  6
+#define USB_DT_OTHER_SPEED_CONFIGURATION 7
+#define USB_DT_INTERFACE_POWER 8
+#define USB_DT_CSINTERFACE	   0x24 //class-specific interface
 
 //Descriptor Index , wIndex
 #define USB_LANG_ID_ENG         0x0409    //for USB_DT_STRING
@@ -145,7 +146,8 @@ typedef struct USB_InterfaceDesc
     //////////////////////
     //extened data. copy data from source not containing this data may cause page fualt but
     //usually there's extra data below the header so it is ok
-    USB_EndpointDesc* pEndpoints;
+	USB_EndpointDesc* pEndpoints;
+	uint16_t offset; //offset in descriptor buffer, used for get class specific interface desc inside (right after) interface desc
 }USB_InterfaceDesc;
 
 typedef struct USB_ConfigurationDescriptor
@@ -254,9 +256,13 @@ void* USB_FindEndpoint(USB_Device* pDevice, USB_EndpointDesc* pDesc);
 
 USB_EndpointDesc* USB_GetEndpointDesc(USB_Device* pDevice, void* pEndpoint);
 
+uint8_t USB_GetConfigDescriptor(USB_Device* pDevice, uint8_t* buffer, uint16_t length);
+
 BOOL USB_SetConfiguration(USB_Device* pDevice, uint8_t configuration);
 
 BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevice);
+
+BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, uint16_t length);
 
 void USB_ShowDeviceInfo(USB_Device* pDevice);
 
