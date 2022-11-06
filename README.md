@@ -27,6 +27,9 @@ Experimental and not supported anymore due to its inline assembly limits. There'
 # How to Debug
 Modify the makefile, or changes compiler arguments, add `-DDEBUG=1` and remove `-DNDEBUG`, then rebuild. There will be more debug message shown. The protected mode debugging utilities are not used.
 
+# Requirements
+HIMEM.SYS; EMM386 4.46+(for RetroWave driver); 80386 CPU or later; 
+
 # Features
 The code is orginally written as DOS driver for RetroWave OPL3, currently only a simple CDC driver, UHCI tested on a real hardware and OHCI tested on VirtualBox. But it could be more. the following can be added:
 * EHCI driver
