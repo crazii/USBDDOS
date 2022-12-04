@@ -2,9 +2,9 @@
 #define _UHCI_H_
 #include "USBDDOS/HCD/HCD.H"
 
-#define USBBASE 	0x20    //0x20~0x23, IO Space Base Address register (PCI BAR4)
-#define LEGSUP 		0xC0    //0xC0~0xC1, legacy support register
-#define USBSMIEN 	BIT4    //usb smi enable
+#define USBBASE     0x20    //0x20~0x23, IO Space Base Address register (PCI BAR4)
+#define LEGSUP         0xC0    //0xC0~0xC1, legacy support register
+#define USBSMIEN     BIT4    //usb smi enable
 #define USBPIRQDEN  BIT13
 
 ///PID
@@ -59,25 +59,25 @@
 #define TK_NullLength       0x7FF
 
 // UHCI register
-#define USBCMD              0x00	//command, 16bit
+#define USBCMD              0x00    //command, 16bit
 #define USBSTS              0x02    //status, 16bit
-#define USBINTR             0x04	//interrupt enable,16bit
+#define USBINTR             0x04    //interrupt enable,16bit
 #define FRNUM               0x06    //frame number, 16bit (10bit used, 0~1024)
 #define FLBASEADD           0x08    //frame list base addr, 32bit
-#define SOF                 0x0c	//start of frame modify, 8bit
-#define PORTSC	            0x10
+#define SOF                 0x0c    //start of frame modify, 8bit
+#define PORTSC                0x10
 #define PORT1               0x10
 #define PORT2               0x12
 
 //USBCMD
-#define RS                  BIT0	//run/stop
+#define RS                  BIT0    //run/stop
 #define HCRESET             BIT1
-#define GRESET              BIT2	//global reset
-#define EGSM				BIT3	//enter global suspend
-#define FGR					BIT4	//force global resume
-#define SWDBG				BIT5	//software debug
-#define CF					BIT6	//configure flag(HCD only)
-#define MAXP				BIT7	//max packet 0:32bytes, 1:64bytes
+#define GRESET              BIT2    //global reset
+#define EGSM                BIT3    //enter global suspend
+#define FGR                    BIT4    //force global resume
+#define SWDBG                BIT5    //software debug
+#define CF                    BIT6    //configure flag(HCD only)
+#define MAXP                BIT7    //max packet 0:32bytes, 1:64bytes
 
 //USBSTS
 #define USBINT              BIT0    //USBSTS bit 0
@@ -85,7 +85,7 @@
 #define USBRESUMEDETECT     BIT2
 #define USBHSERROR          BIT3    //host system error
 #define USBHCERROR          BIT4    //host controller error
-#define USBHCHALTED			BIT5	//HCHalted
+#define USBHCHALTED            BIT5    //HCHalted
 #define USBINTMASK          (BIT0|BIT1|BIT2|BIT3|BIT4)
 
 //PORT1 PORT2

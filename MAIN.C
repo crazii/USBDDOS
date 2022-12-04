@@ -57,31 +57,31 @@ static void MAIN_Timer_Interrupt(void) //may need a higher flush frequency to so
 
 static uint32_t MAIN_OPL_Primary_Index(uint32_t port, uint32_t reg, uint32_t out)
 {
-	unused(port);
-	if(out)
-		MAIN_OPLIndexReg[OPL_PRIMARY] = (uint8_t)reg;
-	else
-	{ //in status reg
-		reg = reg & ~0xFFUL;
-		if ((MAIN_OPLTimerCtrlReg[0] & (OPL_TIMER1_MASK|OPL_TIMER1_START)) == OPL_TIMER1_START)
-			reg |= OPL_TIMER1_TIMEOUT;
-		if ((MAIN_OPLTimerCtrlReg[1] & (OPL_TIMER2_MASK|OPL_TIMER2_START)) == OPL_TIMER2_START)
-			reg |= OPL_TIMER2_TIMEOUT;
-		inp((uint16_t)port); //instant delay
+    unused(port);
+    if(out)
+        MAIN_OPLIndexReg[OPL_PRIMARY] = (uint8_t)reg;
+    else
+    { //in status reg
+        reg = reg & ~0xFFUL;
+        if ((MAIN_OPLTimerCtrlReg[0] & (OPL_TIMER1_MASK|OPL_TIMER1_START)) == OPL_TIMER1_START)
+            reg |= OPL_TIMER1_TIMEOUT;
+        if ((MAIN_OPLTimerCtrlReg[1] & (OPL_TIMER2_MASK|OPL_TIMER2_START)) == OPL_TIMER2_START)
+            reg |= OPL_TIMER2_TIMEOUT;
+        inp((uint16_t)port); //instant delay
 #if !MAIN_ENABLE_TIMER
-		if(MAIN_OPL_WriteCount >= MAIN_OPL_MAX_INSTANT_WRITE)
-		{
-			if(++MAIN_OPL_DelayCount == 100)
-			{
-				//retrowave_opl3_queue_delay(&MAIN_RWContext); //buffer delay
+        if(MAIN_OPL_WriteCount >= MAIN_OPL_MAX_INSTANT_WRITE)
+        {
+            if(++MAIN_OPL_DelayCount == 100)
+            {
+                //retrowave_opl3_queue_delay(&MAIN_RWContext); //buffer delay
                 retrowave_flush(&MAIN_RWContext);
-				++MAIN_OPL_WriteCount;
-				MAIN_OPL_DelayCount = 0;
-			}
-		}
+                ++MAIN_OPL_WriteCount;
+                MAIN_OPL_DelayCount = 0;
+            }
+        }
 #endif
-	}
-	return reg;
+    }
+    return reg;
 }
 
 static uint32_t MAIN_OPL_Primary_Data(uint32_t port, uint32_t val, uint32_t out)
@@ -89,18 +89,18 @@ static uint32_t MAIN_OPL_Primary_Data(uint32_t port, uint32_t val, uint32_t out)
     unused(port);
     if(out)
     {
-		if(MAIN_OPLIndexReg[OPL_PRIMARY] == OPL_TIMER_REG_INDEX)
+        if(MAIN_OPLIndexReg[OPL_PRIMARY] == OPL_TIMER_REG_INDEX)
         {
             if(val&(OPL_TIMER1_START|OPL_TIMER1_MASK))
                 MAIN_OPLTimerCtrlReg[0] = val;
             if(val&(OPL_TIMER2_START|OPL_TIMER2_MASK))
                 MAIN_OPLTimerCtrlReg[1] = val;
-		}
-		if(MAIN_OPL_WriteCount < MAIN_OPL_MAX_INSTANT_WRITE)
+        }
+        if(MAIN_OPL_WriteCount < MAIN_OPL_MAX_INSTANT_WRITE)
             retrowave_opl3_emit_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
         else
-			retrowave_opl3_queue_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
-		++MAIN_OPL_WriteCount;
+            retrowave_opl3_queue_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
+        ++MAIN_OPL_WriteCount;
         return val;
     }
     return MAIN_OPL_Primary_Index(port, val, out);
@@ -132,15 +132,15 @@ static uint32_t MAIN_OPL_Secondary_Data(uint32_t port, uint32_t val, uint32_t ou
         if(MAIN_OPL_WriteCount < MAIN_OPL_MAX_INSTANT_WRITE)
             retrowave_opl3_emit_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
         else
-			retrowave_opl3_queue_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
+            retrowave_opl3_queue_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
         ++MAIN_OPL_WriteCount;
         return val;
     }
     //in
     //if(ADLG_CtrlEnable) //adlib gold
-	{
+    {
         if(MAIN_OPLIndexReg[OPL_SECONDARY] == ADLG_VOLL_REG_INDEX || MAIN_OPLIndexReg[OPL_SECONDARY] == ADLG_VOLR_REG_INDEX)
-			return ADLG_Volume[MAIN_OPLIndexReg[OPL_SECONDARY]-ADLG_VOLL_REG_INDEX];
+            return ADLG_Volume[MAIN_OPLIndexReg[OPL_SECONDARY]-ADLG_VOLL_REG_INDEX];
     }
     return MAIN_OPL_Primary_Index(port, val, out);
 }
@@ -156,40 +156,40 @@ static EMM_IOPT MAIN_IOPT;
 
 int main()
 {
-	unsigned short EMMVer = EMM_GetVersion();
-	_LOG("EMM386 version: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
-	if((EMMVer&0xFF) < 4 || (EMMVer&0xFF) == 4 && (EMMVer&0xFF00) < 46)
-	{
-		printf("EMM386 not installed or version not supported: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
-		return -1;
-	}
+    unsigned short EMMVer = EMM_GetVersion();
+    _LOG("EMM386 version: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
+    if((EMMVer&0xFF) < 4 || (EMMVer&0xFF) == 4 && (EMMVer&0xFF00) < 46)
+    {
+        printf("EMM386 not installed or version not supported: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
+        return -1;
+    }
 
-	if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
-		return -1;
-	retrowave_io_init(&MAIN_RWContext);
-	retrowave_opl3_reset(&MAIN_RWContext);
+    if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
+        return -1;
+    retrowave_io_init(&MAIN_RWContext);
+    retrowave_opl3_reset(&MAIN_RWContext);
 
-	puts("Installing...\n");
-	if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
-	{
-		printf("IO trap installation failed.\n");
-		return 1;
-	}
+    puts("Installing...\n");
+    if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
+    {
+        printf("IO trap installation failed.\n");
+        return 1;
+    }
 
-	#if MAIN_ENABLE_TIMER
-	if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
-	{
-		BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
-		assert(unstalled);
-		puts("Failed to insteall interrupt handler.\n");
-		return 1;
-	}
-	MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
-	MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
-	#endif
+    #if MAIN_ENABLE_TIMER
+    if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
+    {
+        BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
+        assert(unstalled);
+        puts("Failed to insteall interrupt handler.\n");
+        return 1;
+    }
+    MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
+    MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
+    #endif
 
-	if(!DPMI_TSR())
-		puts("TSR Installation failed.\n");
+    if(!DPMI_TSR())
+        puts("TSR Installation failed.\n");
     
     BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
     assert(unstalled);

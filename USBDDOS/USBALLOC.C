@@ -22,18 +22,18 @@
 
 typedef struct
 {
-	uint8_t* arena;
-	union
-	{
-		uint32_t mask;
-		struct
-		{
-			uint16_t offset;
-			uint16_t left;
-		}buff;
-	};
-	uint16_t flags;
-	uint16_t index;
+    uint8_t* arena;
+    union
+    {
+        uint32_t mask;
+        struct
+        {
+            uint16_t offset;
+            uint16_t left;
+        }buff;
+    };
+    uint16_t flags;
+    uint16_t index;
 }USBALLOC_Memory;
 
 static USBALLOC_Memory USBALLOC_Pool[USBALLOC_MEMORY_COUNT];
@@ -42,96 +42,96 @@ static USBALLOC_Memory* USBALLOC_Current32 = NULL;
 
 static USBALLOC_Memory* USBALLOC_GetMemory(void)
 {
-	int i;
-	for(i = 0; ; ++i) //will wait for interrupt to release finished memory in dead loop
-	{ //if alreay in interrupt, it'll be dead. i.e. EMM386 IO port trap with interrupt disabled.
-		USBALLOC_Memory* memory = &USBALLOC_Pool[i%USBALLOC_MEMORY_COUNT];
-		if(!(memory->flags&USBALLOC_FLAG_USED))
-		{
-			#if USBALLOC_PREALLOC
-			assert(memory->arena != NULL);
-			#else
-			assert(memory->arena == NULL);
-			memory->arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32); //alignment to 32 for EHCI
-			#endif
-			//_LOG("memory arena: %08lx\n", ((uint32_t)(memory->arena)));
-			assert((((uint32_t)(memory->arena))&0x1F) == 0);
-			memory->flags = USBALLOC_FLAG_USED;
-			memory->index = (uint16_t)(i%USBALLOC_MEMORY_COUNT);
-			return memory;
-		}
-	}
-	return NULL;
+    int i;
+    for(i = 0; ; ++i) //will wait for interrupt to release finished memory in dead loop
+    { //if alreay in interrupt, it'll be dead. i.e. EMM386 IO port trap with interrupt disabled.
+        USBALLOC_Memory* memory = &USBALLOC_Pool[i%USBALLOC_MEMORY_COUNT];
+        if(!(memory->flags&USBALLOC_FLAG_USED))
+        {
+            #if USBALLOC_PREALLOC
+            assert(memory->arena != NULL);
+            #else
+            assert(memory->arena == NULL);
+            memory->arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32); //alignment to 32 for EHCI
+            #endif
+            //_LOG("memory arena: %08lx\n", ((uint32_t)(memory->arena)));
+            assert((((uint32_t)(memory->arena))&0x1F) == 0);
+            memory->flags = USBALLOC_FLAG_USED;
+            memory->index = (uint16_t)(i%USBALLOC_MEMORY_COUNT);
+            return memory;
+        }
+    }
+    return NULL;
 }
 
 static void USBALLOC_ReturnMemory(USBALLOC_Memory* memory)
 {
-	assert(memory->arena);
+    assert(memory->arena);
 #if !USBALLOC_PREALLOC
-	DPMI_DMAFree(memory->arena);
-	memory->arena = NULL;
+    DPMI_DMAFree(memory->arena);
+    memory->arena = NULL;
 #endif
-	memory->mask = 0;
-	memory->flags = 0;
+    memory->mask = 0;
+    memory->flags = 0;
 }
 
 void USBALLOC_Init(void)
 {
-	assert(USBALLOC_CurrentBuf == NULL);
-	assert(USBALLOC_Current32 == NULL);
-	//USBALLOC_CurrentBuf = USBALLOC_GetMemoryBuf();
-	//USBALLOC_Current32 = USBALLOC_GetMemory32();
+    assert(USBALLOC_CurrentBuf == NULL);
+    assert(USBALLOC_Current32 == NULL);
+    //USBALLOC_CurrentBuf = USBALLOC_GetMemoryBuf();
+    //USBALLOC_Current32 = USBALLOC_GetMemory32();
 #if USBALLOC_PREALLOC
-	for(int i = 0; i < USBALLOC_MEMORY_COUNT; ++i)
-	{
-		USBALLOC_Pool[i].arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32);
-		assert(USBALLOC_Pool[i].arena);
-	}
+    for(int i = 0; i < USBALLOC_MEMORY_COUNT; ++i)
+    {
+        USBALLOC_Pool[i].arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32);
+        assert(USBALLOC_Pool[i].arena);
+    }
 #endif
 }
 
 void USBALLOC_Shutdown(void)
 {
-	//assert(USBALLOC_CurrentBuf != NULL);
-	//assert(USBALLOC_Current32 != NULL);
-	USBALLOC_CurrentBuf = NULL;
-	USBALLOC_Current32 = NULL;
-	int i;
-	for(i = 0; i < USBALLOC_MEMORY_COUNT; ++i)
-	{
-		USBALLOC_Memory* memory = &USBALLOC_Pool[i];
+    //assert(USBALLOC_CurrentBuf != NULL);
+    //assert(USBALLOC_Current32 != NULL);
+    USBALLOC_CurrentBuf = NULL;
+    USBALLOC_Current32 = NULL;
+    int i;
+    for(i = 0; i < USBALLOC_MEMORY_COUNT; ++i)
+    {
+        USBALLOC_Memory* memory = &USBALLOC_Pool[i];
 #if USBALLOC_PREALLOC
-		DPMI_DMAFree(memory->arena);
+        DPMI_DMAFree(memory->arena);
 #else
-		if((memory->flags&USBALLOC_FLAG_USED))
-			USBALLOC_ReturnMemory(memory);
+        if((memory->flags&USBALLOC_FLAG_USED))
+            USBALLOC_ReturnMemory(memory);
 #endif
-	}
+    }
 }
 
 
 void* USBALLOC_TransientAlloc(uint16_t size, uint16_t alignment)
 {
-	#if USBALLOC_DEBUG
+    #if USBALLOC_DEBUG
     {
         CLIS();
         void* ptr = DPMI_DMAMalloc(size, alignment);
         STIL();
         return ptr;
-	}
+    }
     #endif
 
-	CLIS();
-	alignment = max(alignment, 4);
-	uint16_t actual = (uint16_t)(size + alignment + 4);
+    CLIS();
+    alignment = max(alignment, 4);
+    uint16_t actual = (uint16_t)(size + alignment + 4);
     uint16_t index = USBALLOC_CurrentBuf->index;
     uint8_t* ptr = NULL;
     if(!USBALLOC_CurrentBuf || USBALLOC_MEMORY_SIZE - USBALLOC_CurrentBuf->buff.offset < actual)
     {
         if(actual > USBALLOC_MEMORY_SIZE/2)
         {
-			ptr = (uint8_t*)DPMI_DMAMalloc(actual, 1) + 4;
-			index = 0xFFFF;
+            ptr = (uint8_t*)DPMI_DMAMalloc(actual, 1) + 4;
+            index = 0xFFFF;
         }
         else
         {
@@ -153,7 +153,7 @@ void* USBALLOC_TransientAlloc(uint16_t size, uint16_t alignment)
     uint32_t offset = align(addr, alignment) - addr;
     uint16_t* aptr = (uint16_t*)(ptr + offset);
     aptr[-1] = index;
-	aptr[-2] = (index != 0xFFFF) ? actual : (uint16_t)(offset + 4);
+    aptr[-2] = (index != 0xFFFF) ? actual : (uint16_t)(offset + 4);
     STIL();
     return aptr;
 }
@@ -171,10 +171,10 @@ void USBALLOC_TransientFree(void* ptr)
 
     uint16_t index = ((uint16_t*)ptr)[-1];
     uint16_t actual = ((uint16_t*)ptr)[-2];
-	if(index == 0xFFFF)
-	{
-		CLIS();
-		DPMI_DMAFree((uint8_t*)ptr - actual);
+    if(index == 0xFFFF)
+    {
+        CLIS();
+        DPMI_DMAFree((uint8_t*)ptr - actual);
         STIL();
         return;
     }
@@ -218,11 +218,11 @@ void* USBALLOC_TransientAlloc32(uint16_t sizeverify)
 
     #if USBALLOC_DEBUG
     {
-		CLIS();
-		sizeverify = max(32, sizeverify);
-		void* ptr = DPMI_DMAMalloc(sizeverify, 32);
-		for(int i = 0; i < 8; ++i)
-			((int32_t*)ptr)[i] = 0x0BAD0ACE;
+        CLIS();
+        sizeverify = max(32, sizeverify);
+        void* ptr = DPMI_DMAMalloc(sizeverify, 32);
+        for(int i = 0; i < 8; ++i)
+            ((int32_t*)ptr)[i] = 0x0BAD0ACE;
         STIL();
         return ptr;
     }
@@ -238,7 +238,7 @@ void* USBALLOC_TransientAlloc32(uint16_t sizeverify)
         USBALLOC_Current32->mask = 0xFFFFFFFFL;
         USBALLOC_Current32->flags |= USBALLOC_FLAG_32;
     }
-	register uint16_t index = (uint16_t)BSF(USBALLOC_Current32->mask);
+    register uint16_t index = (uint16_t)BSF(USBALLOC_Current32->mask);
     //_LOG("M32 Mask %08lx ", USBALLOC_Current32->mask);
     USBALLOC_Current32->mask &= ~(1UL << index);
     //_LOG("%08lx\n", USBALLOC_Current32->mask);
@@ -251,8 +251,8 @@ void USBALLOC_TransientFree32(void* ptr)
     #if USBALLOC_DEBUG
     {
         CLIS();
-		for(int i = 0; i < 8; ++i)
-			((uint32_t*)ptr)[i] = 0xF00DFEEDU;
+        for(int i = 0; i < 8; ++i)
+            ((uint32_t*)ptr)[i] = 0xF00DFEEDU;
         DPMI_DMAFree(ptr);
         STIL();
         return;

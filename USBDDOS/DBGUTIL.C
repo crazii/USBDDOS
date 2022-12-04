@@ -13,26 +13,26 @@
 static BOOL DBG_INT10;
 void DBG_Logv(const char* fmt, va_list aptr)
 {
-	if(DBG_INT10) //prevent reentrance of BIOS call
-		return;
-	DBG_INT10 = TRUE;
+    if(DBG_INT10) //prevent reentrance of BIOS call
+        return;
+    DBG_INT10 = TRUE;
 
-	char buf[DUMP_BUFF_SIZE];
-	int len = vsprintf(buf, fmt, aptr);
-	DPMI_REG r = {0};
-	for(int i = 0; i < len; ++i)
-	{
-		r.h.ah = 0x0E;
-		r.h.al = (uint8_t)buf[i];
-		DPMI_CallRealModeINT(0x10,&r);
-		if(buf[i] =='\n')
-		{
-			r.h.ah = 0x0E;
-			r.h.al = '\r';
-			DPMI_CallRealModeINT(0x10,&r);
-		}
-	}
-	DBG_INT10 = FALSE;
+    char buf[DUMP_BUFF_SIZE];
+    int len = vsprintf(buf, fmt, aptr);
+    DPMI_REG r = {0};
+    for(int i = 0; i < len; ++i)
+    {
+        r.h.ah = 0x0E;
+        r.h.al = (uint8_t)buf[i];
+        DPMI_CallRealModeINT(0x10,&r);
+        if(buf[i] =='\n')
+        {
+            r.h.ah = 0x0E;
+            r.h.al = '\r';
+            DPMI_CallRealModeINT(0x10,&r);
+        }
+    }
+    DBG_INT10 = FALSE;
 }
 
 void DBG_Log(const char* fmt, ...)

@@ -31,7 +31,7 @@ typedef int16_t intptr_t;   //only use tiny or small model. far pointer not supp
 typedef uint16_t uintptr_t;
 
 #define __NAKED //not supported on BC3.1. uncheck 'standard stack frame' might work but it is implicit: no frame when no param&local vars.
-				//#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
+                //#pragma option -k- (no standard stack frame) might work depending on above but it needs an ending pragma
 #define __CDECL __cdecl
 #ifdef __cplusplus
 #define __INLINE inline
@@ -61,9 +61,9 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, ea
 
 //copy code to data. as long as the compiler doesn't touch the PM segment selector
 #define memcpy_c2d(src, dest, size) do{\
-	void far* fdest = MK_FP(_DS, FP_OFF(src));\
-	void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
-	_fmemcpy(fdest, fsrc, size);\
+    void far* fdest = MK_FP(_DS, FP_OFF(src));\
+    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+    _fmemcpy(fdest, fsrc, size);\
 }while(0)
 
 #elif defined(__DJ2__)
@@ -244,7 +244,7 @@ typedef struct //segment descriptors
 {
     uint16_t limit_low;
     uint16_t base_low;
-	uint8_t base_middle;
+    uint8_t base_middle;
 
     uint8_t accessed : 1;
     uint8_t read_write : 1; //read for code, write for data
@@ -331,7 +331,7 @@ typedef struct
     uint16_t reserved0;
     uint32_t esp1;
     uint16_t ss1;
-	uint16_t reserved1;
+    uint16_t reserved1;
     uint32_t esp2;
     uint16_t ss2;
     uint16_t reserved2;

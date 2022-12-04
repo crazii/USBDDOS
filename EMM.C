@@ -33,32 +33,32 @@ uint16_t EMM_GetVersion(void)
     int fd = 0;
     unsigned int result = _dos_open("386MAX$$", O_RDONLY, &fd);
     if(result == 0)
-	{
-		_dos_close(fd);
-		return 0xFFFF;
-	}
-	result = _dos_open("EMMXXXX0", O_RDONLY, &fd);
-	if(result != 0)
-		result = _dos_open("EMMXXXQ0", O_RDONLY, &fd);
-	if(result != 0)
-		result = _dos_open("EMMQXXX0", O_RDONLY, &fd);
-	if(result != 0)
-		return 0;
+    {
+        _dos_close(fd);
+        return 0xFFFF;
+    }
+    result = _dos_open("EMMXXXX0", O_RDONLY, &fd);
+    if(result != 0)
+        result = _dos_open("EMMXXXQ0", O_RDONLY, &fd);
+    if(result != 0)
+        result = _dos_open("EMMQXXX0", O_RDONLY, &fd);
+    if(result != 0)
+        return 0;
 #if defined(__DJ2__) || defined(__BC__)
-	//control code 2: read version
-	uint16_t v = 2;
-	//ioctl - read from character device control channel
-	#if defined(__BC__)
-	if(ioctl(fd, DOS_RCVDATA, &v, 2) != 2)
-	#else
-	if(ioctl(fd, DOS_RCVDATA, 2, &v) != 2)
-	#endif
-	{
-		_dos_close(fd);
-		return 0xAD00;
-	}
-	_dos_close(fd);
-	return v;
+    //control code 2: read version
+    uint16_t v = 2;
+    //ioctl - read from character device control channel
+    #if defined(__BC__)
+    if(ioctl(fd, DOS_RCVDATA, &v, 2) != 2)
+    #else
+    if(ioctl(fd, DOS_RCVDATA, 2, &v) != 2)
+    #endif
+    {
+        _dos_close(fd);
+        return 0xAD00;
+    }
+    _dos_close(fd);
+    return v;
 #elif defined(__WC__)
     uint32_t mem = DPMI_DOSMalloc(1); //1 paragraph, 16 bytes
     uint16_t* buff = (uint16_t*)((mem&0xFFFF) << 4);
@@ -559,10 +559,10 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt,
     if(DPMI_CallRealModeINT(0x2F, &r) != 0 || (r.flags&CPU_CFLAG))
 #else
     //not supported by DOS/4GW, supported by Causeway or DOS/4GW Professional. Causeway still freeze on client
-	if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
+    if(DPMI_CallRealModeRETF(&r) != 0 || (r.w.flags&CPU_CFLAG))
 #endif
     {
-		//DBG_DumpREG(&r);
+        //DBG_DumpREG(&r);
         memset(iopt, 0, sizeof(*iopt));
         return FALSE;
     }

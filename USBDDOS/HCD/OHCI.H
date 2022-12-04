@@ -146,7 +146,7 @@ typedef struct OHCI_TransferDescriptor
 #if defined(__BC__)
     uint16_t padding[4];
 #endif
-	OHCI_TD* pNext; //Match the location of ISO TD
+    OHCI_TD* pNext; //Match the location of ISO TD
     HCD_Request* pRequest;
 }OHCI_TD;
 
@@ -175,7 +175,7 @@ typedef struct OHCI_IsochronousTransferDescriptor
 #if defined(__BC__)
     uint16_t padding[2];
 #endif
-	OHCI_TD* pNext;
+    OHCI_TD* pNext;
     HCD_Request* pRequest;
 }OHCI_ISO_TD;
 
@@ -189,7 +189,7 @@ typedef struct OHCI_EndpointDescriptor
             uint16_t FunctionAddress : 7;
             uint16_t EndPoint : 4;
             uint16_t Direction : 2;
-			uint16_t LowSpeed : 1;
+            uint16_t LowSpeed : 1;
             uint16_t Skip : 1;      //Skip: don't process
             uint16_t Format : 1;    //Format: Isochronous mode ED
             uint16_t MaxPacketSize : 11;

@@ -41,7 +41,7 @@ extern "C" {
 #define USB_DT_DEVICE_QUALIFIER  6
 #define USB_DT_OTHER_SPEED_CONFIGURATION 7
 #define USB_DT_INTERFACE_POWER 8
-#define USB_DT_CSINTERFACE	   0x24 //class-specific interface
+#define USB_DT_CSINTERFACE       0x24 //class-specific interface
 
 //Descriptor Index , wIndex
 #define USB_LANG_ID_ENG         0x0409    //for USB_DT_STRING
@@ -146,8 +146,8 @@ typedef struct USB_InterfaceDesc
     //////////////////////
     //extened data. copy data from source not containing this data may cause page fualt but
     //usually there's extra data below the header so it is ok
-	USB_EndpointDesc* pEndpoints;
-	uint16_t offset; //offset in descriptor buffer, used for get class specific interface desc inside (right after) interface desc
+    USB_EndpointDesc* pEndpoints;
+    uint16_t offset; //offset in descriptor buffer, used for get class specific interface desc inside (right after) interface desc
 }USB_InterfaceDesc;
 
 typedef struct USB_ConfigurationDescriptor

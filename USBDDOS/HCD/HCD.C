@@ -12,7 +12,7 @@ BOOL HCD_InitController(HCD_Interface* pHCI, uint8_t bus, uint8_t dev, uint8_t f
     pHCI->PCIAddr.Device = dev;
     pHCI->PCIAddr.Function = func;
     pHCI->pType = type; //set prematurely
-	return (type != NULL && type->dwPI == pPCIDev->Header.PInterface && type->InitController != NULL) ? type->InitController(pHCI, pPCIDev) : FALSE;
+    return (type != NULL && type->dwPI == pPCIDev->Header.PInterface && type->InitController != NULL) ? type->InitController(pHCI, pPCIDev) : FALSE;
 }
 
 BOOL HCD_DeinitController(HCD_Interface* pHCI)
@@ -148,6 +148,6 @@ BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode
     req->error = ecode;
     req->pFnCB(req);
     //_LOG("Free req: %08lx\n", req);
-	USB_TFree32(req);
+    USB_TFree32(req);
     return TRUE;
 }

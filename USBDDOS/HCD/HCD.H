@@ -47,9 +47,9 @@ typedef struct HCD_RequestBlock //TODO: use request block as transfer parameter?
     uint8_t endpoint;   //endpoint addr (num)
     uint8_t dir;        //HCD_TxDir
     uint8_t error;      //error code
-	uint8_t padding1[1]; //pad to 32 bytes
-	#if defined(__BC__)
-	uint16_t padding2[6]; //TODO:
+    uint8_t padding1[1]; //pad to 32 bytes
+    #if defined(__BC__)
+    uint16_t padding2[6]; //TODO:
     #endif
 }HCD_Request;
 

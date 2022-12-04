@@ -51,10 +51,10 @@ typedef void (near* DPMI_RMCB_ENTRY)(void);
 
 typedef struct
 {
-	DPMI_RMCB_ENTRY Target; //asm optimization based the layout, do not change
-	//uint16_t oldcs;
-	//uint16_t oldip;
-	char Code[DPMI_RMCB_ENTRYCODE_SIZE]; //call common entry, iret
+    DPMI_RMCB_ENTRY Target; //asm optimization based the layout, do not change
+    //uint16_t oldcs;
+    //uint16_t oldip;
+    char Code[DPMI_RMCB_ENTRYCODE_SIZE]; //call common entry, iret
 }DPMI_RMCBTable;
 
 //RMCB is used for real mode call backs, and as comptatible interface to switch modes inside the program.
@@ -65,60 +65,60 @@ typedef struct
 //3. INT (rm) => pm => rm:
 typedef struct //real mode callback
 {
-	IDTR RMCB_OldIDTR;
-	GDTR RMCB_Gdtr; //the RMCB_ prefix is added to prevent ambiguous name for ASM
-	IDTR RMCB_Idtr;
-	uint32_t LinearDS; //initial ds
-	uint32_t CR3;
-	uint32_t RMCB_VCPIInterface; //used in V86
-	uint16_t RMCB_VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
-	uint16_t RMSegment; //real mode segment of RMCB
+    IDTR RMCB_OldIDTR;
+    GDTR RMCB_Gdtr; //the RMCB_ prefix is added to prevent ambiguous name for ASM
+    IDTR RMCB_Idtr;
+    uint32_t LinearDS; //initial ds
+    uint32_t CR3;
+    uint32_t RMCB_VCPIInterface; //used in V86
+    uint16_t RMCB_VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
+    uint16_t RMSegment; //real mode segment of RMCB
     uint16_t SwitchPM; //function offset
     uint16_t SwitchRM; //function offset
     uint16_t Translation; //function offset: PM2RM translation
     uint16_t PM_SP; //stack pointer
-	uint16_t RM_SP;
-	uint16_t TranslationSP;
+    uint16_t RM_SP;
+    uint16_t TranslationSP;
     uint16_t Size;
-	uint8_t RealModeIRQ0Vec;
+    uint8_t RealModeIRQ0Vec;
     uint8_t ProtectedModeIRQ0Vec;
-	uint8_t RealModeIRQ8Vec;
+    uint8_t RealModeIRQ8Vec;
     uint8_t ProtectedModeIRQ8Vec;
     uint8_t Interrupt : 1; //interrupt status. don't remap PIC in int handling. make sure IF is always cleared: use pushf/popf instead of sti.
-	uint8_t NeedRemapPIC : 1;
-	uint8_t Ready : 1;
-	uint8_t Unused : 5;
-	DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
-	DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
+    uint8_t NeedRemapPIC : 1;
+    uint8_t Ready : 1;
+    uint8_t Unused : 5;
+    DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
+    DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
 }DPMI_RMCB;
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
 {
-	GDT gdt[SEL_TOTAL];
-	IDT idt[256];
-	GDTR gdtr;
-	IDTR idtr;
+    GDT gdt[SEL_TOTAL];
+    IDT idt[256];
+    GDTR gdtr;
+    IDTR idtr;
 
-	uint32_t TempMemoryHandle;
-	uint32_t LinearCS;  //real mode (initial) cs linear base
-	uint32_t LinearDS;  //real mode ds linear base
-	uint8_t RealModeIRQ0Vec;
-	uint8_t ProtectedModeIRQ0Vec;
-	uint8_t RealModeIRQ8Vec;
-	uint8_t ProtectedModeIRQ8Vec;
-	uint8_t NeedRemapPIC;
+    uint32_t TempMemoryHandle;
+    uint32_t LinearCS;  //real mode (initial) cs linear base
+    uint32_t LinearDS;  //real mode ds linear base
+    uint8_t RealModeIRQ0Vec;
+    uint8_t ProtectedModeIRQ0Vec;
+    uint8_t RealModeIRQ8Vec;
+    uint8_t ProtectedModeIRQ8Vec;
+    uint8_t NeedRemapPIC;
 
-	//below should be NULL if not v86
-	uint32_t VCPIInterface; //used in V86
-	uint16_t VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
-	uint16_t PageMemory; //dos alloc handle
-	uint32_t PageTable0LAddr;
-	uint32_t RMCBLAddr;
-	PDE far* PageDir;   //page table
-	PTE far* PageTable0;   //first 4M page, inited by VCPI
-	PTE far* PageTalbeHimem;
-	PTE far* PageTalbeHimem2; //in case XMS meory cross 4M boudnary
-	uint16_t far* XMSPageHandle; //XMS handle for extra page tables
+    //below should be NULL if not v86
+    uint32_t VCPIInterface; //used in V86
+    uint16_t VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
+    uint16_t PageMemory; //dos alloc handle
+    uint32_t PageTable0LAddr;
+    uint32_t RMCBLAddr;
+    PDE far* PageDir;   //page table
+    PTE far* PageTable0;   //first 4M page, inited by VCPI
+    PTE far* PageTalbeHimem;
+    PTE far* PageTalbeHimem2; //in case XMS meory cross 4M boudnary
+    uint16_t far* XMSPageHandle; //XMS handle for extra page tables
 }DPMI_TempData;
 
 extern DPMI_ADDRESSING DPMI_Addressing;
@@ -172,34 +172,34 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
 #define DPMI_RemapPIC(rmcb, pm, v86) do {\
-	if(rmcb->Interrupt || !rmcb->NeedRemapPIC) \
-		break;\
-	int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
-	int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
-	int oldmask = inp(0x21); \
-	outp(0x20, 0x11); \
-	outp(0x21, master); \
-	outp(0x21, 4); \
-	outp(0x21, 1); \
-	outp(0x21, oldmask); \
-	if(!v86) \
-		break; \
-	_ASM_BEGIN \
-		_ASM(push ax) \
-		_ASM(push bx) \
-		_ASM(push cx) \
-		_ASM2(mov bx, master) \
-		_ASM2(mov cx, slave) \
-		_ASM2(mov ax, 0xDE0B) \
-		_ASM(call fword ptr ds:[.RMCB_VCPIInterface]) \
-		_ASM(pop cx)\
-		_ASM(pop bx)\
-		_ASM(pop ax)\
-	_ASM_END \
+    if(rmcb->Interrupt || !rmcb->NeedRemapPIC) \
+        break;\
+    int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
+    int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
+    int oldmask = inp(0x21); \
+    outp(0x20, 0x11); \
+    outp(0x21, master); \
+    outp(0x21, 4); \
+    outp(0x21, 1); \
+    outp(0x21, oldmask); \
+    if(!v86) \
+        break; \
+    _ASM_BEGIN \
+        _ASM(push ax) \
+        _ASM(push bx) \
+        _ASM(push cx) \
+        _ASM2(mov bx, master) \
+        _ASM2(mov cx, slave) \
+        _ASM2(mov ax, 0xDE0B) \
+        _ASM(call fword ptr ds:[.RMCB_VCPIInterface]) \
+        _ASM(pop cx)\
+        _ASM(pop bx)\
+        _ASM(pop ax)\
+    _ASM_END \
 } while(0)
 
 #define DPMI_EnableA20(rmcb) do { \
-	if(rmcb->Interrupt)\
+    if(rmcb->Interrupt)\
         break;\
     while(inp(0x64) & 2)\
     outp(0x64, 0xd1);\
@@ -213,10 +213,10 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 static BOOL DPMI_IsV86() //should call before init pm
 {
     _ASM_BEGIN //note: VM in eflags(V86) bit 17 never push on stack, so pushf/pop won't work
-		_ASM(smsw ax)    //machine state word (low word of cr0)
-		_ASM2(and ax, 0x1) //PE
-	_ASM_END
-	return _AX;
+        _ASM(smsw ax)    //machine state word (low word of cr0)
+        _ASM2(and ax, 0x1) //PE
+    _ASM_END
+    return _AX;
 }
 #pragma option -k
 
@@ -226,42 +226,42 @@ static BOOL DPMI_IsV86() //should call before init pm
 
 static void far DPMI_DirectProtectedMode()
 {
-	DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-	DPMI_EnableA20(rmcb); //no function calls for simplification
-	_ASM_BEGIN
-		_ASM(pushf)
-		_ASM(cli)
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
+    DPMI_EnableA20(rmcb); //no function calls for simplification
+    _ASM_BEGIN
+        _ASM(pushf)
+        _ASM(cli)
 
-		_ASM(sidt fword ptr ds:[.RMCB_OldIDTR+2]);//';' is added to work around vscode highlight problem
-		_ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //extra padding
-		_ASM(lidt fword ptr ds:[.RMCB_Idtr+2]);
-		_ASM(push SEL_RMCB_CS*8)
-		_ASM2(mov ax, offset reload_cs)
-		_ASM2(sub ax, offset DPMI_DirectProtectedMode)
-		_ASM2(add ax, ds:[.SwitchPM]);
-		_ASM(push ax)
-		_ASM2(mov eax, cr0)
-		_ASM2(or al, 0x1)      //PE
-		_ASM2(mov cr0, eax)
-		_ASM(retf)
-	_ASMLBL(reload_cs:)
-		_ASM2(mov ax, SEL_RMCB_DS*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov fs, ax)
-		_ASM2(mov gs, ax)
-	_ASM_END
+        _ASM(sidt fword ptr ds:[.RMCB_OldIDTR+2]);//';' is added to work around vscode highlight problem
+        _ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //extra padding
+        _ASM(lidt fword ptr ds:[.RMCB_Idtr+2]);
+        _ASM(push SEL_RMCB_CS*8)
+        _ASM2(mov ax, offset reload_cs)
+        _ASM2(sub ax, offset DPMI_DirectProtectedMode)
+        _ASM2(add ax, ds:[.SwitchPM]);
+        _ASM(push ax)
+        _ASM2(mov eax, cr0)
+        _ASM2(or al, 0x1)      //PE
+        _ASM2(mov cr0, eax)
+        _ASM(retf)
+    _ASMLBL(reload_cs:)
+        _ASM2(mov ax, SEL_RMCB_DS*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
+    _ASM_END
 
-	#pragma warn -rch //unreachable code
-	#pragma warn -ccc //condition is always true/false
-	DPMI_RemapPIC(rmcb, TRUE, FALSE);
-	#pragma warn .rch
-	#pragma warn .ccc
+    #pragma warn -rch //unreachable code
+    #pragma warn -ccc //condition is always true/false
+    DPMI_RemapPIC(rmcb, TRUE, FALSE);
+    #pragma warn .rch
+    #pragma warn .ccc
 
-	_ASM_BEGIN
-		_ASM(popf)
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(popf)
+    _ASM_END
 }
 #pragma option -k-
 static void DPMI_DirectProtectedModeEnd() {}
@@ -269,42 +269,42 @@ static void DPMI_DirectProtectedModeEnd() {}
 
 static void far DPMI_DirectRealMode()
 {
-	DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-	GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
-	nullgdt.offset = 0; nullgdt.size = 0;
-	_ASM_BEGIN
-		_ASM(pushf)
-		_ASM(cli)
-	_ASM_END
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
+    GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
+    nullgdt.offset = 0; nullgdt.size = 0;
+    _ASM_BEGIN
+        _ASM(pushf)
+        _ASM(cli)
+    _ASM_END
 
-	#pragma warn -rch
-	#pragma warn -ccc
-	DPMI_RemapPIC(rmcb, FALSE, FALSE);
-	#pragma warn .rch
-	#pragma warn .ccc
+    #pragma warn -rch
+    #pragma warn -ccc
+    DPMI_RemapPIC(rmcb, FALSE, FALSE);
+    #pragma warn .rch
+    #pragma warn .ccc
 
-	_ASM_BEGIN
-		_ASM(lgdt fword ptr nullgdt+2)
-		_ASM(lidt fword ptr ds:[.RMCB_OldIDTR+2]);
-		_ASM(push word ptr ds:[.RMSegment]);
-		_ASM2(mov ax, offset reload_cs2)
-		_ASM2(sub ax, offset DPMI_DirectRealMode)
-		_ASM2(add ax, ds:[.SwitchRM]);
-		_ASM(push ax)
-		_ASM2(mov eax, cr0)
-		_ASM2(and al, 0xFE)
-		_ASM2(mov cr0, eax)
-		_ASM(retf)
-		//jmp reload_cs2 //WTF. inline asm can only perform near jump via C label.
-	_ASMLBL(reload_cs2:) //reload_cs2 label far
-		_ASM2(mov ax, ds:[.RMSegment]); //rmds
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov gs, ax)
-		_ASM2(mov fs, ax)
+    _ASM_BEGIN
+        _ASM(lgdt fword ptr nullgdt+2)
+        _ASM(lidt fword ptr ds:[.RMCB_OldIDTR+2]);
+        _ASM(push word ptr ds:[.RMSegment]);
+        _ASM2(mov ax, offset reload_cs2)
+        _ASM2(sub ax, offset DPMI_DirectRealMode)
+        _ASM2(add ax, ds:[.SwitchRM]);
+        _ASM(push ax)
+        _ASM2(mov eax, cr0)
+        _ASM2(and al, 0xFE)
+        _ASM2(mov cr0, eax)
+        _ASM(retf)
+        //jmp reload_cs2 //WTF. inline asm can only perform near jump via C label.
+    _ASMLBL(reload_cs2:) //reload_cs2 label far
+        _ASM2(mov ax, ds:[.RMSegment]); //rmds
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov gs, ax)
+        _ASM2(mov fs, ax)
         _ASM(popf)
-	_ASM_END
+    _ASM_END
 }
 #pragma option -k-
 static void DPMI_DirectRealModeEnd() {}
@@ -335,35 +335,35 @@ uint32_t DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
 {
     uint16_t table_seg = FP_SEG(First4M);
     uint16_t table_off = FP_OFF(First4M);
-	uint16_t new_off = 0;
-	uint16_t gdt_seg = FP_SEG(VcpiGDT);
-	uint16_t gdt_off = FP_OFF(VcpiGDT);
-	uint32_t interface = 0;
-	uint8_t result = -1;
-	_ASM_BEGIN
-		_ASM(push ds)
-		_ASM(push ax)
-		_ASM(push es)
-		_ASM(push di)
-		_ASM(push si)
-		_ASM(push ebx)
-		_ASM2(mov ax, table_seg)
-		_ASM2(mov es, ax)
-		_ASM2(mov di, table_off)
-		_ASM2(mov ax, gdt_seg)
-		_ASM2(mov ds, ax)
-		_ASM2(mov si, gdt_off)
-		_ASM2(mov ax, 0xDE01)
-		_ASM(int 0x67) //AH, DI, EBX modified
-		_ASM2(mov dword ptr interface, ebx)
-		_ASM2(mov new_off, di)
-		_ASM2(mov result, ah)
-		_ASM(pop ebx)
-		_ASM(pop si)
-		_ASM(pop di)
-		_ASM(pop es)
-		_ASM(pop ax)
-		_ASM(pop ds)
+    uint16_t new_off = 0;
+    uint16_t gdt_seg = FP_SEG(VcpiGDT);
+    uint16_t gdt_off = FP_OFF(VcpiGDT);
+    uint32_t interface = 0;
+    uint8_t result = -1;
+    _ASM_BEGIN
+        _ASM(push ds)
+        _ASM(push ax)
+        _ASM(push es)
+        _ASM(push di)
+        _ASM(push si)
+        _ASM(push ebx)
+        _ASM2(mov ax, table_seg)
+        _ASM2(mov es, ax)
+        _ASM2(mov di, table_off)
+        _ASM2(mov ax, gdt_seg)
+        _ASM2(mov ds, ax)
+        _ASM2(mov si, gdt_off)
+        _ASM2(mov ax, 0xDE01)
+        _ASM(int 0x67) //AH, DI, EBX modified
+        _ASM2(mov dword ptr interface, ebx)
+        _ASM2(mov new_off, di)
+        _ASM2(mov result, ah)
+        _ASM(pop ebx)
+        _ASM(pop si)
+        _ASM(pop di)
+        _ASM(pop es)
+        _ASM(pop ax)
+        _ASM(pop ds)
     _ASM_END
     if(result != 0)
     {
@@ -372,16 +372,16 @@ uint32_t DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
     }
     assert(sizeof(PTE) == 4);
     PageTable0Offset = (new_off - table_off)/sizeof(PTE);
-	#if 0 //dump vcpi pages
+    #if 0 //dump vcpi pages
     {
         int start = 0;
         for(uint32_t j = start; j < PageTable0Offset; ++j)
-			_LOG(((((j-start+1)%8)==0)?"%08lx\n":"%08lx "), (*(uint32_t far*)(First4M+j)));
-		_LOG("\n");
+            _LOG(((((j-start+1)%8)==0)?"%08lx\n":"%08lx "), (*(uint32_t far*)(First4M+j)));
+        _LOG("\n");
     }
     #endif
-	/*//fill the un-inited table entry if VCPI didn't init them all
-	for(uint32_t i = PageTable0Offset; i < 1024; ++i)
+    /*//fill the un-inited table entry if VCPI didn't init them all
+    for(uint32_t i = PageTable0Offset; i < 1024; ++i)
     {
         PTE pte = {0};
         PTE_INIT(pte, i<<12);//1:1 map
@@ -392,170 +392,170 @@ uint32_t DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
 
 static BOOL DPMI_InitVCPI()
 {
-	assert(DPMI_Temp);
-	if(DPMI_Temp->VCPIInterface)
-		return TRUE;
+    assert(DPMI_Temp);
+    if(DPMI_Temp->VCPIInterface)
+        return TRUE;
 
-	volatile BOOL VCPIPresent = FALSE;
+    volatile BOOL VCPIPresent = FALSE;
 
-	_ASM_BEGIN //check vcpi
-		_ASM(push ax)
-		_ASM(push bx)
-		_ASM2(mov ax, 0xDE00)
-		_ASM(int 0x67) //AH, BX modified
-		_ASM(not ax)
-		_ASM2(mov VCPIPresent, ax)
-		_ASM(pop bx)
-		_ASM(pop ax)
-	_ASM_END
+    _ASM_BEGIN //check vcpi
+        _ASM(push ax)
+        _ASM(push bx)
+        _ASM2(mov ax, 0xDE00)
+        _ASM(int 0x67) //AH, BX modified
+        _ASM(not ax)
+        _ASM2(mov VCPIPresent, ax)
+        _ASM(pop bx)
+        _ASM(pop ax)
+    _ASM_END
 
-	if(!VCPIPresent)
-	{
-		printf("Error: Virtual 8086 mode detected but no VCPI.\n");
-		exit(1);
-	}
+    if(!VCPIPresent)
+    {
+        printf("Error: Virtual 8086 mode detected but no VCPI.\n");
+        exit(1);
+    }
 
-	DPMI_Temp->PageMemory = 0; //dos alloc handle
-	DPMI_Temp->PageDir = NULL; //page table
-	DPMI_Temp->PageTable0 = NULL;   //first 4M page
-	DPMI_Temp->PageTalbeHimem = NULL;   //mapped for himem
-	DPMI_Temp->XMSPageHandle = NULL; //page table for physical maps
-	//prepare paging, used dos malloc to save space for the driver. it will be freed on TSR (execept interrupt handler needed)
-	DPMI_Temp->PageMemory = DPMI_DOSMalloc((VCPI_PAGING_MEM_SIZE+15)>>4L);
-	if(DPMI_Temp->PageMemory == 0)
-	{
-		printf("Error: Failed to allocate memory.\n");
-		exit(1);
-	}
-	uint16_t seg = align(DPMI_Temp->PageMemory, 4096>>4);
-	DPMI_Temp->PageDir = (PDE far*)MK_FP(seg, 0);
-	DPMI_Temp->PageTalbeHimem = (PTE far*)(DPMI_Temp->PageDir + 1024);
-	DPMI_Temp->PageTalbeHimem2 = (PTE far*)(DPMI_Temp->PageTalbeHimem + 1024);
-	uint32_t PageTable0Seg = DPMI_Temp->PageTable0LAddr>>4;
-	DPMI_Temp->PageTable0 = (PDE far*)MK_FP(PageTable0Seg, 0);
-	assert((DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)&0xFFF)==0);
-	_fmemset(DPMI_Temp->PageDir, 0, 4096);
-	_fmemset(DPMI_Temp->PageTable0, 0, 4096);
-	_fmemset(DPMI_Temp->PageTalbeHimem, 0, 4096);
-	_fmemset(DPMI_Temp->PageTalbeHimem2, 0, 4096);
-	//find an alignment gap to place xms map handle
-	uint32_t PageDirLAddr = DPMI_Ptr16ToLinear(DPMI_Temp->PageDir);
-	if(PageDirLAddr - ((uint32_t)DPMI_Temp->PageMemory<<4L) >= 1024L*sizeof(uint16_t))
-	{
-		DPMI_Temp->XMSPageHandle = (uint16_t far*)MK_FP(DPMI_Temp->PageMemory,0);
-		assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle+1024) <= PageDirLAddr);
-	}
-	else
-	{
-		DPMI_Temp->XMSPageHandle = (uint16_t far*)(DPMI_Temp->PageTalbeHimem2 + 1024);
-		assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle) >= DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem2)+4096L);
-		assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle+1024) <= ((uint32_t)DPMI_Temp->PageMemory<<4)+VCPI_PAGING_MEM_SIZE);
-	}
-	_fmemset(DPMI_Temp->XMSPageHandle, 0, 1024L*sizeof(uint16_t));
+    DPMI_Temp->PageMemory = 0; //dos alloc handle
+    DPMI_Temp->PageDir = NULL; //page table
+    DPMI_Temp->PageTable0 = NULL;   //first 4M page
+    DPMI_Temp->PageTalbeHimem = NULL;   //mapped for himem
+    DPMI_Temp->XMSPageHandle = NULL; //page table for physical maps
+    //prepare paging, used dos malloc to save space for the driver. it will be freed on TSR (execept interrupt handler needed)
+    DPMI_Temp->PageMemory = DPMI_DOSMalloc((VCPI_PAGING_MEM_SIZE+15)>>4L);
+    if(DPMI_Temp->PageMemory == 0)
+    {
+        printf("Error: Failed to allocate memory.\n");
+        exit(1);
+    }
+    uint16_t seg = align(DPMI_Temp->PageMemory, 4096>>4);
+    DPMI_Temp->PageDir = (PDE far*)MK_FP(seg, 0);
+    DPMI_Temp->PageTalbeHimem = (PTE far*)(DPMI_Temp->PageDir + 1024);
+    DPMI_Temp->PageTalbeHimem2 = (PTE far*)(DPMI_Temp->PageTalbeHimem + 1024);
+    uint32_t PageTable0Seg = DPMI_Temp->PageTable0LAddr>>4;
+    DPMI_Temp->PageTable0 = (PDE far*)MK_FP(PageTable0Seg, 0);
+    assert((DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)&0xFFF)==0);
+    _fmemset(DPMI_Temp->PageDir, 0, 4096);
+    _fmemset(DPMI_Temp->PageTable0, 0, 4096);
+    _fmemset(DPMI_Temp->PageTalbeHimem, 0, 4096);
+    _fmemset(DPMI_Temp->PageTalbeHimem2, 0, 4096);
+    //find an alignment gap to place xms map handle
+    uint32_t PageDirLAddr = DPMI_Ptr16ToLinear(DPMI_Temp->PageDir);
+    if(PageDirLAddr - ((uint32_t)DPMI_Temp->PageMemory<<4L) >= 1024L*sizeof(uint16_t))
+    {
+        DPMI_Temp->XMSPageHandle = (uint16_t far*)MK_FP(DPMI_Temp->PageMemory,0);
+        assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle+1024) <= PageDirLAddr);
+    }
+    else
+    {
+        DPMI_Temp->XMSPageHandle = (uint16_t far*)(DPMI_Temp->PageTalbeHimem2 + 1024);
+        assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle) >= DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem2)+4096L);
+        assert(DPMI_Ptr16ToLinear(DPMI_Temp->XMSPageHandle+1024) <= ((uint32_t)DPMI_Temp->PageMemory<<4)+VCPI_PAGING_MEM_SIZE);
+    }
+    _fmemset(DPMI_Temp->XMSPageHandle, 0, 1024L*sizeof(uint16_t));
     DPMI_XMSPageHandle = DPMI_Temp->XMSPageHandle;
 
-	//dummy. not used, make it looks valid. (with invalid 0 base)
-	GDT far* Gdt = DPMI_Temp->gdt;
-	Gdt[SEL_LDT].limit_low = sizeof(LDT)-1;
-	Gdt[SEL_LDT].read_write = 1;
-	Gdt[SEL_LDT].present = 1;
-	//TODO: TSS type in descriptor.
-	Gdt[SEL_TSS].limit_low = sizeof(TSS32)-1;
-	Gdt[SEL_TSS].type = 1; //0x89
-	Gdt[SEL_TSS].accessed = 1;
-	Gdt[SEL_TSS].present = 1;
+    //dummy. not used, make it looks valid. (with invalid 0 base)
+    GDT far* Gdt = DPMI_Temp->gdt;
+    Gdt[SEL_LDT].limit_low = sizeof(LDT)-1;
+    Gdt[SEL_LDT].read_write = 1;
+    Gdt[SEL_LDT].present = 1;
+    //TODO: TSS type in descriptor.
+    Gdt[SEL_TSS].limit_low = sizeof(TSS32)-1;
+    Gdt[SEL_TSS].type = 1; //0x89
+    Gdt[SEL_TSS].accessed = 1;
+    Gdt[SEL_TSS].present = 1;
 
-	DPMI_Temp->VCPIInterface = DPMI_GetVCPIInterface(DPMI_Temp->PageTable0, &Gdt[SEL_VCPI_CS]);
-	DPMI_Temp->VCPIInterfaceCS = SEL_VCPI_CS*8;
+    DPMI_Temp->VCPIInterface = DPMI_GetVCPIInterface(DPMI_Temp->PageTable0, &Gdt[SEL_VCPI_CS]);
+    DPMI_Temp->VCPIInterfaceCS = SEL_VCPI_CS*8;
 
-	uint32_t pt0 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
-	_LOG("Page table 0: %08lx %08lx\n", pt0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
-	_LOG("Page dir: %08lx\n", DPMI_Ptr16ToLinear(DPMI_Temp->PageDir));
+    uint32_t pt0 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
+    _LOG("Page table 0: %08lx %08lx\n", pt0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
+    _LOG("Page dir: %08lx\n", DPMI_Ptr16ToLinear(DPMI_Temp->PageDir));
 
-	assert((pt0&0xFFF) == 0);
-	PDE pde = PDE_INIT(pt0);
-	DPMI_Temp->PageDir[0] = pde;
+    assert((pt0&0xFFF) == 0);
+    PDE pde = PDE_INIT(pt0);
+    DPMI_Temp->PageDir[0] = pde;
 
-	//init himem page after 4M page table inited by vcpi
-	{
-		uint32_t pdi = DPMI_SystemDS >> 22L;
-		if(pdi == 0) //himem below 4M
-			pdi = 1; //append next to pt0 in case himem cross table boundary
-		//pre-add pt
-		{
-			uint32_t pt = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem));
-			assert((pt&0xFFF) == 0);
-			PDE pde = PDE_INIT(pt);
-			DPMI_Temp->PageDir[pdi] = pde;
-		}
-		{
-			uint32_t pt = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem2));
-			assert((pt&0xFFF) == 0);
-			PDE pde = PDE_INIT(pt);
-			DPMI_Temp->PageDir[pdi+1] = pde;
-		}
-		DPMI_MapMemory(DPMI_SystemDS, 192L*1024L);
-	}
-	//CLI; //soft int will set IF, need cli if called in DPMI_VCPIProtectedMode().
-	return TRUE;
+    //init himem page after 4M page table inited by vcpi
+    {
+        uint32_t pdi = DPMI_SystemDS >> 22L;
+        if(pdi == 0) //himem below 4M
+            pdi = 1; //append next to pt0 in case himem cross table boundary
+        //pre-add pt
+        {
+            uint32_t pt = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem));
+            assert((pt&0xFFF) == 0);
+            PDE pde = PDE_INIT(pt);
+            DPMI_Temp->PageDir[pdi] = pde;
+        }
+        {
+            uint32_t pt = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTalbeHimem2));
+            assert((pt&0xFFF) == 0);
+            PDE pde = PDE_INIT(pt);
+            DPMI_Temp->PageDir[pdi+1] = pde;
+        }
+        DPMI_MapMemory(DPMI_SystemDS, 192L*1024L);
+    }
+    //CLI; //soft int will set IF, need cli if called in DPMI_VCPIProtectedMode().
+    return TRUE;
 }
 
 static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
 {
-	DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be FP_SEG(rmcb) or rmcb->RMSegment.
-	DPMI_VCPIClientStruct ClientStruct; //= {0}; will call BC helper function but we cannot do that
-	ClientStruct.CR3 = rmcb->CR3;
-	ClientStruct.gdtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Gdtr)+2;
-	ClientStruct.idtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Idtr)+2;
-	ClientStruct.ldt_selector = SEL_LDT*8;
-	ClientStruct.tss_selector = SEL_TSS*8;
-	ClientStruct.CS = SEL_RMCB_CS*8;
-	uint32_t ClientStructLAddr = DPMI_Ptr16ToLinear(&ClientStruct);
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be FP_SEG(rmcb) or rmcb->RMSegment.
+    DPMI_VCPIClientStruct ClientStruct; //= {0}; will call BC helper function but we cannot do that
+    ClientStruct.CR3 = rmcb->CR3;
+    ClientStruct.gdtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Gdtr)+2;
+    ClientStruct.idtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Idtr)+2;
+    ClientStruct.ldt_selector = SEL_LDT*8;
+    ClientStruct.tss_selector = SEL_TSS*8;
+    ClientStruct.CS = SEL_RMCB_CS*8;
+    uint32_t ClientStructLAddr = DPMI_Ptr16ToLinear(&ClientStruct);
 
-	//note: DO NOT access global data, since it's executed in isolated real mode segment
-	_ASM_BEGIN
-		_ASM(push esi)
-		_ASM(pushf)
-		_ASM(cli)
+    //note: DO NOT access global data, since it's executed in isolated real mode segment
+    _ASM_BEGIN
+        _ASM(push esi)
+        _ASM(pushf)
+        _ASM(cli)
 
-		_ASM2(xor ecx, ecx)
-		_ASM2(mov cx, offset VCPI_PMDone) //mov ebx, offset _VCPI_PMDone //linking error
-		_ASM2(sub cx, offset DPMI_VCPIProtectedMode)
-		_ASM2(add cx, ds:[.SwitchPM]);
-		_ASM2(mov dword ptr ClientStruct.EIP, ecx)
-		_ASM2(mov esi, ClientStructLAddr)
-		_ASM2(mov cx, sp) //save SP to CX
-		_ASM2(mov ax, 0xDE0C)
-		_ASM(int 0x67) //EAX, ESI, DS ES FS GS modified
-	_ASMLBL(VCPI_PMDone:)
-		_ASM2(mov ax, SEL_RMCB_DS*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov fs, ax)
-		_ASM2(mov gs, ax)
-		_ASM2(mov esp, ecx) //restore to SP (point at pushf before cli)
+        _ASM2(xor ecx, ecx)
+        _ASM2(mov cx, offset VCPI_PMDone) //mov ebx, offset _VCPI_PMDone //linking error
+        _ASM2(sub cx, offset DPMI_VCPIProtectedMode)
+        _ASM2(add cx, ds:[.SwitchPM]);
+        _ASM2(mov dword ptr ClientStruct.EIP, ecx)
+        _ASM2(mov esi, ClientStructLAddr)
+        _ASM2(mov cx, sp) //save SP to CX
+        _ASM2(mov ax, 0xDE0C)
+        _ASM(int 0x67) //EAX, ESI, DS ES FS GS modified
+    _ASMLBL(VCPI_PMDone:)
+        _ASM2(mov ax, SEL_RMCB_DS*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
+        _ASM2(mov esp, ecx) //restore to SP (point at pushf before cli)
 
-		_ASM(push cx)
-	_ASM_END
+        _ASM(push cx)
+    _ASM_END
 
-	#pragma warn -rch
-	#pragma warn -ccc
-	DPMI_RemapPIC(rmcb, TRUE, TRUE); //note: remap PIC after switch to PM & before popf
-	#pragma warn .rch
-	#pragma warn .ccc
+    #pragma warn -rch
+    #pragma warn -ccc
+    DPMI_RemapPIC(rmcb, TRUE, TRUE); //note: remap PIC after switch to PM & before popf
+    #pragma warn .rch
+    #pragma warn .ccc
 
-	_ASM_BEGIN
-		_ASM(pop si)
+    _ASM_BEGIN
+        _ASM(pop si)
 
-		_ASM(pop ax)  //note: V86 mode change involves flags change. don't popf directly, only keep IF. or VCPI will crash on return v86
-		_ASM2(and ax, CPU_IFLAG)//IF
-		_ASM(pushf)
-		_ASM2(or word ptr ss:[si], ax); //SI==SP
-		_ASM(popf)
+        _ASM(pop ax)  //note: V86 mode change involves flags change. don't popf directly, only keep IF. or VCPI will crash on return v86
+        _ASM2(and ax, CPU_IFLAG)//IF
+        _ASM(pushf)
+        _ASM2(or word ptr ss:[si], ax); //SI==SP
+        _ASM(popf)
 
-		_ASM(pop esi)
-	_ASM_END
+        _ASM(pop esi)
+    _ASM_END
 }
 #pragma option -k-
 static void DPMI_VCPIProtectedModeEnd() {}
@@ -563,55 +563,55 @@ static void DPMI_VCPIProtectedModeEnd() {}
 
 static void far DPMI_VCPIRealMode() //VCPI PM to RM
 {
-	DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be SEL_RMCB_DS*8
-	int RmcbSeg = rmcb->RMSegment;
-	//http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
-	_ASM_BEGIN
-		_ASM(push ebx)
-		_ASM(pushf)
-		_ASM(cli)
-	_ASM_END
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be SEL_RMCB_DS*8
+    int RmcbSeg = rmcb->RMSegment;
+    //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
+    _ASM_BEGIN
+        _ASM(push ebx)
+        _ASM(pushf)
+        _ASM(cli)
+    _ASM_END
 
-	#pragma warn -rch
-	#pragma warn -ccc
-	DPMI_RemapPIC(rmcb, FALSE, TRUE); //note: remap PIC before switch to RM
-	#pragma warn .rch
-	#pragma warn .ccc
+    #pragma warn -rch
+    #pragma warn -ccc
+    DPMI_RemapPIC(rmcb, FALSE, TRUE); //note: remap PIC before switch to RM
+    #pragma warn .rch
+    #pragma warn .ccc
 
-	_ASM_BEGIN
-		_ASM2(movzx ebx, sp)
-		_ASM(clts) //clear TS bits. we have no task.
-		_ASM2(xor eax, eax)
-		_ASM2(mov ax, RmcbSeg) //ss:bp[xx]
+    _ASM_BEGIN
+        _ASM2(movzx ebx, sp)
+        _ASM(clts) //clear TS bits. we have no task.
+        _ASM2(xor eax, eax)
+        _ASM2(mov ax, RmcbSeg) //ss:bp[xx]
 
-		_ASM(push eax)    //GS
-		_ASM(push eax)    //FS
-		_ASM(push eax)    //DS
-		_ASM(push eax)    //ES
-		_ASM(push eax)    //SS
-		_ASM(push ebx)    //ESP
-		_ASM(pushfd)      //EFLAGS, not used, filled by VCPI
-		_ASM(push eax)    //CS
-		_ASM2(mov ax, ds)
-		_ASM2(mov es, ax)
-		_ASM2(mov ax, offset VCPI_to_real) //mov eax, offset back_to_real //link err
-		_ASM2(sub ax, offset DPMI_VCPIRealMode)
-		_ASM2(add ax, es:[.SwitchRM]);
-		_ASM(push eax)    //EIP
+        _ASM(push eax)    //GS
+        _ASM(push eax)    //FS
+        _ASM(push eax)    //DS
+        _ASM(push eax)    //ES
+        _ASM(push eax)    //SS
+        _ASM(push ebx)    //ESP
+        _ASM(pushfd)      //EFLAGS, not used, filled by VCPI
+        _ASM(push eax)    //CS
+        _ASM2(mov ax, ds)
+        _ASM2(mov es, ax)
+        _ASM2(mov ax, offset VCPI_to_real) //mov eax, offset back_to_real //link err
+        _ASM2(sub ax, offset DPMI_VCPIRealMode)
+        _ASM2(add ax, es:[.SwitchRM]);
+        _ASM(push eax)    //EIP
 
-		_ASM2(mov ax, SEL_4G*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov ax, 0xDE0C)
-		_ASM(call fword ptr es:[.RMCB_VCPIInterface]); //EAX modified (and segments push on stack)
-	_ASMLBL(VCPI_to_real:)
-		_ASM(pop ax)
-		_ASM2(and ax, CPU_IFLAG) //IF
-		_ASM(pushf)
-		_ASM2(or word ptr ss:[bx], ax); //BX=SP
+        _ASM2(mov ax, SEL_4G*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov ax, 0xDE0C)
+        _ASM(call fword ptr es:[.RMCB_VCPIInterface]); //EAX modified (and segments push on stack)
+    _ASMLBL(VCPI_to_real:)
+        _ASM(pop ax)
+        _ASM2(and ax, CPU_IFLAG) //IF
+        _ASM(pushf)
+        _ASM2(or word ptr ss:[bx], ax); //BX=SP
 
-		_ASM(popf)
-		_ASM(pop ebx)
-	_ASM_END
+        _ASM(popf)
+        _ASM(pop ebx)
+    _ASM_END
 }
 #pragma option -k-
 static void DPMI_VCPIRealModeEnd() {}
@@ -624,102 +624,102 @@ static void DPMI_VCPIRealModeEnd() {}
 //swtich to protected mode.
 static int16_t DPMI_SwitchProtectedMode(uint32_t LinearDS)
 { //care on printf msg in mode switch, because printf will switch back and forth and cause recursion
-	if(DPMI_PM)
-		return DPMI_PM;
+    if(DPMI_PM)
+        return DPMI_PM;
 
-	CLIS();
-	//DO NOT access any static data befoe switch, because this may be called from a RMCB block from outside
-	_ASM_BEGIN
-		_ASM(push bx)
-		_ASM(push bp)
-		_ASM2(mov bp, sp)
-		_ASM2(lss bx, DPMI_Rmcb);
-		_ASM2(mov sp, ss:[bx.RM_SP]);
-		_ASM(push SEL_CS*8)
-		_ASM(push offset SwitchPMDone)
-		_ASM(push ss)
-		_ASM(push word ptr ss:[bx.SwitchPM]);
-		_ASM2(mov ax, ss)
-		_ASM2(mov ds, ax)
-		_ASM(retf)
-	_ASMLBL(SwitchPMDone:)
-		_ASM2(mov ax, SEL_DS*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov fs, ax)
-		_ASM2(mov gs, ax)
-		_ASM2(mov sp, bp)
-		_ASM(pop bp)
-		_ASM(pop bx)
-	_ASM_END
-	DPMI_PM = DPMI_V86 ? PM_VCPI : PM_DIRECT;
+    CLIS();
+    //DO NOT access any static data befoe switch, because this may be called from a RMCB block from outside
+    _ASM_BEGIN
+        _ASM(push bx)
+        _ASM(push bp)
+        _ASM2(mov bp, sp)
+        _ASM2(lss bx, DPMI_Rmcb);
+        _ASM2(mov sp, ss:[bx.RM_SP]);
+        _ASM(push SEL_CS*8)
+        _ASM(push offset SwitchPMDone)
+        _ASM(push ss)
+        _ASM(push word ptr ss:[bx.SwitchPM]);
+        _ASM2(mov ax, ss)
+        _ASM2(mov ds, ax)
+        _ASM(retf)
+    _ASMLBL(SwitchPMDone:)
+        _ASM2(mov ax, SEL_DS*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
+        _ASM2(mov sp, bp)
+        _ASM(pop bp)
+        _ASM(pop bx)
+    _ASM_END
+    DPMI_PM = DPMI_V86 ? PM_VCPI : PM_DIRECT;
     DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(SEL_RMCB_DS*8, 0);
 
     DPMI_Addressing.physical = TRUE;    //linear=physical
-	DPMI_Addressing.selector = SEL_4G*8; //4G ds
+    DPMI_Addressing.selector = SEL_4G*8; //4G ds
 
-	DPMI_CopyLinear(DPMI_HimemDS, LinearDS, 64L*1024L); //copy data to himem
+    DPMI_CopyLinear(DPMI_HimemDS, LinearDS, 64L*1024L); //copy data to himem
 
-	_ASM_BEGIN//switch immediately after copy, or the stack won't match
-		_ASM2(mov ax, SEL_HIMEM_DS*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov fs, ax)
-		_ASM2(mov gs, ax)
-	_ASM_END
+    _ASM_BEGIN//switch immediately after copy, or the stack won't match
+        _ASM2(mov ax, SEL_HIMEM_DS*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
+    _ASM_END
 
-	//_LOG("FLAGS:%x\n", CPU_FLAGS());
-	STIL();
-	return DPMI_PM;
+    //_LOG("FLAGS:%x\n", CPU_FLAGS());
+    STIL();
+    return DPMI_PM;
 }
 
 //back to real/v86 mode. this function only should be called on init or exit
 //for swtich modes in between execution, use DPMI_CallRealMode* functions.
 static void DPMI_SwitchRealMode(uint32_t LinearDS)
 {
-	if(!DPMI_PM)
-		return;
-	CLIS();
-	uint16_t segment = DPMI_Rmcb->RMSegment; //save on stack. DPMI_Rmcb won't be accessible after switching mode
+    if(!DPMI_PM)
+        return;
+    CLIS();
+    uint16_t segment = DPMI_Rmcb->RMSegment; //save on stack. DPMI_Rmcb won't be accessible after switching mode
 
-	DPMI_CopyLinear(LinearDS, DPMI_HimemDS, 64L*1024L); //copy data back
-	_ASM_BEGIN
-		_ASM2(mov ax, SEL_DS*8)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov fs, ax)
-		_ASM2(mov gs, ax)
-	_ASM_END
+    DPMI_CopyLinear(LinearDS, DPMI_HimemDS, 64L*1024L); //copy data back
+    _ASM_BEGIN
+        _ASM2(mov ax, SEL_DS*8)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
+    _ASM_END
 
-	_ASM_BEGIN
-		_ASM(push bx)
-		_ASM(push bp)
-		_ASM2(mov bp, sp)
-		_ASM2(lss bx, DPMI_Rmcb);
-		_ASM2(mov ss:[bx.PM_SP], sp);
-		_ASM2(mov sp, ss:[bx.RM_SP]);
-		_ASM(push _TEXT)
-		_ASM(push offset SwitchRMDone)
-		_ASM(push SEL_RMCB_CS*8)
-		_ASM(push word ptr ss:[bx.SwitchRM]);
-		_ASM2(mov ax, ss)
-		_ASM2(mov ds, ax)
-		_ASM(retf)
-	_ASMLBL(SwitchRMDone:)
-		_ASM2(mov ax, _DATA)
-		_ASM2(mov ds, ax)
+    _ASM_BEGIN
+        _ASM(push bx)
+        _ASM(push bp)
+        _ASM2(mov bp, sp)
+        _ASM2(lss bx, DPMI_Rmcb);
+        _ASM2(mov ss:[bx.PM_SP], sp);
+        _ASM2(mov sp, ss:[bx.RM_SP]);
+        _ASM(push _TEXT)
+        _ASM(push offset SwitchRMDone)
+        _ASM(push SEL_RMCB_CS*8)
+        _ASM(push word ptr ss:[bx.SwitchRM]);
+        _ASM2(mov ax, ss)
+        _ASM2(mov ds, ax)
+        _ASM(retf)
+    _ASMLBL(SwitchRMDone:)
+        _ASM2(mov ax, _DATA)
+        _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
         _ASM2(mov ss, ax)
         _ASM2(mov fs, ax)
         _ASM2(mov gs, ax)
         _ASM2(mov sp, bp)
-		_ASM(pop bp)
+        _ASM(pop bp)
         _ASM(pop bx)
     _ASM_END
-	DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(segment, 0);
+    DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(segment, 0);
     DPMI_PM = PM_NONE;
     DPMI_Addressing.selector = 0;
     STIL();
@@ -733,39 +733,39 @@ static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 #pragma option -k-
 static void DPMI_NullINTHandler()
 {
-	_ASM_BEGIN _ASM(iret) _ASM_END
+    _ASM_BEGIN _ASM(iret) _ASM_END
 }
 #pragma option -k
 
 static void DPMI_HWIRQHandler()
 {
-	_ASM_BEGIN _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
-	_ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
-	uint8_t irq = PIC_GetIRQ();
-	if(irq < 16)
-	{
-		uint8_t vec = PIC_IRQ2VEC(irq);
-		assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
-		BOOL Interrupt = DPMI_Rmcb->Interrupt;
-		DPMI_Rmcb->Interrupt = TRUE;
-		if(DPMI_UserINTHandler[vec])
-			DPMI_UserINTHandler[vec]();
-		else
-		{
-			static DPMI_REG r = {0};
-			DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
-		}
-		DPMI_Rmcb->Interrupt = Interrupt;
-	}
-	_ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(leave) _ASM(iret) _ASM_END
+    _ASM_BEGIN _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
+    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
+    uint8_t irq = PIC_GetIRQ();
+    if(irq < 16)
+    {
+        uint8_t vec = PIC_IRQ2VEC(irq);
+        assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
+        BOOL Interrupt = DPMI_Rmcb->Interrupt;
+        DPMI_Rmcb->Interrupt = TRUE;
+        if(DPMI_UserINTHandler[vec])
+            DPMI_UserINTHandler[vec]();
+        else
+        {
+            static DPMI_REG r = {0};
+            DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
+        }
+        DPMI_Rmcb->Interrupt = Interrupt;
+    }
+    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(leave) _ASM(iret) _ASM_END
 }
 
 #define DPMI_EXCEPT(n) static void DPMI_ExpetionHandler##n()\
 {\
-	_ASM_BEGIN _ASM(push ds) _ASM(pushad) _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov ss, ax) _ASM2(mov sp, 0xFFF8) _ASM_END \
-	printf("Exception: %02x\n", n);\
-	if(!DPMI_TSRed) exit(1);\
-	else while(1);\
+    _ASM_BEGIN _ASM(push ds) _ASM(pushad) _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov ss, ax) _ASM2(mov sp, 0xFFF8) _ASM_END \
+    printf("Exception: %02x\n", n);\
+    if(!DPMI_TSRed) exit(1);\
+    else while(1);\
 }
 
 #pragma option -k-
@@ -795,90 +795,90 @@ static const int RMCB_TableSize = sizeof(DPMI_RMCBTable); //use C to get stable 
 #pragma option -k-
 static void DPMI_RMCBCommonEntry() //commen entry for call back
 {
-	_ASM_BEGIN
-		_ASM(push bx)
-		_ASM(push bp)
-		_ASM2(mov bp, sp)
-		_ASM2(mov bp, ss:[bp+4]); //caller IP (RMCB entry)
+    _ASM_BEGIN
+        _ASM(push bx)
+        _ASM(push bp)
+        _ASM2(mov bp, sp)
+        _ASM2(mov bp, ss:[bp+4]); //caller IP (RMCB entry)
 
-		//switch to RMCB stack
-		_ASM2(mov bx, cs:[.RM_SP]);
-		_ASM2(mov cs:[bx-2], ss);
-		_ASM2(mov cs:[bx-4], sp);
-		_ASM(push cs)
-		_ASM(pop ss)
-		_ASM2(lea sp, cs:[bx-4]); //cs: no effect, just readibility
-		_ASM(pushfd) //note: save high word of eflags
-		_ASM(pushad)
-		_ASM(push ds) _ASM(push es) _ASM(push gs) _ASM(push fs)
-		_ASM2(mov ax, cs)
-		_ASM2(mov ds, ax)
-	_ASM_END
+        //switch to RMCB stack
+        _ASM2(mov bx, cs:[.RM_SP]);
+        _ASM2(mov cs:[bx-2], ss);
+        _ASM2(mov cs:[bx-4], sp);
+        _ASM(push cs)
+        _ASM(pop ss)
+        _ASM2(lea sp, cs:[bx-4]); //cs: no effect, just readibility
+        _ASM(pushfd) //note: save high word of eflags
+        _ASM(pushad)
+        _ASM(push ds) _ASM(push es) _ASM(push gs) _ASM(push fs)
+        _ASM2(mov ax, cs)
+        _ASM2(mov ds, ax)
+    _ASM_END
 
-	((DPMI_RMCB*)0)->Interrupt = TRUE; //after ds setup, set int flag. rmcb=ds:[0]
+    ((DPMI_RMCB*)0)->Interrupt = TRUE; //after ds setup, set int flag. rmcb=ds:[0]
 
-	_ASM_BEGIN
-		//get caller IP and calc target. target addr = TableOffset + (IP-TableOffset)/TableSize*TableSize + 0 (offsetof(DPMI_RMCBTable, Target))
-		//note: this should be done before swtich stack
-		_ASM2(mov ax, bp)
-		_ASM2(mov cx, RMCB_TableSize) //optmized as imm
-		_ASM2(sub ax, .Table) //.Table == offsetof(DPMI_RMCB, Table)
-		_ASM2(xor dx, dx)
-		_ASM(div cx)
-		_ASM(mul cx)
-		_ASM2(add ax, .Table) //calc offset done
-		_ASM2(mov bp, ax)
-		_ASM2(mov bp, ds:[bp]); //load from memory & save to BP
+    _ASM_BEGIN
+        //get caller IP and calc target. target addr = TableOffset + (IP-TableOffset)/TableSize*TableSize + 0 (offsetof(DPMI_RMCBTable, Target))
+        //note: this should be done before swtich stack
+        _ASM2(mov ax, bp)
+        _ASM2(mov cx, RMCB_TableSize) //optmized as imm
+        _ASM2(sub ax, .Table) //.Table == offsetof(DPMI_RMCB, Table)
+        _ASM2(xor dx, dx)
+        _ASM(div cx)
+        _ASM(mul cx)
+        _ASM2(add ax, .Table) //calc offset done
+        _ASM2(mov bp, ax)
+        _ASM2(mov bp, ds:[bp]); //load from memory & save to BP
 
-		_ASM(push SEL_RMCB_CS*8) //far return from switch
-		_ASM(call word ptr ds:[.SwitchPM]); //far call with pushed cs
-		//now in pm, fs=gs=es=ss=ds=SEL_RMCB_DS*8
+        _ASM(push SEL_RMCB_CS*8) //far return from switch
+        _ASM(call word ptr ds:[.SwitchPM]); //far call with pushed cs
+        //now in pm, fs=gs=es=ss=ds=SEL_RMCB_DS*8
 
-		//switch himem stack
-		_ASM2(mov cx, sp)
-		_ASM2(mov ax, SEL_HIMEM_DS*8)
-		_ASM2(mov ss, ax)
-		_ASM2(mov sp, ds:[.PM_SP]);
-		_ASM(push cx)   //save RMCB sp on new stack
+        //switch himem stack
+        _ASM2(mov cx, sp)
+        _ASM2(mov ax, SEL_HIMEM_DS*8)
+        _ASM2(mov ss, ax)
+        _ASM2(mov sp, ds:[.PM_SP]);
+        _ASM(push cx)   //save RMCB sp on new stack
 
-		//call target pm function
-		_ASM(pushf) //assume target is IRET
-		_ASM(push cs)
-		_ASM2(mov ax, offset RMCB_PmReturn)
-		_ASM2(sub ax, offset DPMI_RMCBCommonEntry)
-		_ASM2(add ax, ds:[.CommonEntry]);
-		_ASM(push ax)
+        //call target pm function
+        _ASM(pushf) //assume target is IRET
+        _ASM(push cs)
+        _ASM2(mov ax, offset RMCB_PmReturn)
+        _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
+        _ASM2(add ax, ds:[.CommonEntry]);
+        _ASM(push ax)
 
-		_ASM(push SEL_HIMEM_CS*8)
-		_ASM(push bp) //saved target
-		_ASM2(mov ax, ss)
-		_ASM2(mov ds, ax)
-		_ASM2(mov es, ax)
-		_ASM(retf)
-	_ASMLBL(RMCB_PmReturn:)
-		_ASM(pop cx) //restore RMCB stack
-		_ASM2(mov ax, SEL_RMCB_DS*8) //restore RMCB ds,ss
-		_ASM2(mov ds, ax)
-		_ASM2(mov ss, ax)
-		_ASM2(mov sp, cx)
-		_ASM(push word ptr ds:[.RMSegment]);
-		_ASM(call word ptr ds:[.SwitchRM]);
-		//now in rm. fs=gs=es=ss=ds=RMCB segement
-	_ASM_END
+        _ASM(push SEL_HIMEM_CS*8)
+        _ASM(push bp) //saved target
+        _ASM2(mov ax, ss)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM(retf)
+    _ASMLBL(RMCB_PmReturn:)
+        _ASM(pop cx) //restore RMCB stack
+        _ASM2(mov ax, SEL_RMCB_DS*8) //restore RMCB ds,ss
+        _ASM2(mov ds, ax)
+        _ASM2(mov ss, ax)
+        _ASM2(mov sp, cx)
+        _ASM(push word ptr ds:[.RMSegment]);
+        _ASM(call word ptr ds:[.SwitchRM]);
+        //now in rm. fs=gs=es=ss=ds=RMCB segement
+    _ASM_END
 
-		((DPMI_RMCB*)0)->Interrupt = FALSE;
+        ((DPMI_RMCB*)0)->Interrupt = FALSE;
 
-	_ASM_BEGIN
-		_ASM(pop fs) _ASM(pop gs) _ASM(pop es) _ASM(pop ds)
-		_ASM(popad)
-		_ASM(popfd)
-		_ASM2(mov bx, sp)
-		_ASM2(mov sp, ss:[bx]);
-		_ASM2(mov bx, ss:[bx+2]);
-		_ASM2(mov ss, bx)
-		_ASM(pop bp)
-		_ASM(pop bx)
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(pop fs) _ASM(pop gs) _ASM(pop es) _ASM(pop ds)
+        _ASM(popad)
+        _ASM(popfd)
+        _ASM2(mov bx, sp)
+        _ASM2(mov sp, ss:[bx]);
+        _ASM2(mov bx, ss:[bx+2]);
+        _ASM2(mov ss, bx)
+        _ASM(pop bp)
+        _ASM(pop bx)
+    _ASM_END
 }
 static void DPMI_RMCBCommonEntryEnd() {}
 #pragma option -k
@@ -886,11 +886,11 @@ static void DPMI_RMCBCommonEntryEnd() {}
 #pragma option -k-
 static void DPMI_RMCBEntryIRET() //keep it as small as possible
 {
-	_ASM_BEGIN
-		_ASM(call word ptr cs:[.CommonEntry]); //word ptr=near, dword ptr=far cs16:off16, fword=far cs16:off32
-		//_ASM(leave)//dirty hack as naked function //not needed with -k-
-		//_ASM(iret) //iret will be patched
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(call word ptr cs:[.CommonEntry]); //word ptr=near, dword ptr=far cs16:off16, fword=far cs16:off32
+        //_ASM(leave)//dirty hack as naked function //not needed with -k-
+        //_ASM(iret) //iret will be patched
+    _ASM_END
 }
 static void DPMI_RMCBEntryIRETEnd() {}
 #pragma option -k
@@ -899,9 +899,9 @@ static void DPMI_RMCBEntryIRETEnd() {}
 //output: full register set loaded from ptr, inclluding EBX itself
 //SS:ESP excluded. load ds at last.
 #define DPMI_LoadRealModeRegsPtr() do {\
-	_ASM_BEGIN\
-		_ASM(push word ptr ds:[bx.w.ds])\
-		\
+    _ASM_BEGIN\
+        _ASM(push word ptr ds:[bx.w.ds])\
+        \
         _ASM(push word ptr ds:[bx.w.flags])\
         _ASM(popf)\
         _ASM2(mov ax, word ptr ds:[bx.w.gs])\
@@ -917,95 +917,95 @@ static void DPMI_RMCBEntryIRETEnd() {}
         _ASM2(mov esi, dword ptr ds:[bx.d.esi])\
         _ASM2(mov edi, dword ptr ds:[bx.d.edi])\
         \
-		_ASM2(mov ebx, dword ptr ds:[bx.d.ebx])\
-		_ASM(pop ds)\
-	_ASM_END \
+        _ASM2(mov ebx, dword ptr ds:[bx.d.ebx])\
+        _ASM(pop ds)\
+    _ASM_END \
 } while(0)
 
 //input: DS:BX as DPMI_REG ptr
 //output: full register set stored to the ptr, except DS, EBX
 #define DPMI_StoreRealModeRegsPtr() do {\
-	_ASM_BEGIN \
-		_ASM(push gs)\
-		_ASM(push fs)\
-		_ASM(pop word ptr ds:[bx.w.fs])\
-		_ASM(push es)\
-		_ASM(pop word ptr ds:[bx.w.es])\
-		_ASM(pushf)\
-		_ASM(pop word ptr ds:[bx.w.flags])\
-		_ASM(pop word ptr ds:[bx.w.gs])\
-		_ASM2(mov dword ptr ds:[bx.d.eax], eax)\
-		_ASM2(mov dword ptr ds:[bx.d.ecx], ecx)\
-		_ASM2(mov dword ptr ds:[bx.d.edx], edx)\
-		_ASM2(mov dword ptr ds:[bx.d.ebp], ebp)\
-		_ASM2(mov dword ptr ds:[bx.d.esi], esi)\
-		_ASM2(mov dword ptr ds:[bx.d.edi], edi)\
-	_ASM_END \
+    _ASM_BEGIN \
+        _ASM(push gs)\
+        _ASM(push fs)\
+        _ASM(pop word ptr ds:[bx.w.fs])\
+        _ASM(push es)\
+        _ASM(pop word ptr ds:[bx.w.es])\
+        _ASM(pushf)\
+        _ASM(pop word ptr ds:[bx.w.flags])\
+        _ASM(pop word ptr ds:[bx.w.gs])\
+        _ASM2(mov dword ptr ds:[bx.d.eax], eax)\
+        _ASM2(mov dword ptr ds:[bx.d.ecx], ecx)\
+        _ASM2(mov dword ptr ds:[bx.d.edx], edx)\
+        _ASM2(mov dword ptr ds:[bx.d.ebp], ebp)\
+        _ASM2(mov dword ptr ds:[bx.d.esi], esi)\
+        _ASM2(mov dword ptr ds:[bx.d.edi], edi)\
+    _ASM_END \
 } while(0)
 
 //INTn < 256 (hi byte 0): interrupt(cs:ip) with iret, push flags.
 static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL directcall)
 {
    _ASM_BEGIN
-		_ASM(pushf)
-		_ASM(pushad)
-		_ASM(push es) _ASM(push fs) _ASM(push gs)
+        _ASM(pushf)
+        _ASM(pushad)
+        _ASM(push es) _ASM(push fs) _ASM(push gs)
 
-		_ASM(push ds)
-		_ASM2(mov bx, reg) //bp[xxx]
-		_ASM(push ebx)    //save DPMI_REG ptr
-		_ASM2(mov ax, INTn)
-		_ASM2(test ah, ah)
-		_ASM(jnz skip_flags)
-		_ASM(push word ptr [bx.w.flags])
-		_ASM2(and word ptr [bx.w.flags], 0xFCFF) //clear IF TF (by Intel INTn instruction reference).(AC in hiword)
-	_ASMLBL(skip_flags:)
-		_ASM(push cs)
-		_ASM2(mov ax, offset callreturn)
-		_ASM2(mov cx, directcall)
-		_ASM2(test cx, cx)
-		_ASM(jnz skip_offset_adjst)
-		_ASM2(sub ax, offset DPMI_RMCBTranslation)
-		_ASM2(add ax, ds:[.Translation]);
-	_ASMLBL(skip_offset_adjst:)
-		_ASM(push ax)
-		_ASM(push word ptr [bx.w.cs])
-		_ASM(push word ptr [bx.w.ip])
-	_ASM_END
+        _ASM(push ds)
+        _ASM2(mov bx, reg) //bp[xxx]
+        _ASM(push ebx)    //save DPMI_REG ptr
+        _ASM2(mov ax, INTn)
+        _ASM2(test ah, ah)
+        _ASM(jnz skip_flags)
+        _ASM(push word ptr [bx.w.flags])
+        _ASM2(and word ptr [bx.w.flags], 0xFCFF) //clear IF TF (by Intel INTn instruction reference).(AC in hiword)
+    _ASMLBL(skip_flags:)
+        _ASM(push cs)
+        _ASM2(mov ax, offset callreturn)
+        _ASM2(mov cx, directcall)
+        _ASM2(test cx, cx)
+        _ASM(jnz skip_offset_adjst)
+        _ASM2(sub ax, offset DPMI_RMCBTranslation)
+        _ASM2(add ax, ds:[.Translation]);
+    _ASMLBL(skip_offset_adjst:)
+        _ASM(push ax)
+        _ASM(push word ptr [bx.w.cs])
+        _ASM(push word ptr [bx.w.ip])
+    _ASM_END
 
-	DPMI_LoadRealModeRegsPtr();//DS:BX
+    DPMI_LoadRealModeRegsPtr();//DS:BX
 
-	_ASM_BEGIN
-		_ASM(retf)
-	_ASMLBL(callreturn:)
-		//load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
-		_ASM(push ds)
-		_ASM(push ax)
-		_ASM(push bp)
-		_ASM2(mov bp, sp)
-		_ASM2(xchg dword ptr ss:[bp+6], ebx);
-		_ASM2(mov ax, ss:[bp+10]);
-		_ASM2(xchg ss:[bp+4], ax); //change ds back
-		_ASM2(mov ss:[bp+10], ax);
-		_ASM(pop bp)
-		_ASM(pop ax)
-		_ASM(pop ds) //ds changed
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(retf)
+    _ASMLBL(callreturn:)
+        //load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
+        _ASM(push ds)
+        _ASM(push ax)
+        _ASM(push bp)
+        _ASM2(mov bp, sp)
+        _ASM2(xchg dword ptr ss:[bp+6], ebx);
+        _ASM2(mov ax, ss:[bp+10]);
+        _ASM2(xchg ss:[bp+4], ax); //change ds back
+        _ASM2(mov ss:[bp+10], ax);
+        _ASM(pop bp)
+        _ASM(pop ax)
+        _ASM(pop ds) //ds changed
+    _ASM_END
 
-	DPMI_StoreRealModeRegsPtr();//DS:BX
+    DPMI_StoreRealModeRegsPtr();//DS:BX
 
-	_ASM_BEGIN
-		_ASM(pop eax) //new ebx
-		_ASM2(mov dword ptr ds:[bx.d.ebx], eax);
-		_ASM(pop ax) //new ds
-		_ASM2(mov word ptr ds:[bx.w.ds], ax);
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(pop eax) //new ebx
+        _ASM2(mov dword ptr ds:[bx.d.ebx], eax);
+        _ASM(pop ax) //new ds
+        _ASM2(mov word ptr ds:[bx.w.ds], ax);
+    _ASM_END
 
-	_ASM_BEGIN
-		_ASM(pop gs) _ASM(pop fs) _ASM(pop es)
-		_ASM(popad)
-		_ASM(popf)
-	_ASM_END
+    _ASM_BEGIN
+        _ASM(pop gs) _ASM(pop fs) _ASM(pop es)
+        _ASM(popad)
+        _ASM(popf)
+    _ASM_END
 }
 #pragma option -k-
 static void DPMI_RMCBTranslationEnd() {}
@@ -1021,75 +1021,75 @@ static void DPMI_SetupRMCB()
     memset(buff, 0, sizeof(buff));
     DPMI_RMCB rmcb;
     memset(&rmcb, 0, sizeof(rmcb));
-	rmcb.RMCB_Gdtr = DPMI_Temp->gdtr;
-	rmcb.RMCB_Idtr = DPMI_Temp->idtr;
-	rmcb.LinearDS = DPMI_Temp->LinearDS;
-	rmcb.RMCB_VCPIInterface = DPMI_Temp->VCPIInterface;
-	rmcb.RMCB_VCPIInterfaceCS = DPMI_Temp->VCPIInterfaceCS;
-	rmcb.CR3 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)); //in case DPMI_Temp->PageDir is in UMB (already mapped). CR3 need physical addr.
-	rmcb.NeedRemapPIC = DPMI_Temp->NeedRemapPIC;
-	rmcb.RealModeIRQ0Vec = DPMI_Temp->RealModeIRQ0Vec;
-	rmcb.ProtectedModeIRQ0Vec = DPMI_Temp->ProtectedModeIRQ0Vec;
-	rmcb.RealModeIRQ8Vec = DPMI_Temp->RealModeIRQ8Vec;
-	rmcb.ProtectedModeIRQ8Vec = DPMI_Temp->ProtectedModeIRQ8Vec;
+    rmcb.RMCB_Gdtr = DPMI_Temp->gdtr;
+    rmcb.RMCB_Idtr = DPMI_Temp->idtr;
+    rmcb.LinearDS = DPMI_Temp->LinearDS;
+    rmcb.RMCB_VCPIInterface = DPMI_Temp->VCPIInterface;
+    rmcb.RMCB_VCPIInterfaceCS = DPMI_Temp->VCPIInterfaceCS;
+    rmcb.CR3 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)); //in case DPMI_Temp->PageDir is in UMB (already mapped). CR3 need physical addr.
+    rmcb.NeedRemapPIC = DPMI_Temp->NeedRemapPIC;
+    rmcb.RealModeIRQ0Vec = DPMI_Temp->RealModeIRQ0Vec;
+    rmcb.ProtectedModeIRQ0Vec = DPMI_Temp->ProtectedModeIRQ0Vec;
+    rmcb.RealModeIRQ8Vec = DPMI_Temp->RealModeIRQ8Vec;
+    rmcb.ProtectedModeIRQ8Vec = DPMI_Temp->ProtectedModeIRQ8Vec;
 
-	uint16_t offset = 0;
-	offset += sizeof(rmcb);
+    uint16_t offset = 0;
+    offset += sizeof(rmcb);
 
-	rmcb.CommonEntry = (DPMI_RMCB_ENTRY)offset;
-	void* Code = (void*)&DPMI_RMCBCommonEntry;
-	void* CodeEnd = (void*)&DPMI_RMCBCommonEntryEnd;
-	uint16_t CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
-	memcpy_c2d(buff + offset, &DPMI_RMCBCommonEntry, CodeSize);
-	offset += CodeSize;
+    rmcb.CommonEntry = (DPMI_RMCB_ENTRY)offset;
+    void* Code = (void*)&DPMI_RMCBCommonEntry;
+    void* CodeEnd = (void*)&DPMI_RMCBCommonEntryEnd;
+    uint16_t CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
+    memcpy_c2d(buff + offset, &DPMI_RMCBCommonEntry, CodeSize);
+    offset += CodeSize;
 
-	rmcb.SwitchPM = offset;
-	Code = (void*)(DPMI_V86 ? &DPMI_VCPIProtectedMode : &DPMI_DirectProtectedMode);
-	CodeEnd = (void*)(DPMI_V86 ? &DPMI_VCPIProtectedModeEnd : &DPMI_DirectProtectedModeEnd);
-	CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
-	memcpy_c2d(buff + offset, Code, CodeSize);
-	offset += CodeSize;
+    rmcb.SwitchPM = offset;
+    Code = (void*)(DPMI_V86 ? &DPMI_VCPIProtectedMode : &DPMI_DirectProtectedMode);
+    CodeEnd = (void*)(DPMI_V86 ? &DPMI_VCPIProtectedModeEnd : &DPMI_DirectProtectedModeEnd);
+    CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
+    memcpy_c2d(buff + offset, Code, CodeSize);
+    offset += CodeSize;
 
-	rmcb.SwitchRM = offset;
-	Code = (void*)(DPMI_V86 ? &DPMI_VCPIRealMode : &DPMI_DirectRealMode);
-	CodeEnd = (void*)(DPMI_V86 ? &DPMI_VCPIRealModeEnd : &DPMI_DirectRealModeEnd);
-	CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
-	memcpy_c2d(buff + offset, Code, CodeSize);
-	offset += CodeSize;
+    rmcb.SwitchRM = offset;
+    Code = (void*)(DPMI_V86 ? &DPMI_VCPIRealMode : &DPMI_DirectRealMode);
+    CodeEnd = (void*)(DPMI_V86 ? &DPMI_VCPIRealModeEnd : &DPMI_DirectRealModeEnd);
+    CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
+    memcpy_c2d(buff + offset, Code, CodeSize);
+    offset += CodeSize;
 
-	rmcb.Translation = offset;
-	Code = (void*)&DPMI_RMCBTranslation;
-	CodeEnd = (void*)&DPMI_RMCBTranslationEnd;
-	CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
-	memcpy_c2d(buff + offset, Code, CodeSize);
-	offset += CodeSize;
+    rmcb.Translation = offset;
+    Code = (void*)&DPMI_RMCBTranslation;
+    CodeEnd = (void*)&DPMI_RMCBTranslationEnd;
+    CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
+    memcpy_c2d(buff + offset, Code, CodeSize);
+    offset += CodeSize;
 
-	_LOG("%d %d %d\n", offset, DPMI_RMCB_STACK_SIZE, DPMI_RMCB_SIZE);
-	assert(offset + sizeof(sizeof(DPMI_REG))*2 + DPMI_RMCB_TRASNLATION_STACK_SIZE*2 + DPMI_RMCB_STACK_SIZE < DPMI_RMCB_SIZE);
-	for(int i = 0; i < DPMI_RMCB_COUNT; ++i)
-	{
-		Code = (void*)&DPMI_RMCBEntryIRET;
-		CodeEnd = (void*)&DPMI_RMCBEntryIRETEnd;
-		CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
-		//_LOG("%d\n", CodeSize);
-		assert(CodeSize <= DPMI_RMCB_ENTRYCODE_SIZE);
-		memcpy_c2d(rmcb.Table[i].Code, Code, CodeSize);
-		rmcb.Table[i].Code[CodeSize-1] = 0xCF; //patch IRET (opcode=0xCF)
-	}
-	memcpy(buff, &rmcb, sizeof(rmcb));
+    _LOG("%d %d %d\n", offset, DPMI_RMCB_STACK_SIZE, DPMI_RMCB_SIZE);
+    assert(offset + sizeof(sizeof(DPMI_REG))*2 + DPMI_RMCB_TRASNLATION_STACK_SIZE*2 + DPMI_RMCB_STACK_SIZE < DPMI_RMCB_SIZE);
+    for(int i = 0; i < DPMI_RMCB_COUNT; ++i)
+    {
+        Code = (void*)&DPMI_RMCBEntryIRET;
+        CodeEnd = (void*)&DPMI_RMCBEntryIRETEnd;
+        CodeSize = (uintptr_t)CodeEnd - (uintptr_t)Code;
+        //_LOG("%d\n", CodeSize);
+        assert(CodeSize <= DPMI_RMCB_ENTRYCODE_SIZE);
+        memcpy_c2d(rmcb.Table[i].Code, Code, CodeSize);
+        rmcb.Table[i].Code[CodeSize-1] = 0xCF; //patch IRET (opcode=0xCF)
+    }
+    memcpy(buff, &rmcb, sizeof(rmcb));
 
-	uint16_t segment = DPMI_Temp->RMCBLAddr>>4;
-	DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(segment, 0);
-	_fmemcpy(DPMI_Rmcb, buff, DPMI_RMCB_SIZE);
-	DPMI_Rmcb->RMSegment = segment;
-	DPMI_Rmcb->Size = offset;
-	DPMI_Rmcb->TranslationSP = DPMI_RMCB_SIZE;
-	DPMI_Rmcb->RM_SP = offset + DPMI_RMCB_STACK_SIZE;
+    uint16_t segment = DPMI_Temp->RMCBLAddr>>4;
+    DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(segment, 0);
+    _fmemcpy(DPMI_Rmcb, buff, DPMI_RMCB_SIZE);
+    DPMI_Rmcb->RMSegment = segment;
+    DPMI_Rmcb->Size = offset;
+    DPMI_Rmcb->TranslationSP = DPMI_RMCB_SIZE;
+    DPMI_Rmcb->RM_SP = offset + DPMI_RMCB_STACK_SIZE;
 
-	//_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
-	_LOG("CR3: %08lx\n", DPMI_Rmcb->CR3);
-	_LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Gdtr), DPMI_Rmcb->RMCB_Gdtr.size, DPMI_Rmcb->RMCB_Gdtr.offset);
-	_LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Idtr), DPMI_Rmcb->RMCB_Idtr.size, DPMI_Rmcb->RMCB_Idtr.offset);
+    //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
+    _LOG("CR3: %08lx\n", DPMI_Rmcb->CR3);
+    _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Gdtr), DPMI_Rmcb->RMCB_Gdtr.size, DPMI_Rmcb->RMCB_Gdtr.offset);
+    _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Idtr), DPMI_Rmcb->RMCB_Idtr.size, DPMI_Rmcb->RMCB_Idtr.offset);
 }
 
 static int DPMI_FindEmptyRMCBTableEntry()

@@ -11,7 +11,7 @@ static const char log_tag[] = "retrowave platform dos_cdc";
 
 static void io_finish_callback(HCD_Request* pRequest)
 {
-	retrowave_flush((RetroWaveContext*)pRequest->pCBData); //continue if new data exists
+    retrowave_flush((RetroWaveContext*)pRequest->pCBData); //continue if new data exists
     //_LOG("io finish: %02x, %d, %d\n", pRequest->error, pRequest->size, pRequest->transferred);
     //assert(pRequest->size == pRequest->transferred);
 }
@@ -85,16 +85,16 @@ int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
         return -1;
     }
 
-	retrowave_init(ctx);
-	#if 0
-	USB_CDC_LINE_CODING lc = {115200, USB_CDC_LINE_CODING_1STOPBIT, USB_CDC_PARITY_NONE, 8};
-	if(USB_CDC_SetLineCoding((USB_Device*)device, &lc) != 0)
-	{
-		puts("Error: Failed set line coding.\n");
-		return -1;
-	}
-	#endif
-	ctx->user_data = malloc(sizeof(RetroWavePlatform_DOS_CDC));
+    retrowave_init(ctx);
+    #if 0
+    USB_CDC_LINE_CODING lc = {115200, USB_CDC_LINE_CODING_1STOPBIT, USB_CDC_PARITY_NONE, 8};
+    if(USB_CDC_SetLineCoding((USB_Device*)device, &lc) != 0)
+    {
+        puts("Error: Failed set line coding.\n");
+        return -1;
+    }
+    #endif
+    ctx->user_data = malloc(sizeof(RetroWavePlatform_DOS_CDC));
     RetroWavePlatform_DOS_CDC *pctx = (RetroWavePlatform_DOS_CDC *)ctx->user_data;
     pctx->device = device;
     pctx->ctx = ctx;
