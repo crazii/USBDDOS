@@ -416,7 +416,8 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
     if(!DPMI_V86)
         return physicaladdr;
 
-	assert(physicaladdr >= 1024L*1024L);
+	_LOG("DPMI_MapMemory: %lx,%lx\n", physicaladdr,size);
+	assert(physicaladdr >= 640L*1024L); //some OHCI controller has a BAR below 1M
     uint32_t pdi = physicaladdr >> 22L;
     uint32_t pdi2 = (physicaladdr+size) >> 22L;
 
@@ -433,7 +434,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
         pagecount -= 1024;
         pagestart = 0;
         assert(i < 1024);
-        assert(i != 0 || start >= PageTable0Offset); //make sure not overwriting VCPI entry
+		//assert(i != 0 || start >= PageTable0Offset); //make sure not overwriting VCPI entry
         //_LOG("mmap pt:%04ld, entry: %04ld-%04ld, addr: %08lx-%08lx\n", i, start, end-1, addr+(start<<12), addr+((end-1)<<12)+0xFFF);
 
         PDE pde = DPMI_PM ? DPMI_LoadPDE(DPMI_Rmcb->CR3, i) : DPMI_Temp->PageDir[i];
@@ -683,6 +684,7 @@ int _Cdecl _FARFUNC puts(const char* str)
 		}
 		++str;
 	}
+	return 0;
 }
 
 int _Cdecl _FARFUNC printf(const char* fmt, ...)

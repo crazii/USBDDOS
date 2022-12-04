@@ -631,7 +631,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
 	//first try may fail because incorrect max packet size
 	USB_DeviceDesc* pDesc = (USB_DeviceDesc*)Buffer;
 	pDevice->Desc.bMaxPacketSize = pDesc->bMaxPacketSize ? pDesc->bMaxPacketSize : pDevice->Desc.bMaxPacketSize;
-	//_LOG("packet size: %d\n", pDesc->bMaxPacketSize);
+	_LOG("USB: ep0 max packet size: %d\n", pDesc->bMaxPacketSize);
 
 	pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
 	pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0);//update EP0 maxpacket

@@ -227,7 +227,7 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
         //printf("Error transfer endpoint: %08p, pointer:%08p, type:%d\n", pEndpoint, pED ? pED : 0, pED ? pED->ControlBits.TransferType : -1);
         return 0xFF;
     }
-    CLIS(); //OHCI interrupt handler may call transfer function, make sure no mess up of pTail & TailP
+    CLIS(); //interrupt handler may call transfer function, make sure no mess up of pTail & TailP
     
     //OHCI_HCData* pHCDData = (OHCI_HCData*)pDevice->pHCI->pHCDData;
     //OHCI_HCDeviceData* pDD = (OHCI_HCDeviceData*)pDevice->pHCData;
@@ -244,21 +244,26 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     OHCI_BuildTD(pStatus, (uint8_t)PIDINVERT(pid), 0, OHCI_CW_DATATOGGLE_DATA1, 0, 0, pEmptyTail); //interrupt and writeback done head without frame delay
     pStatus->pRequest = pRequest;
     // DATA TD
-    OHCI_TD* pData = (OHCI_TD*)USB_TAlloc32(sizeof(OHCI_TD));
-    OHCI_BuildTD(pData, pid, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA1, pSetupData ? DPMI_PTR2P(pSetupData) : 0, length, pStatus);
-    pData->pRequest = pRequest;
+    OHCI_TD* pData = NULL;
+    if(length > 0) //empty data packet won't work on real hardware
+    {
+        pData = (OHCI_TD*)USB_TAlloc32(sizeof(OHCI_TD));
+        OHCI_BuildTD(pData, pid, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA1, pSetupData ? DPMI_PTR2P(pSetupData) : 0, length, pStatus);
+        pData->pRequest = pRequest;
+    }
     // SETUP TD
     OHCI_TD* pSetup = pED->pTail;
-    OHCI_BuildTD(pSetup, PIDSETUP, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA0, DPMI_PTR2P(setup8), 8, pData);
+    OHCI_BuildTD(pSetup, PIDSETUP, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA0, DPMI_PTR2P(setup8), 8, length > 0 ? pData : pStatus);
     pSetup->pRequest = pRequest;
 	// check status
     assert(pED->TailP == pED->HeadP && pED->TailP == DPMI_PTR2P(pSetup)); // empty ED. (tailp==headp)
-    assert(pSetup->NextTD == DPMI_PTR2P(pData) && pData->NextTD == DPMI_PTR2P(pStatus) && pStatus->NextTD == DPMI_PTR2P(pEmptyTail));
+    if(length > 0) assert(pSetup->NextTD == DPMI_PTR2P(pData) && pData->NextTD == DPMI_PTR2P(pStatus) && pStatus->NextTD == DPMI_PTR2P(pEmptyTail));
     // start transfer
     pED->pTail = pEmptyTail;
     pED->TailP = DPMI_PTR2P(pEmptyTail);
     STIL();
 #if DEBUG && 0
+{
     CLIS();
     DPMI_StoreD(dwIOBase + HcInterruptDisable, MasterInterruptEnable);
     DBG_DBuff db = {1};
@@ -267,10 +272,9 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pSetup)); DBG_DumpPD(DPMI_PTR2P(pSetup), 4, &db);
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, &db);
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pStatus)); DBG_DumpPD(DPMI_PTR2P(pStatus), 4, &db);
-#endif
+
     DPMI_MaskD(dwIOBase + HcCommandStatus, ~0UL, ControlListFilled);
     
-#if DEBUG && 0
     // wait to complete.
     uint32_t i;
     for (i = 0; i < TIME_OUT; ++i)
@@ -296,7 +300,9 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 	STIL();
 	DPMI_StoreD(dwIOBase + HcInterruptEnable, MasterInterruptEnable);
 	return errorCode;
+}
 #endif
+    DPMI_MaskD(dwIOBase + HcCommandStatus, ~0UL, ControlListFilled);
 	return 0;
 }
 
@@ -479,20 +485,25 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         DPMI_StoreD(dwPortAddr, PortResetStatusChange); // clear PortResetStatusChange (write 1 to clear)
         DPMI_StoreD(dwPortAddr, SetPortReset);
         int timeout = 0;
-        while(!(DPMI_LoadD(dwPortAddr) & PortResetStatusChange) && timeout++ <= 500) // 5 sec time out (Microsoft impl)
-            delay(10);                                                                // spec required
+        do
+        {
+            delay(10); // spec required
+        } while(!(DPMI_LoadD(dwPortAddr) & PortResetStatusChange) && timeout++ <= 500); // 5 sec time out (Microsoft impl)
         if(timeout > 500)
             return FALSE;
         DPMI_StoreD(dwPortAddr, PortResetStatusChange);
-        //_LOG("port reset done.\n");
+        cur &= ~PortEnableStatus;
+        _LOG("OHCI port reset done.\n");
     }
 
     if((status & USB_PORT_ENABLE) && !(cur & PortEnableStatus))
     {
         DPMI_StoreD(dwPortAddr, SetPortEnable);
-        while(!(DPMI_LoadD(dwPortAddr) & PortEnableStatus))
+        do
+        {
             delay(10);
-        //_LOG("port endable done.\n");
+        } while(!(DPMI_LoadD(dwPortAddr) & PortEnableStatus));
+        _LOG("OHCI port endable done.\n");
     }
 
     if((status & USB_PORT_DISABLE) && (cur & PortEnableStatus))

@@ -5,7 +5,9 @@
 #include "USBDDOS/USB.H"
 #include "USBDDOS/DBGUTIL.H"
 
+#if _LOG_ENABLE || defined(__BC__)
 static const char log_tag[] = "retrowave platform dos_cdc";
+#endif
 
 static void io_finish_callback(HCD_Request* pRequest)
 {

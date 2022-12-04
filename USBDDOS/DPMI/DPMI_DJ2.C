@@ -208,6 +208,7 @@ static void DPMI_Shutdown(void)
     #if NEW_IMPL
     _LOG("Cleanup TSR...\n");
     uint32_t size = mspace_mallinfo(XMS_Space).uordblks;
+    unused(size); //make compiler happy. log not always enabled.
     #if DEBUG
     size = XMS_Allocated;
     #endif
@@ -406,11 +407,11 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
      go32pa.pm_offset = handle->offset;
      int result = _go32_dpmi_set_protected_mode_interrupt_vector(handle->n, &go32pa);
 
-    /* don't need restore real mode. dpmi server will do it.
+    //don't need restore real mode. dpmi server will do it.
     __dpmi_raddr ra;
     ra.segment = handle->rm_cs;
     ra.offset16 = handle->rm_offset;
-    result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;*/
+    result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;
 
     go32pa.pm_offset = handle->extra;
     return (uint16_t)(_go32_dpmi_free_iret_wrapper(&go32pa) | result);
