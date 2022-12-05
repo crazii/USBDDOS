@@ -178,17 +178,11 @@ _ASMLBL(found_entry:)
     _ASM(pop word ptr ds:[18])
     _ASM2(mov dword ptr ds:[20], esp)
 
-    #if defined(__DJ2__)
-    _ASM(sgdt ds:[2])
-    _ASM(sidt ds:[10])
-    _ASM(lidt ds:[26]) //disable interrupt
-    _ASM(lgdt ds:[34])
-    #else
-    _ASM(sgdt fword ptr ds:[2])
-    _ASM(sidt fword ptr ds:[10])
-    _ASM(lidt fword ptr ds:[26])
-    _ASM(lgdt fword ptr ds:[34])
-    #endif
+    _ASM_SGDT(ds:[2])
+    _ASM_SIDT(ds:[10])
+    _ASM_LIDT(ds:[26])
+    _ASM_LGDT(ds:[34])
+
     _ASM2(mov bx, 0x20) //current ds
     _ASM2(mov ds, bx)
 
@@ -207,18 +201,10 @@ _ASMLBL(found_entry:)
     _ASM(push ebx) //cr3
     _ASM2(xor ebp, ebp)
 
-    _ASM(push word ptr 0x18) //current cs. if we don't set it, far call return will get invalid selector(in old gdt)
-    _ASM2(mov bx, offset load_cs)
-    _ASM(call translate_label)
-    _ASM(push bx)
-    _ASM(retf)
-    _ASMLBL(load_cs:)
-
     /**handler code**/
-_ASMLBL(handler:)
 
 #if !defined(__BC__)
-    _ASM2(mov ebx, cs)   //setup return addr
+    _ASM2(mov ebx, 0x18)   //setup return addr. 0x18=current cs
     _ASM(push ebx)  //segment hiword ignored by cpu
     _ASM2(mov ebx, offset callret)
     _ASM(call translate_label)
@@ -234,13 +220,13 @@ _ASMLBL(handler:)
     //Intel 64 and IA-32 Architectures Software Developer's Manuals Vol. 2A 3-583
     _ASM_OPERAND_SIZE _ASM(retf) //opsize toggle. ret to 32 bit stack frame (as we pushed)
 #else
-    _ASM(push cs)  //segment hiword ignored by cpu
+    _ASM(push 0x18)  //segment hiword ignored by cpu
     _ASM2(mov bx, offset callret)
     _ASM(call translate_label)
     _ASM(push bx)
 
     _ASM2(mov bx, word ptr ds:[di]) //target function
-    _ASM(push word ptr ds:[di+4])  //segment
+    _ASM(push word ptr ds:[di+4]) //segment
     _ASM(push word ptr ds:[44]) //wrapper function
 
     _ASM2(mov bp, 0x10)
@@ -259,11 +245,7 @@ _ASMLBL(cleanup:)
     _ASM2(mov cr3, ebx)
     _ASM(pop ebx) //restore paging setting
     _ASM2(mov cr0, ebx)
-    #if defined(__DJ2__)//restore gdt
-    _ASM(lgdt ds:[2])
-    #else
-    _ASM(lgdt fword ptr ds:[2])
-    #endif
+    _ASM_LGDT(ds:[2]) //restore gdt
 
     //old ss:esp
     _ASM2(mov bx, word ptr ds:[18])
@@ -277,11 +259,7 @@ _ASMLBL(cleanup:)
     _ASM(push bx)
     _ASM(retf)
     _ASMLBL(load_cs2:)
-    #if defined(__DJ2__)
-    _ASM(lidt ds:[10]) //restore idt & enable interrupt
-    #else
-    _ASM(lidt fword ptr ds:[10])
-    #endif
+    _ASM_LIDT(ds:[10]) //restore idt
 
     _ASM(clc)
     _ASM(jmp done)

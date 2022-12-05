@@ -46,6 +46,10 @@ typedef uint16_t uintptr_t;
 #define _ASM2(x,y) x,y;
 #define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
 #define _ASM_RETF _ASM(leave) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump
+#define _ASM_LIDT(x) _ASM(lidt fword ptr x)
+#define _ASM_LGDT(x) _ASM(lgdt fword ptr x)
+#define _ASM_SIDT(x) _ASM(sidt fword ptr x)
+#define _ASM_SGDT(x) _ASM(sgdt fword ptr x)
 
 #define _ASM_BEGIN16 _ASM_BEGIN
 #define _ASM_END16 _ASM_END
@@ -83,6 +87,10 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, ea
 #define _ASM2 _ASM
 #define _ASM_OPERAND_SIZE _ASM(.byte 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
 #define _ASM_RETF _ASM(retf)
+#define _ASM_LIDT(x) _ASM(lidt x)
+#define _ASM_LGDT(x) _ASM(lgdt x)
+#define _ASM_SIDT(x) _ASM(sidt x)
+#define _ASM_SGDT(x) _ASM(sgdt x)
 
 #define _ASM_BEGIN16 _ASM_BEGIN ".code16\n\t" 
 #define _ASM_END16 ".code32\n\t" _ASM_END
@@ -114,6 +122,10 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define _ASM2 _ASM
 #define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
 #define _ASM_RETF _ASM(retf)
+#define _ASM_LIDT(x) _ASM(lidt fword ptr x)
+#define _ASM_LGDT(x) _ASM(lgdt fword ptr x)
+#define _ASM_SIDT(x) _ASM(sidt fword ptr x)
+#define _ASM_SGDT(x) _ASM(sgdt fword ptr x)
 
 //wc inline asm doesn't support use16 codes, except .286 but that will disble 32bit registers too
 #define _ASM_BEGIN16 _ASM_BEGIN //not supported. TODO:
@@ -155,6 +167,10 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define _ASM_END32 _ASM_END
 #define _ASM_OPERAND_SIZE
 #define _ASM_RETF
+#define _ASM_LIDT(x) 
+#define _ASM_LGDT(x) 
+#define _ASM_SIDT(x) 
+#define _ASM_SGDT(x) 
 
 //not defined
 extern void NOP();
