@@ -24,8 +24,8 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
 #elif defined(__DJ2__)
 
 #define UNMAP_ADDR(addr) ((DPMI_Addressing.physical) ? DPMI_L2P(addr) : addr) //must be called before ds change
-#define LOAD_DS() _ASM_BEGIN _ASM(push es) _ASM(push ds) _ASM(pop es) _ASM(push dword ptr _DPMI_Addressing) _ASM(pop ds) _ASM_END
-#define RESTORE_DS() _ASM_BEGIN _ASM(push es) _ASM(pop ds) _ASM(pop es) _ASM_END
+#define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push dword ptr _DPMI_Addressing) _ASM(pop ds) _ASM_END
+#define RESTORE_DS() _ASM_BEGIN _ASM(pop ds) _ASM_END
 
 #elif defined(__BC__)
 
