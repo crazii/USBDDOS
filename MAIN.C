@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <dos.h>
@@ -7,6 +8,7 @@
 #include "RetroWav/Platform/DOS_CDC.h"
 #include "RetroWav/Board/OPL3.h"
 #include "EMM.h"
+#include "HDPMIPT.H"
 
 #define OPL_PRIMARY 0
 #define OPL_SECONDARY 1
@@ -153,6 +155,9 @@ static EMM_IODT MAIN_IODT[4] =
     0x38B, &MAIN_OPL_Secondary_Data,
 };
 static EMM_IOPT MAIN_IOPT;
+#if defined(__DJ2__)
+static EMM_IOPT MAIN_HDPMI_IOPT;
+#endif
 
 int main()
 {
@@ -172,16 +177,21 @@ int main()
     puts("Installing...\n");
     if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
     {
-        printf("IO trap installation failed.\n");
+        puts("IO trap installation failed.\n");
         return 1;
     }
+
+    #if defined(__DJ2__)
+    if(!HDPMIPT_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_HDPMI_IOPT))
+        puts("Protected mode IO trap installation failed.\n");
+    #endif
 
     #if MAIN_ENABLE_TIMER
     if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
     {
         BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
         assert(unstalled);
-        puts("Failed to insteall interrupt handler.\n");
+        puts("Failed to install interrupt handler 0x08.\n");
         return 1;
     }
     MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;

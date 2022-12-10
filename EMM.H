@@ -20,8 +20,8 @@ typedef struct EMM_IODispatchTable
 typedef struct EMM_IOPorTrap
 {
     uint32_t memory;
+    uint32_t handle;
     uint16_t func;
-    uint16_t handle;
 }EMM_IOPT;
 
 //get EMM version

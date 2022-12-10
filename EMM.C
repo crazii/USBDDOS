@@ -556,7 +556,7 @@ BOOL EMM_Uninstall_IOPortTrap(EMM_IOPT* inputp iopt)
     BOOL result = TRUE;
     DPMI_REG r = {0};
     r.w.bx = 1;
-    r.w.si = iopt->handle;
+    r.w.si = (uint16_t)iopt->handle;
     r.w.ds = (uint16_t)(iopt->memory&0xFFFFL);
     r.w.cs = r.w.ds;
     r.w.ip = iopt->func;
