@@ -43,3 +43,4 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * Heroes of Jinyong (Jinyong Qun Xia Zhuan), DOS4GW Miles Sound
 * Chinese Paladin (Xian Jian Qi Xia Zhuan)
 * Theme Hospital, Miles Sound
+* DOOM (DJGPP build only, need a modified HDPMI with port trapping feature, see https://github.com/crazii/HX)
