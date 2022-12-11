@@ -66,10 +66,10 @@ typedef struct//TSR/callback usage
 typedef struct//TSR/callback usage. state for linear DPMI_Load*/DPMI_Store*/DPMI_Mask*/DPMI_CopyLinear functions
 {
     uint16_t selector; //selector created from outside
-    uint16_t physical; //1: physical addr instead of virutal. used when not called through DPMI/DPMI context unavailable, and no paging
+    uint16_t physical; //1: physical addr instead of virutal. used when not called through DPMI/DPMI, and context unavailable, and no paging
 }DPMI_ADDRESSING;
 
-typedef struct //old interrupt handler info retuended by install isr. 
+typedef struct //old interrupt handler info returned by install isr. 
 {
     uint32_t extra;
     uint32_t offset;
@@ -87,9 +87,11 @@ extern "C"
 #if defined(__BC__)
 
 //convert a linear (virtual) addr to physical addr (current segment)
+//only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
 #define DPMI_L2P(addr) (addr)
 
 //convert a physical addr to linear addr (current segment)
+//only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
 #define DPMI_P2L(addr) (addr)
 
 //convert a DATA ptr to linear (page mapped) addr
@@ -103,9 +105,11 @@ void* DPMI_L2PTR(uint32_t addr);
 //note: DJGPP use paged flat mode linear address.
 
 //convert a linear (virtual) addr to physical addr
+//only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
 uint32_t DPMI_L2P(uint32_t vaddr);
 
 //convert a physical addr to linear addr
+//only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
 uint32_t DPMI_P2L(uint32_t paddr);
 
 //convert a ptr to linear (page mapped) addr
@@ -148,13 +152,14 @@ void* DPMI_L2PTR(uint32_t addr);
 #define DPMI_P2PTR(addr) DPMI_L2PTR(DPMI_P2L(addr))
 
 //return virtual mapped memory in linear space, usually for device IO
-//get the device IO memory in physical space and map it to the linear space to access it
+//get the device base address in physical space and map it to the linear space to access it
 //input physical addr must < 1M (0x100000)
 //http://www.delorie.com/djgpp/v2faq/faq18_7.html
 uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size);
 
+//the 'DMA' here doesn't involve DMA controller, but device directly accessing physical RAM, i.e. PCI bus master
 //memory allocated with this function is guaranteed to work with DPMI_L2P/DPMI_P2L
-//use this function if you want map between virtual addr and physical addr, meant for driver/device IO
+//use this function if you want map between virtual addr and physical addr, meant for driver/device MMIO
 //malloc is recommended for normal memory allocation.
 void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment);
 void DPMI_DMAFree(void* ptr);
@@ -238,10 +243,10 @@ void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size);
 //topdown allocation of DPMI_DOSMalloc, from high address (640K/1024K downwards).
 //input: size in paragraphs (16 bytes)
 //UMB: use UMB memory (640K~1024K), memory may not be 1:1 mapped.
+//output: segment address in low 16 bit.
 //note: only conventional 640K is 1:1 mapped.
 //UMB returned addr not essentially equals to physical addr
-//do not use UMB if physical addr is needed.
-//output: segment address
+//do not use UMB if physical addr (DPMI_L2P) is needed.
 uint32_t DPMI_HighMalloc(uint16_t size, BOOL UMB);
 void DPMI_HighFree(uint32_t segment);
 

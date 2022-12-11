@@ -166,7 +166,7 @@ BOOL HDPMIPT_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp i
         return FALSE;
     }
 
-    assert(!HDPMIPT_Iodt); //unique entry for now.
+    assert(!HDPMIPT_Iodt); //unique trap ports for now. TODO: use linked list to support multiple installlation calls
     HDPMIPT_Iodt = malloc(sizeof(EMM_IODT)*count);
     memcpy(HDPMIPT_Iodt, iodt, sizeof(EMM_IODT)*count);
     HDPMIPT_PortCount = count;
