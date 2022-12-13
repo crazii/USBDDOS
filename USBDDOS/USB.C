@@ -765,6 +765,7 @@ void USB_ISR(void)
     BOOL handled = FALSE;
     if(irq == 0xFF)
         return;
+    //_LOG("USB_ISR: irq: %d\n",irq);
 
     const uint8_t vec = PIC_IRQ2VEC(irq);
 
@@ -785,13 +786,12 @@ void USB_ISR(void)
     if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
     {
         PIC_SendEOI();
-        //_LOG("EOI");
+        //_LOG("USB_ISR: EOI\n");
         return;
     }
 
     //call old handler
     DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
-    //printf("%d",irq);
     assert(handle);
     DPMI_REG r = {0};
     r.w.cs = handle->rm_cs;

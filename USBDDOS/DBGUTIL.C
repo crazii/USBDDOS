@@ -16,6 +16,10 @@ void DBG_Logv(const char* fmt, va_list aptr)
     if(DBG_INT10) //prevent reentrance of BIOS call
         return;
     DBG_INT10 = TRUE;
+    //CLIS();
+    uint16_t irqm = PIC_GetIRQMask();
+    PIC_SetIRQMask(0xFFFF); //this is NOT good but hack off interrrupt will help debugging.
+                            //avoid reentrance of INT 10h call.
 
     char buf[DUMP_BUFF_SIZE];
     int len = vsprintf(buf, fmt, aptr);
@@ -32,7 +36,9 @@ void DBG_Logv(const char* fmt, va_list aptr)
             DPMI_CallRealModeINT(0x10,&r);
         }
     }
+    //STIL();
     DBG_INT10 = FALSE;
+    PIC_SetIRQMask(irqm);
 }
 
 void DBG_Log(const char* fmt, ...)
