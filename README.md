@@ -16,7 +16,7 @@ Borland C++3.1 (native DOS or emu):
 * The BC build uses a custom (pseudo) DPMI that limit memmory to: 64K code + 64K data.
 
 DJGPP (native DOS or emu, cross toolchain on linux not tested):
-* Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html
+* ~~Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html~~
 * `make -f rwddos.mak`. the makefile is generated from RHIDE so it make have problem on dependencies/clean.
 * Or use RHIDE to perform build.
 * The DJGPP build depends on a DPMI host, i.e. its CWSDPMI. but HDPMI is recommended.
@@ -44,3 +44,4 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * Chinese Paladin (Xian Jian Qi Xia Zhuan)
 * Theme Hospital, Miles Sound
 * DOOM (DJGPP build only, need a modified HDPMI with port trapping feature, see https://github.com/crazii/HX)
+* The Jungle Book
