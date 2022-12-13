@@ -27,7 +27,7 @@ vpath %.hd $(vpath_header)
 vpath_obj=./Output/
 vpath %.o $(vpath_obj)
 FLAGS_FOR_SUBPROJECTS=RHIDE_OS_="$(RHIDE_OS_)" CFLAGS="$(CFLAGS)"\
-    CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)"
+	CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)"
 RHIDE_OS=$(RHIDE_OS_)
 ifeq ($(strip $(RHIDE_OS)),)
 ifneq ($(strip $(DJDIR)),)
@@ -41,7 +41,9 @@ INCLUDE_DIRS=. ..
 LIB_DIRS=
 C_DEBUG_FLAGS=
 C_OPT_FLAGS=-Os
-C_WARN_FLAGS=
+C_WARN_FLAGS=-pedantic -pedantic-errors -Wreturn-type -Wunused\
+	-Wuninitialized -Wundef -Wcast-align -Wwrite-strings -Wconversion\
+	-Wsign-compare -Werror
 C_C_LANG_FLAGS=
 C_CXX_LANG_FLAGS=
 C_P_LANG_FLAGS=
@@ -50,20 +52,22 @@ C_F_LANG_FLAGS=
 C_ADA_LANG_FLAGS=
 LIBS= 
 LD_EXTRA_FLAGS=
-C_EXTRA_FLAGS=-fno-exceptions -march=i386 -DDEBUG=0 -D_LOG_ENABLE=0
+C_EXTRA_FLAGS=-Wstrict-aliasing -fno-exceptions -march=i386 -DDEBUG=0
 LOCAL_OPT=$(subst ___~~~___, ,$(subst $(notdir $<)___,,$(filter $(notdir\
-    $<)___%,$(LOCAL_OPTIONS))))
+	$<)___%,$(LOCAL_OPTIONS))))
 
 OBJFILES=Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
-    Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-    Output/main.o Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
-    Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
-    Output/usballoc.o Output/usbtable.o Output/xms.o
+	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
+	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
+	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
+	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
+	Output/xms.o
 ALL_OBJFILES=Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
-    Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-    Output/main.o Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
-    Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
-    Output/usballoc.o Output/usbtable.o Output/xms.o
+	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
+	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
+	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
+	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
+	Output/xms.o
 LIBRARIES=
 SOURCE_NAME=$<
 OUTFILE=$@
@@ -71,14 +75,14 @@ SPECIAL_CFLAGS=
 SPECIAL_LDFLAGS=
 PROG_ARGS=
 SRC_DIRS=../ ../usbddos ../usbddos/class ../usbddos/dpmi ../usbddos/hcd\
-    ../RetroWav ../RetroWav/Platform ../RetroWav/Protocol\
-    ../RetroWav/Board
+	../RetroWav ../RetroWav/Platform ../RetroWav/Protocol\
+	../RetroWav/Board
 WUC=
 EDITORS=
-MAIN_TARGET=rwddos.exe
-PROJECT_ITEMS=cdc.cpp dbgutil.cpp dos_cdc.cpp dpmi.c dpmi_dj2.c dpmi_tsr.c\
-    emm.cpp hcd.cpp main.cpp ohci.cpp OPL3.c pci.c pic.c RetroWav.c\
-    Serial.c uhci.cpp usb.cpp usballoc.c usbtable.cpp xms.c
+MAIN_TARGET=output/rwddospm.exe
+PROJECT_ITEMS=cdc.c dbgutil.c dos_cdc.c dpmi.c dpmi_dj2.c dpmi_tsr.c emm.c\
+	hcd.c hdpmipt.c main.c ohci.c OPL3.c pci.c pic.c RetroWav.c\
+	Serial.c uhci.c usb.c usballoc.c usbtable.c xms.c
 DEFAULT_MASK=*.[acfghimnops]*
 RHIDE_BIN_DIR=c:/djgpp/bin
 PASCAL_TYPE=GPC
@@ -97,15 +101,15 @@ RHIDE_COMPILE.F.o=$(RHIDE_COMPILE.f.o)
 RHIDE_COMPILE.adb.o=$(RHIDE_COMPILE_ADA)
 RHIDE_COMPILE.asm.o=$(RHIDE_COMPILE.nsm.o)
 RHIDE_COMPILE.c.i=$(subst -c $(SOURCE_NAME),-E\
-    $(SOURCE_NAME),$(RHIDE_COMPILE_C))
+	$(SOURCE_NAME),$(RHIDE_COMPILE_C))
 RHIDE_COMPILE.c.o=$(RHIDE_COMPILE_C)
 RHIDE_COMPILE.c.s=$(subst -c $(SOURCE_NAME),-S\
-    $(SOURCE_NAME),$(RHIDE_COMPILE_C))
+	$(SOURCE_NAME),$(RHIDE_COMPILE_C))
 RHIDE_COMPILE.cc.ii=$(subst -c $(SOURCE_NAME),-E\
-    $(SOURCE_NAME),$(RHIDE_COMPILE_CC))
+	$(SOURCE_NAME),$(RHIDE_COMPILE_CC))
 RHIDE_COMPILE.cc.o=$(RHIDE_COMPILE_CC)
 RHIDE_COMPILE.cc.s=$(subst -c $(SOURCE_NAME),-S\
-    $(SOURCE_NAME),$(RHIDE_COMPILE_CC))
+	$(SOURCE_NAME),$(RHIDE_COMPILE_CC))
 RHIDE_COMPILE.cpp.ii=$(RHIDE_COMPILE.cc.ii)
 RHIDE_COMPILE.cpp.o=$(RHIDE_COMPILE.cc.o)
 RHIDE_COMPILE.cpp.s=$(RHIDE_COMPILE.cc.s)
@@ -124,106 +128,106 @@ RHIDE_COMPILE.pas.o=$(RHIDE_COMPILE.p.o)
 RHIDE_COMPILE.pas.s=$(RHIDE_COMPILE.pas.s.$(PASCAL_TYPE))
 RHIDE_COMPILE.pas.s.FPC=$(RHIDE_COMPILE_FPC) -a -s
 RHIDE_COMPILE.pas.s.GPC=$(subst -c $(SOURCE_NAME),-S\
-    $(SOURCE_NAME),$(RHIDE_COMPILE_GPC))
+	$(SOURCE_NAME),$(RHIDE_COMPILE_GPC))
 RHIDE_COMPILE.pp.o=$(RHIDE_COMPILE_FPC)
 RHIDE_COMPILE.s.o=$(RHIDE_COMPILE_ASM)
 RHIDE_COMPILE_ADA=$(RHIDE_GCC) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
-    $(LOCAL_OPT)  $(C_ADA_LANG_FLAGS)  $(RHIDE_OS_CFLAGS) $(CPPFLAGS)\
-    $(CFLAGS) -c $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
+	$(LOCAL_OPT)  $(C_ADA_LANG_FLAGS)  $(RHIDE_OS_CFLAGS) $(CPPFLAGS)\
+	$(CFLAGS) -c $(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_ARCHIVE=$(RHIDE_AR) $(RHIDE_ARFLAGS) $(OUTFILE)\
-    $(ALL_OBJFILES)
+	$(ALL_OBJFILES)
 RHIDE_COMPILE_ASM=$(RHIDE_AS) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_EXTRA_FLAGS) $(LOCAL_OPT)  -c\
-    $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_EXTRA_FLAGS) $(LOCAL_OPT)  -c\
+	$(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_ASM_FORCE=$(RHIDE_AS) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_EXTRA_FLAGS) -x assembler\
-    $(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_EXTRA_FLAGS) -x assembler\
+	$(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_C=$(RHIDE_GCC) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
-    $(RHIDE_OS_CFLAGS)  $(CPPFLAGS) $(CFLAGS) $(LOCAL_OPT) -c\
-    $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
+	$(RHIDE_OS_CFLAGS)  $(CPPFLAGS) $(CFLAGS) $(LOCAL_OPT) -c\
+	$(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_CC=$(RHIDE_GXX) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS)\
-    $(C_CXX_LANG_FLAGS) $(C_EXTRA_FLAGS)  $(RHIDE_OS_CXXFLAGS)\
-    $(CPPFLAGS) $(CXXFLAGS) $(LOCAL_OPT)   -c $(SOURCE_NAME) -o\
-    $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS)\
+	$(C_CXX_LANG_FLAGS) $(C_EXTRA_FLAGS)  $(RHIDE_OS_CXXFLAGS)\
+	$(CPPFLAGS) $(CXXFLAGS) $(LOCAL_OPT)   -c $(SOURCE_NAME) -o\
+	$(OUTFILE)
 RHIDE_COMPILE_CC_FORCE=$(RHIDE_GXX) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS)\
-    $(C_CXX_LANG_FLAGS) $(C_EXTRA_FLAGS)  $(RHIDE_OS_CXXFLAGS)\
-    $(CPPFLAGS) $(CXXFLAGS) -x c++ $(LOCAL_OPT)   -c $(SOURCE_NAME) -o\
-    $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS)\
+	$(C_CXX_LANG_FLAGS) $(C_EXTRA_FLAGS)  $(RHIDE_OS_CXXFLAGS)\
+	$(CPPFLAGS) $(CXXFLAGS) -x c++ $(LOCAL_OPT)   -c $(SOURCE_NAME) -o\
+	$(OUTFILE)
 RHIDE_COMPILE_C_FORCE=$(RHIDE_GCC) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
-    -x c $(RHIDE_OS_CFLAGS)  $(CPPFLAGS) $(CFLAGS) $(LOCAL_OPT) -c\
-    $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_C_LANG_FLAGS) $(C_EXTRA_FLAGS)\
+	-x c $(RHIDE_OS_CFLAGS)  $(CPPFLAGS) $(CFLAGS) $(LOCAL_OPT) -c\
+	$(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_FORTRAN=$(RHIDE_G77) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_F_LANG_FLAGS) $(C_EXTRA_FLAGS)\
-    $(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_F_LANG_FLAGS) $(C_EXTRA_FLAGS)\
+	$(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_FORTRAN_FORCE=$(RHIDE_G77) $(RHIDE_INCLUDES) $(C_DEBUG_FLAGS)\
-    $(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_F_LANG_FLAGS) $(C_EXTRA_FLAGS)\
-    -x f77 $(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
+	$(C_OPT_FLAGS)  $(C_WARN_FLAGS) $(C_F_LANG_FLAGS) $(C_EXTRA_FLAGS)\
+	-x f77 $(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_FPC=$(RHIDE_FPC) $(RHIDE_FPC_FLAGS) -E- $(SOURCE_NAME)
 RHIDE_COMPILE_FPC_FORCE=$(RHIDE_FPC) $(RHIDE_FPC_FLAGS) -B -E-\
-    $(SOURCE_NAME)
+	$(SOURCE_NAME)
 RHIDE_COMPILE_GPC=$(RHIDE_GPC) $(RHIDE_GPC_FLAGS) $(LOCAL_OPT)  -c\
-    $(SOURCE_NAME) -o $(OUTFILE)
+	$(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_GPC_FORCE=$(RHIDE_GPC) $(RHIDE_GPC_FLAGS) -x pascal\
-    $(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
+	$(LOCAL_OPT)  -c $(SOURCE_NAME) -o $(OUTFILE)
 RHIDE_COMPILE_LINK=$(RHIDE_LD) $(RHIDE_LIBDIRS) $(C_EXTRA_FLAGS) -o\
-    $(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS)\
-    $(RHIDE_LIBS)
+	$(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS)\
+	$(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_ADA=gnatbl $(RHIDE_LIBDIRS) $(C_EXTRA_FLAGS) -o\
-    $(OUTFILE)  $(setsuffix .ali,$(OUTFILE)) $(LIBRARIES) $(LDFLAGS) \
-    $(RHIDE_LDFLAGS) $(RHIDE_LIBS)
+	$(OUTFILE)  $(setsuffix .ali,$(OUTFILE)) $(LIBRARIES) $(LDFLAGS) \
+	$(RHIDE_LDFLAGS) $(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_ADA_BIND=$(RHIDE_GNATBIND) -o $(RHIDE_ADA_BIND_FILE)\
-    $(setsuffix .ali,$(OUTFILE))
+	$(setsuffix .ali,$(OUTFILE))
 RHIDE_COMPILE_LINK_ADA_LINK=$(RHIDE_LD) $(RHIDE_LIBDIRS) $(C_EXTRA_FLAGS) -o\
-    $(OUTFILE)  $(RHIDE_ADA_BIND_FILE) $(OBJFILES) $(LIBRARIES)\
-    $(LDFLAGS)  $(RHIDE_LDFLAGS) $(RHIDE_LIBS)
+	$(OUTFILE)  $(RHIDE_ADA_BIND_FILE) $(OBJFILES) $(LIBRARIES)\
+	$(LDFLAGS)  $(RHIDE_LDFLAGS) $(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_DLL=$(RHIDE_LD) $(RHIDE_LIBDIRS) $(C_EXTRA_FLAGS) -o\
-    $(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS)  \
-    $(RHIDE_SHARED_LDFLAGS) $(RHIDE_LIBS)
+	$(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS)  \
+	$(RHIDE_SHARED_LDFLAGS) $(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_FPC=echo 'separate linking for FPK is not supported.\
-    Please define a main source file in Project/Primary file.' 1>&2
+	Please define a main source file in Project/Primary file.' 1>&2
 RHIDE_COMPILE_LINK_FPC_AUTOMAKE=$(RHIDE_FPC) -o$(OUTFILE) $(SOURCE_NAME)\
-    $(RHIDE_FPC_FLAGS) -E+
+	$(RHIDE_FPC_FLAGS) -E+
 RHIDE_COMPILE_LINK_GPC=$(RHIDE_LD_PASCAL) $(RHIDE_LIBDIRS) $(C_EXTRA_FLAGS)\
-    -o $(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(RHIDE_LDFLAGS) $(LDFLAGS)\
-    $(RHIDE_LIBS)
+	-o $(OUTFILE)  $(OBJFILES) $(LIBRARIES) $(RHIDE_LDFLAGS) $(LDFLAGS)\
+	$(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_GPC_AUTOMAKE=$(RHIDE_LD_PASCAL) $(RHIDE_LIBDIRS)  -o\
-    $(OUTFILE) --automake $(RHIDE_GPC_FLAGS)  $(SOURCE_NAME)\
-    $(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS) $(RHIDE_LIBS)
+	$(OUTFILE) --automake $(RHIDE_GPC_FLAGS)  $(SOURCE_NAME)\
+	$(LIBRARIES) $(LDFLAGS) $(RHIDE_LDFLAGS) $(RHIDE_LIBS)
 RHIDE_COMPILE_LINK_PASCAL=$(RHIDE_COMPILE_LINK_$(PASCAL_TYPE))
 RHIDE_COMPILE_LINK_PASCAL_AUTOMAKE=$(RHIDE_COMPILE_LINK_$(PASCAL_TYPE)_AUTOMAKE)
 RHIDE_COMPILE_NASM=$(RHIDE_NASM) -f $(RHIDE_NASM_TARGET) $(LOCAL_OPT) -o\
-    $(OUTFILE)  $(SOURCE_NAME)
+	$(OUTFILE)  $(SOURCE_NAME)
 RHIDE_COMPILE_PASCAL=$(RHIDE_COMPILE_$(PASCAL_TYPE))
 RHIDE_COMPILE_PASCAL_FORCE=$(RHIDE_COMPILE_$(PASCAL_TYPE)_FORCE)
 RHIDE_CONFIG_DIRS=. $(RHIDE_SHARE) $(GET_HOME)   $(RHIDE_CONFIG_DIRS_COMMON)\
-     $(addsuffix /SET,$(RHIDE_CONFIG_DIRS_COMMON))  $(SET_FILES)
+	 $(addsuffix /SET,$(RHIDE_CONFIG_DIRS_COMMON))  $(SET_FILES)
 RHIDE_CONFIG_DIRS_$(RHIDE_OS)=/usr/local/share/rhide /usr/share/rhide \
-    /local/share/rhide /share/rhide
+	/local/share/rhide /share/rhide
 RHIDE_CONFIG_DIRS_COMMON=$(RHIDE_CONFIG_DIRS_$(RHIDE_OS))\
-    $(RHIDE_BIN_DIR)/../share/rhide
+	$(RHIDE_BIN_DIR)/../share/rhide
 RHIDE_CONFIG_DIRS_DJGPP=$(DJDIR)/share/rhide
 RHIDE_CONFIG_DIRS_DJGPP=/usr/local/share/rhide /usr/share/rhide \
-    /local/share/rhide /share/rhide
+	/local/share/rhide /share/rhide
 RHIDE_EMPTY=
 RHIDE_FPC=ppc386
 RHIDE_FPC_FLAGS=$(C_FPC_LANG_FLAGS) $(LOCAL_OPT) $(addprefix\
-    -Up,$(INCLUDE_DIRS))  $(C_EXTRA_FLAGS)
+	-Up,$(INCLUDE_DIRS))  $(C_EXTRA_FLAGS)
 RHIDE_FPC_LIBDIRS=$(RHIDE_FPC_LIBDIRS_$(RHIDE_OS))
 RHIDE_FPC_LIBDIRS_$(RHIDE_OS)=/usr/local/lib /usr/lib /lib
 RHIDE_FPC_LIBDIRS_DJGPP=$(DJDIR)/lib
 RHIDE_FPC_LIBDIRS_DJGPP=/usr/local/lib /usr/lib /lib
 RHIDE_FPC_LINK_FLAGS=$(RHIDE_FPC_LINK_FLAGS_$(RHIDE_OS))
 RHIDE_FPC_LINK_FLAGS_$(RHIDE_OS)=$(RHIDE_LIBDIRS) $(addprefix\
-    -L,$(RHIDE_FPC_LIBDIRS))
+	-L,$(RHIDE_FPC_LIBDIRS))
 RHIDE_FPC_LINK_FLAGS_DJGPP=-O coff-go32-exe $(RHIDE_LIBDIRS) $(addprefix\
-    -L,$(RHIDE_FPC_LIBDIRS))
+	-L,$(RHIDE_FPC_LIBDIRS))
 RHIDE_FPC_LINK_FLAGS_DJGPP=$(RHIDE_LIBDIRS) $(addprefix\
-    -L,$(RHIDE_FPC_LIBDIRS))
+	-L,$(RHIDE_FPC_LIBDIRS))
 RHIDE_FSDB=fsdb $(OUTFILE) $(addprefix -p ,$(SRC_DIRS)) $(PROG_ARGS)
 RHIDE_G77=g77
 RHIDE_GCC=gcc
@@ -231,7 +235,7 @@ RHIDE_GDB=gdb $(OUTFILE) $(addprefix -d ,$(SRC_DIRS))
 RHIDE_GNATBIND=gnatbind
 RHIDE_GPC=gpc
 RHIDE_GPC_FLAGS=$(RHIDE_INCLUDES) $(C_DEBUG_FLAGS) $(C_OPT_FLAGS)\
-    $(C_WARN_FLAGS)  $(C_P_LANG_FLAGS) $(C_EXTRA_FLAGS)
+	$(C_WARN_FLAGS)  $(C_P_LANG_FLAGS) $(C_EXTRA_FLAGS)
 RHIDE_GPROF=gprof $(OUTFILE)
 RHIDE_GREP=grep -n $(prompt arguments for GREP,$(WUC) $(DEFAULT_GREP_MASK))
 RHIDE_GXX=$(RHIDE_GCC)
@@ -259,13 +263,13 @@ RHIDE_SHARED_LDFLAGS_Linux=-shared
 RHIDE_SPACE=$(RHIDE_EMPTY) $(RHIDE_EMPTY)
 RHIDE_STANDARD_INCLUDES=$(RHIDE_STANDARD_INCLUDES_$(RHIDE_OS))
 RHIDE_STANDARD_INCLUDES_$(RHIDE_OS)=$(addprefix /usr/,include include/sys\
-    include/g++ include/g++/std)
+	include/g++ include/g++/std)
 RHIDE_STANDARD_INCLUDES_DJGPP=$(addprefix $(DJDIR)/,include include/sys\
-    lang/cxx lang/cxx/std)
+	lang/cxx lang/cxx/std)
 RHIDE_STANDARD_INCLUDES_DJGPP=$(addprefix /usr/,include include/sys\
-    include/g++ include/g++/std)
+	include/g++ include/g++/std)
 RHIDE_TYPED_LIBS=$(foreach\
-    suff,$(RHIDE_TYPED_LIBS_SUFFIXES),$(RHIDE_TYPED_LIBS$(suff)))
+	suff,$(RHIDE_TYPED_LIBS_SUFFIXES),$(RHIDE_TYPED_LIBS$(suff)))
 RHIDE_TYPED_LIBS.C=$(RHIDE_TYPED_LIBS.cc)
 RHIDE_TYPED_LIBS.F=$(RHIDE_TYPED_LIBS.f)
 RHIDE_TYPED_LIBS.adb=gnat
@@ -291,154 +295,158 @@ RHIDE_TYPED_LIBS_DJGPP.cxx=stdcxx m
 RHIDE_TYPED_LIBS_FPC=fpc
 RHIDE_TYPED_LIBS_GPC=gpc m
 RHIDE_TYPED_LIBS_SUFFIXES=$(sort $(foreach item,$(PROJECT_ITEMS),$(suffix\
-    $(item))))
+	$(item))))
 _RHIDE_COMPILE_LINK_ADA=$(RHIDE_COMPILE_LINK_ADA_BIND);\
-    $(RHIDE_COMPILE_LINK_ADA_LINK);   $(RHIDE_RM)\
-    $(RHIDE_ADA_BIND_FILE)
+	$(RHIDE_COMPILE_LINK_ADA_LINK);   $(RHIDE_RM)\
+	$(RHIDE_ADA_BIND_FILE)
 %.o: %.c
-    $(RHIDE_COMPILE.c.o)
+	$(RHIDE_COMPILE.c.o)
 %.o: %.i
-    $(RHIDE_COMPILE_C)
+	$(RHIDE_COMPILE_C)
 %.o: %.cc
-    $(RHIDE_COMPILE.cc.o)
+	$(RHIDE_COMPILE.cc.o)
 %.o: %.cpp
-    $(RHIDE_COMPILE.cpp.o)
+	$(RHIDE_COMPILE.cpp.o)
 %.o: %.cxx
-    $(RHIDE_COMPILE.cxx.o)
+	$(RHIDE_COMPILE.cxx.o)
 %.o: %.C
-    $(RHIDE_COMPILE.C.o)
+	$(RHIDE_COMPILE.C.o)
 %.o: %.ii
-    $(RHIDE_COMPILE_CC)
+	$(RHIDE_COMPILE_CC)
 %.o: %.s
-    $(RHIDE_COMPILE.s.o)
+	$(RHIDE_COMPILE.s.o)
 %.o: %.S
-    $(RHIDE_COMPILE_ASM)
+	$(RHIDE_COMPILE_ASM)
 %.s: %.c
-    $(RHIDE_COMPILE.c.s)
+	$(RHIDE_COMPILE.c.s)
 %.s: %.i
-    $(RHIDE_COMPILE.i.s)
+	$(RHIDE_COMPILE.i.s)
 %.s: %.cc
-    $(RHIDE_COMPILE.cc.s)
+	$(RHIDE_COMPILE.cc.s)
 %.s: %.cpp
-    $(RHIDE_COMPILE.cpp.s)
+	$(RHIDE_COMPILE.cpp.s)
 %.s: %.cxx
-    $(RHIDE_COMPILE.cxx.s)
+	$(RHIDE_COMPILE.cxx.s)
 %.s: %.C
-    $(RHIDE_COMPILE.C.s)
+	$(RHIDE_COMPILE.C.s)
 %.o: %.pas
-    $(RHIDE_COMPILE.pas.o)
+	$(RHIDE_COMPILE.pas.o)
 %.o: %.p
-    $(RHIDE_COMPILE.p.o)
+	$(RHIDE_COMPILE.p.o)
 %.o: %.pp
-    $(RHIDE_COMPILE.pp.o)
+	$(RHIDE_COMPILE.pp.o)
 %.s: %.pas
-    $(RHIDE_COMPILE.pas.s)
+	$(RHIDE_COMPILE.pas.s)
 %.o: %.m
-    $(RHIDE_COMPILE_OBJC)
+	$(RHIDE_COMPILE_OBJC)
 %.o: %.f
-    $(RHIDE_COMPILE.f.o)
+	$(RHIDE_COMPILE.f.o)
 %.o: %.for
-    $(RHIDE_COMPILE.for.o)
+	$(RHIDE_COMPILE.for.o)
 %.o: %.F
-    $(RHIDE_COMPILE.F.o)
+	$(RHIDE_COMPILE.F.o)
 %.o: %.fpp
-    $(RHIDE_COMPILE.fpp.o)
+	$(RHIDE_COMPILE.fpp.o)
 %.o: %.asm
-    $(RHIDE_COMPILE.asm.o)
+	$(RHIDE_COMPILE.asm.o)
 %.o: %.nsm
-    $(RHIDE_COMPILE.nsm.o)
+	$(RHIDE_COMPILE.nsm.o)
 %.o: %.adb
-    $(RHIDE_COMPILE.adb.o)
+	$(RHIDE_COMPILE.adb.o)
 %.i: %.c
-    $(RHIDE_COMPILE.c.i)
+	$(RHIDE_COMPILE.c.i)
 %.s: %.c
-    $(RHIDE_COMPILE.c.s)
+	$(RHIDE_COMPILE.c.s)
 %.ii: %.cc
-    $(RHIDE_COMPILE.cc.ii)
+	$(RHIDE_COMPILE.cc.ii)
 %.s: %.cc
-    $(RHIDE_COMPILE.cc.s)
+	$(RHIDE_COMPILE.cc.s)
 %.ii: %.cpp
-    $(RHIDE_COMPILE.cpp.ii)
+	$(RHIDE_COMPILE.cpp.ii)
 %.s: %.cpp
-    $(RHIDE_COMPILE.cpp.s)
+	$(RHIDE_COMPILE.cpp.s)
 %.ii: %.cxx
-    $(RHIDE_COMPILE.cxx.ii)
+	$(RHIDE_COMPILE.cxx.ii)
 %.s: %.cxx
-    $(RHIDE_COMPILE.cxx.s)
+	$(RHIDE_COMPILE.cxx.s)
 %.ii: %.C
-    $(RHIDE_COMPILE.C.ii)
+	$(RHIDE_COMPILE.C.ii)
 %.s: %.C
-    $(RHIDE_COMPILE.C.s)
+	$(RHIDE_COMPILE.C.s)
 all::
 clean::
-    rm -f $(CLEAN_FILES)
+	rm -f $(CLEAN_FILES)
 DEPS_0= Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
-    Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-    Output/main.o Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
-    Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
-    Output/usballoc.o Output/usbtable.o Output/xms.o 
+	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
+	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
+	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
+	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
+	Output/xms.o 
 NO_LINK=
 LINK_FILES=$(filter-out $(NO_LINK),$(DEPS_0))
-rwddos.exe:: $(DEPS_0)
-    $(RHIDE_COMPILE_LINK)
-DEPS_1=cdc.cpp
-Make/Output/cdc.o:: $(DEPS_1)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_2=dbgutil.cpp
-Make/Output/dbgutil.o:: $(DEPS_2)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_3=dos_cdc.cpp
-Make/Output/dos_cdc.o:: $(DEPS_3)
-    $(RHIDE_COMPILE.cpp.o)
+output/rwddospm.exe:: $(DEPS_0)
+	$(RHIDE_COMPILE_LINK)
+DEPS_1=cdc.c
+make/Output/cdc.o:: $(DEPS_1)
+	$(RHIDE_COMPILE.c.o)
+DEPS_2=dbgutil.c
+make/Output/dbgutil.o:: $(DEPS_2)
+	$(RHIDE_COMPILE.c.o)
+DEPS_3=dos_cdc.c
+make/Output/dos_cdc.o:: $(DEPS_3)
+	$(RHIDE_COMPILE.c.o)
 DEPS_4=dpmi.c
-Make/Output/dpmi.o:: $(DEPS_4)
-    $(RHIDE_COMPILE.c.o)
+make/Output/dpmi.o:: $(DEPS_4)
+	$(RHIDE_COMPILE.c.o)
 DEPS_5=dpmi_dj2.c
-Make/Output/dpmi_dj2.o:: $(DEPS_5)
-    $(RHIDE_COMPILE.c.o)
+make/Output/dpmi_dj2.o:: $(DEPS_5)
+	$(RHIDE_COMPILE.c.o)
 DEPS_6=dpmi_tsr.c
-Make/Output/dpmi_tsr.o:: $(DEPS_6)
-    $(RHIDE_COMPILE.c.o)
-DEPS_7=emm.cpp
-Make/Output/emm.o:: $(DEPS_7)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_8=hcd.cpp
-Make/Output/hcd.o:: $(DEPS_8)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_9=main.cpp
-Make/Output/main.o:: $(DEPS_9)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_10=ohci.cpp
-Make/Output/ohci.o:: $(DEPS_10)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_11=OPL3.c
-Make/Output/OPL3.o:: $(DEPS_11)
-    $(RHIDE_COMPILE.c.o)
-DEPS_12=pci.c
-Make/Output/pci.o:: $(DEPS_12)
-    $(RHIDE_COMPILE.c.o)
-DEPS_13=pic.c
-Make/Output/pic.o:: $(DEPS_13)
-    $(RHIDE_COMPILE.c.o)
-DEPS_14=RetroWav.c
-Make/Output/RetroWav.o:: $(DEPS_14)
-    $(RHIDE_COMPILE.c.o)
-DEPS_15=Serial.c
-Make/Output/Serial.o:: $(DEPS_15)
-    $(RHIDE_COMPILE.c.o)
-DEPS_16=uhci.cpp
-Make/Output/uhci.o:: $(DEPS_16)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_17=usb.cpp
-Make/Output/usb.o:: $(DEPS_17)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_18=usballoc.c
-Make/Output/usballoc.o:: $(DEPS_18)
-    $(RHIDE_COMPILE.c.o)
-DEPS_19=usbtable.cpp
-Make/Output/usbtable.o:: $(DEPS_19)
-    $(RHIDE_COMPILE.cpp.o)
-DEPS_20=xms.c
-Make/Output/xms.o:: $(DEPS_20)
-    $(RHIDE_COMPILE.c.o)
-all:: rwddos.exe
+make/Output/dpmi_tsr.o:: $(DEPS_6)
+	$(RHIDE_COMPILE.c.o)
+DEPS_7=emm.c
+make/Output/emm.o:: $(DEPS_7)
+	$(RHIDE_COMPILE.c.o)
+DEPS_8=hcd.c
+make/Output/hcd.o:: $(DEPS_8)
+	$(RHIDE_COMPILE.c.o)
+DEPS_9=hdpmipt.c
+make/Output/hdpmipt.o:: $(DEPS_9)
+	$(RHIDE_COMPILE.c.o)
+DEPS_10=main.c
+make/Output/main.o:: $(DEPS_10)
+	$(RHIDE_COMPILE.c.o)
+DEPS_11=ohci.c
+make/Output/ohci.o:: $(DEPS_11)
+	$(RHIDE_COMPILE.c.o)
+DEPS_12=OPL3.c
+make/Output/OPL3.o:: $(DEPS_12)
+	$(RHIDE_COMPILE.c.o)
+DEPS_13=pci.c
+make/Output/pci.o:: $(DEPS_13)
+	$(RHIDE_COMPILE.c.o)
+DEPS_14=pic.c
+make/Output/pic.o:: $(DEPS_14)
+	$(RHIDE_COMPILE.c.o)
+DEPS_15=RetroWav.c
+make/Output/RetroWav.o:: $(DEPS_15)
+	$(RHIDE_COMPILE.c.o)
+DEPS_16=Serial.c
+make/Output/Serial.o:: $(DEPS_16)
+	$(RHIDE_COMPILE.c.o)
+DEPS_17=uhci.c
+make/Output/uhci.o:: $(DEPS_17)
+	$(RHIDE_COMPILE.c.o)
+DEPS_18=usb.c
+make/Output/usb.o:: $(DEPS_18)
+	$(RHIDE_COMPILE.c.o)
+DEPS_19=usballoc.c
+make/Output/usballoc.o:: $(DEPS_19)
+	$(RHIDE_COMPILE.c.o)
+DEPS_20=usbtable.c
+make/Output/usbtable.o:: $(DEPS_20)
+	$(RHIDE_COMPILE.c.o)
+DEPS_21=xms.c
+make/Output/xms.o:: $(DEPS_21)
+	$(RHIDE_COMPILE.c.o)
+all:: output/rwddospm.exe

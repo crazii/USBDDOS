@@ -15,7 +15,7 @@
 #define HAVE_MMAP 0
 #define LACKS_SYS_PARAM_H
 #pragma warning * 9
-#include "dlmalloc.c.h"
+#include "dlmalloc.h"
 
 static const int32_t DOS_HEAP_SIZE = 1024*16;
 static uint32_t DOS_HeapHandle;

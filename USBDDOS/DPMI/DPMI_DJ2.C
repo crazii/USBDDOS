@@ -69,7 +69,7 @@ static __dpmi_meminfo XMS_Info;
 #pragma push_macro("DEBUG")
 #undef DEBUG
 #define DEBUG 0
-#include "dlmalloc.c.h"
+#include "dlmalloc.h"
 #pragma pop_macro("DEBUG")
 
 #define XMS_HEAP_SIZE (1024*1024*4)  //maxium around 64M (actual size less than 64M)
