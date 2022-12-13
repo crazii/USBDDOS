@@ -15,7 +15,7 @@ Borland C++3.1 (native DOS or emu):
 * Or use BC IDE to perform build alternatively.
 * The BC build uses a custom (pseudo) DPMI that limit memmory to: 64K code + 64K data.
 
-DJGPP (native DOS or emu, cross toolchain on linux not tested):
+DJGPP (native DOS or emu i.e.VirtualBox, cross toolchain on linux not tested):
 * ~~Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html~~
 * `make -f rwddos.mak`. the makefile is generated from RHIDE so it make have problem on dependencies/clean.
 * Or use RHIDE to perform build.
