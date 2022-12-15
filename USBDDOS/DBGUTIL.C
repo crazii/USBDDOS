@@ -9,17 +9,13 @@
 #include "USBDDOS/PIC.H"
 #include "USBDDOS/DBGUTIL.H"
 
-//TODO: need to make it work in interrupt handler. TODO: need to print in port IO
-static BOOL DBG_INT10;
+//need to make it work in interrupt handler by masking out interrupt
 void DBG_Logv(const char* fmt, va_list aptr)
 {
-    if(DBG_INT10) //prevent reentrance of BIOS call
-        return;
-    DBG_INT10 = TRUE;
     //CLIS();
     uint16_t irqm = PIC_GetIRQMask();
     PIC_SetIRQMask(0xFFFF); //this is NOT good but hack off interrrupt will help debugging.
-                            //avoid reentrance of INT 10h call.
+                            //avoid reentrance of INT 10h call in already interrupt handler
 
     char buf[DUMP_BUFF_SIZE];
     int len = vsprintf(buf, fmt, aptr);
@@ -37,7 +33,6 @@ void DBG_Logv(const char* fmt, va_list aptr)
         }
     }
     //STIL();
-    DBG_INT10 = FALSE;
     PIC_SetIRQMask(irqm);
 }
 

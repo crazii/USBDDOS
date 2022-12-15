@@ -284,6 +284,9 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
     if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice))
         return FALSE;
 
+    uint8_t bClass = pDevice->Desc.bDeviceClass;
+    USBT.ClassDrivers[bClass].DeinitDevice(pDevice);
+
     for(int e = 0; e < pDevice->bNumEndpoints; ++e)
         pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pEndpoints[e]);
     pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP); //HCD implementation probably do nothing but better do the call.

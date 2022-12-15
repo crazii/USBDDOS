@@ -69,8 +69,6 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
         cmd.AllocationLength = sizeof(data);
         if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), &data, sizeof(data), HCD_TXR))
         {
-            free(pDriverData);
-            pDevice->pDriverData = NULL;
             _LOG("MSC Failed INQUIRY.\n");
             return FALSE;
         }
@@ -86,8 +84,6 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
             cmd.LUN = ((uint8_t)i)&0x7U;
             if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), &data, sizeof(data), HCD_TXR))
             {
-                free(pDriverData);
-                pDevice->pDriverData = NULL;
                 _LOG("MSC Failed get capacity.\n");
                 return FALSE;
             }
