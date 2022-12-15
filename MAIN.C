@@ -157,6 +157,7 @@ static EMM_IODT MAIN_IODT[4] =
 static EMM_IOPT MAIN_IOPT;
 #if defined(__DJ2__)
 static EMM_IOPT MAIN_HDPMI_IOPT;
+BOOL MAIN_HDPMI_PortTrapped;
 #endif
 
 int main()
@@ -175,22 +176,10 @@ int main()
     retrowave_opl3_reset(&MAIN_RWContext);
 
     puts("Installing...\n");
-    if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
-    {
-        puts("IO trap installation failed.\n");
-        return 1;
-    }
-
-    #if defined(__DJ2__)
-    if(!HDPMIPT_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_HDPMI_IOPT))
-        puts("Protected mode IO trap installation failed.\n");
-    #endif
 
     #if MAIN_ENABLE_TIMER
     if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
     {
-        BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
-        assert(unstalled);
         puts("Failed to install interrupt handler 0x08.\n");
         return 1;
     }
@@ -198,14 +187,35 @@ int main()
     MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
     #endif
 
+    if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
+    {
+        puts("IO trap installation failed.\n");
+        return 1;
+    }
+
+    #if defined(__DJ2__)
+    if(!(MAIN_HDPMI_PortTrapped=HDPMIPT_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_HDPMI_IOPT)))
+        puts("Protected mode IO trap installation failed, make sure an HDPMI that supporting port trap is used.\n");
+    #endif
+
     if(!DPMI_TSR())
         puts("TSR Installation failed.\n");
     
-    BOOL unstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
-    assert(unstalled);
+	BOOL uninstalled;
     #if MAIN_ENABLE_TIMER
-    unstalled = DPMI_UninstallISR(&MAIN_INT08Handle) == 0;
-    assert(unstalled);
+    uninstalled = DPMI_UninstallISR(&MAIN_INT08Handle) == 0;
+    assert(uninstalled);
+    #endif
+
+    uninstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
+    assert(uninstalled);
+
+    #if defined(__DJ2__)
+    if(MAIN_HDPMI_PortTrapped)
+    {
+        uninstalled = HDPMIPT_Uninstall_IOPortTrap(&MAIN_IOPT);
+        assert(uninstalled);
+    }
     #endif
     return 0;
 }
