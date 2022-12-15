@@ -266,7 +266,7 @@ typedef USB_MSC_READ_CMD USB_MSC_WRITE_CMD; //opcode = USB_MSC_SBC_WRITE10
 typedef struct
 {
     uint8_t bInterface;
-    void* bDataEP[2]; //bulk in/out
+    void* pDataEP[2]; //bulk in/out
     uint8_t MaxLUN;
 }USB_MSC_DriverData;
 
@@ -281,6 +281,9 @@ BOOL USB_MSC_DeinitDevice(USB_Device* pDevice);
 
 //separate dos installation routine, might be called delayed
 BOOL USB_MSC_DOS_Install();
+
+
+BOOL USB_MSC_IssueCommand(const void* cmd, uint32_t CmdSize, const void* CmdData, void* outputp data);
 
 #ifdef __cplusplus
 }
