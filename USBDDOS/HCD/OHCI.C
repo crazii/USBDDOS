@@ -409,9 +409,10 @@ void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead)
             }
             if(pED)
             {
-                pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP);
+                pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP&~0x1UL);
                 while(pNext != pED->pTail) //remove pending entries with the same request from ED
                 {
+                    //_LOG("%x %x %x %x\n", pNext, pTD, pNext->pRequest, pRequest);
                     OHCI_TD* p = pNext->pNext;
                     if(pNext->pRequest == pRequest)
                     {
@@ -422,6 +423,7 @@ void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead)
                         break; //request are consecutive
                     pNext = p;
                 }
+                //_LOG("%x\n",pNext);
                 pED->HeadP = DPMI_PTR2P(pNext);
             }
         }
@@ -613,7 +615,7 @@ BOOL OHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     DPMI_MaskD(dwBase + HcControl, ~PeriodicListEnable, 0);
     DPMI_MaskD(dwBase + HcControl, ~IsochronousEnable, 0);
     DPMI_MaskD(dwBase + HcControl, ~BulkListEnable, 0);
-    delay(1);
+    delay(10);
 
     OHCI_ED* pED = (OHCI_ED*)pEndpoint;
     // remove ed
@@ -662,7 +664,7 @@ BOOL OHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     DPMI_MaskD(dwBase + HcControl, ~0UL, PeriodicListEnable);
     DPMI_MaskD(dwBase + HcControl, ~0UL, IsochronousEnable);
     DPMI_MaskD(dwBase + HcControl, ~0UL, BulkListEnable);
-    delay(1);
+    delay(10);
     return TRUE;
 }
 

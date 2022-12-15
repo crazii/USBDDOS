@@ -40,6 +40,10 @@
 
 //CBW & CSW are transported via data (bulk) transfer. CBW -> data(IN/OUT) -> CSW
 
+#if defined(__DJ2__)
+#pragma pack(1)
+#endif
+
 //CBW
 typedef struct USB_MSC_CommandBlockWrapper
 {
@@ -54,8 +58,11 @@ typedef struct USB_MSC_CommandBlockWrapper
     uint8_t bCBWCBLength : 5; //valid length of CBWCB
     uint8_t reserved1 : 3;
 
-    uint8_t CBWCB[16]; //command block. significant bytes, starting at high addr (0xF)
+    uint8_t CBWCB[16]; //command block. significant bytes first
 }USB_MSC_CBW;
+#if defined(__DJ2__)
+_Static_assert(sizeof(USB_MSC_CBW) == 31, "incorrect size");
+#endif
 
 //CSW
 typedef struct USB_MSC_CommandStatusWrapper
@@ -87,10 +94,6 @@ typedef struct USB_MSC_CommandStatusWrapper
 #define USB_MSC_PDT_CDROM           0x05
 #define USB_MSC_PDT_OPTICAL         0x07 //non-CD optical
 #define USB_MSC_PDT_RBC_DAD         0x0E //RBC Direct-access device
-
-#if defined(__DJ2__)
-#pragma pack(1)
-#endif
 
 typedef struct USB_MSC_InquiryCommand
 {
@@ -269,6 +272,7 @@ typedef struct
     uint8_t MaxLUN;
     uint16_t SizeGB;
     void* pDataEP[2]; //bulk in/out
+    uint8_t bEPNo[2];
 }USB_MSC_DriverData;
 
 #ifdef __cplusplus
@@ -282,7 +286,7 @@ BOOL USB_MSC_DeinitDevice(USB_Device* pDevice);
 
 BOOL USB_MSC_BulkReset(USB_Device* pDevice);
 
-BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, void* inoutp data, uint32_t DataSize, HCD_TxDir dir);
+BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, void* inoutp nullable data, uint32_t DataSize, HCD_TxDir dir);
 
 //separate dos installation routine, might be called delayed
 BOOL USB_MSC_DOS_Install();

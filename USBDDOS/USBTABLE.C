@@ -16,9 +16,10 @@
 #include "USBDDOS/HCD/OHCI.H"
 #include "USBDDOS/HCD/UHCI.H"
 #include "USBDDOS/CLASS/CDC.H"
+#include "USBDDOS/CLASS/MSC.H"
 
 #define USE_CDC 1
-#define USE_MSC 0
+#define USE_MSC 1
 
 USB_Table USBT = 
 {
@@ -73,7 +74,7 @@ USB_Table USBT =
         0,0,
         //USBC_MASSSTORAGE      0x8
         #if USE_MSC
-        0, 0,
+        USB_MSC_InitDevice, USB_MSC_DeinitDevice,
         #else
         0, 0,
         #endif

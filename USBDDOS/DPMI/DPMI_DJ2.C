@@ -186,8 +186,8 @@ void DPMI_Init(void)
 
     __dpmi_meminfo info;    //1:1 map DOS memory. (0~640K). TODO: get 640K~1M mapping from VCPI
     info.handle = -1;
-    info.address = 0;
-    info.size = 640L*1024L;
+    info.address = 1024;    //skip IVT and expose NULL ptr
+    info.size = 640L*1024L - 1024;
     AddAddressMap(&info, 0);
     
     /*

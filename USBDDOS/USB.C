@@ -270,12 +270,12 @@ BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus)
         if(DriverInstalled)
         {
             pDevice->bStatus = DS_Ready;
+            return TRUE;
         }
-        return TRUE;
     }
-
-    USB_RemoveDevice(pDevice);
+    
     printf("Error intializing device at port: %d.\n", portIndex);
+    USB_RemoveDevice(pDevice);
     return FALSE;
 }
 

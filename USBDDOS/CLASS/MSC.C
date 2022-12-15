@@ -16,6 +16,7 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
     for(int j = 0; j < bNumInterfaces; ++j)
     {
         USB_InterfaceDesc* pIntfaceDescI = pIntfaceDesc + j;
+        _LOG("MSC bInterfaceProtocol: %x\n", pIntfaceDescI->bInterfaceProtocol);
         if(pIntfaceDescI->bInterfaceClass == USBC_MASSSTORAGE //must be MSC
             && pIntfaceDescI->bInterfaceProtocol == USB_MSC_PROTOCOL_BBB)//currently only support BOT
         {
@@ -36,11 +37,14 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
     uint8_t maxLUN = *pMaxLUN;
     DPMI_DMAFree(pMaxLUN);
     pMaxLUN = NULL;
+    _LOG("MSC MaxLUN: %d\n", maxLUN);
     
     USB_Request Req2 =  {USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, bInterface, 0};
     if(USB_SyncSendRequest(pDevice, &Req2, NULL) != 0)
+    {
+        _LOG("MSC Error reset bulk.\n");
         return FALSE;
-
+    }
     USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)malloc(sizeof(USB_MSC_DriverData));
     memset(pDriverData, 0, sizeof(USB_MSC_DriverData));
     pDevice->pDriverData = pDriverData;
@@ -51,7 +55,9 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
         USB_EndpointDesc* pEndpointDesc = pIntfaceDesc->pEndpoints + i;
         assert(pEndpointDesc->bmAttributesBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK); //BULK only
         pDriverData->pDataEP[pEndpointDesc->bEndpointAddressBits.Dir] = USB_FindEndpoint(pDevice, pEndpointDesc);
+        pDriverData->bEPNo[pEndpointDesc->bEndpointAddressBits.Dir] = pEndpointDesc->bEndpointAddressBits.Num;
     }
+    assert(pDriverData->pDataEP[0] != NULL && pDriverData->pDataEP[1] != NULL);
 
     //perform other readings as sanity check
     {
@@ -65,6 +71,7 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
         {
             free(pDriverData);
             pDevice->pDriverData = NULL;
+            _LOG("MSC Failed INQUIRY.\n");
             return FALSE;
         }
         _LOG("PDT: %x\n", data.PDT);
@@ -81,6 +88,7 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
             {
                 free(pDriverData);
                 pDevice->pDriverData = NULL;
+                _LOG("MSC Failed get capacity.\n");
                 return FALSE;
             }
             uint32_t maxLBA = EndianSwap32(data.LastLBA);
@@ -95,9 +103,14 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
 
 BOOL USB_MSC_DeinitDevice(USB_Device* pDevice)
 {
+    if(pDevice == NULL || pDevice->pDriverData == NULL)
+        return FALSE;
     USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
-    free(pDriverData);
-    pDevice->pDriverData = NULL;
+    if(pDriverData)
+    {
+        free(pDriverData);
+        pDevice->pDriverData = NULL;
+    }
     return TRUE;
 }
 
@@ -109,42 +122,52 @@ BOOL USB_MSC_BulkReset(USB_Device* pDevice)
     return USB_SyncSendRequest(pDevice, &Req, NULL) != 0;
 }
 
-BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, void* inoutp data, uint32_t DataSize, HCD_TxDir dir)
+BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, void* inoutp nullable data, uint32_t DataSize, HCD_TxDir dir)
 {
-    if(pDevice == NULL || pDevice->pDriverData == NULL || cmd == NULL || CmdSize > 16 || CmdSize < 1)
+    if(pDevice == NULL || pDevice->pDriverData == NULL || cmd == NULL || CmdSize > 16 || CmdSize < 1
+        || (DataSize != 0 && data == NULL))
         return FALSE;
     USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
 
     //CBW
     USB_MSC_CBW cbw;
+    memset(&cbw, 0, sizeof(cbw));
     cbw.dCBWSignature = USB_MSC_SIGNATURE;
-    cbw.dCBWTag = (uintptr_t)&cbw;
+    cbw.dCBWTag = (uintptr_t)&cbw; //use addr as tag
     cbw.dCBWDataTransferLength = DataSize;
     cbw.bmCBWFlags = dir == HCD_TXR ? 0x80U : 0;
     cbw.bCBWLUN = 0;
     cbw.bCBWCBLength = ((uint8_t)CmdSize)&0x1FU;
-    memcpy(cbw.CBWCB + 15 + CmdSize - 1, cmd, CmdSize); //copy to signaficant bytes
+    memcpy(cbw.CBWCB, cmd, CmdSize);
     void* dma = DPMI_DMAMalloc(sizeof(cbw), 16);
     memcpy(dma, &cbw, sizeof(cbw));
     uint16_t len = 0;
-    USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, sizeof(cbw), &len);
+    uint16_t size = (uint16_t)(sizeof(cbw)-sizeof(cbw.CBWCB)+CmdSize); //need actual size to work
+    uint8_t error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, size, &len);
     DPMI_DMAFree(dma);
-    if(len != sizeof(cbw))
+    if(len != size || error)
+    {
+        _LOG("MSC CBW failed: %x, %d, %d.\n", error, size, len);
         return FALSE;
+    }
     
     //DATA
-    if(DataSize && data != NULL)
+    if(DataSize)
     {
         dma = DPMI_DMAMalloc(DataSize, 16);
+        memset(dma, 0, DataSize);
         if(dir == HCD_TXW)
             memcpy(dma, data, DataSize);
         len = 0;
-        USB_SyncTransfer(pDevice, pDriverData->pDataEP[dir&0x1], dma, (uint16_t)DataSize, &len);
+        error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[dir&0x1], dma, (uint16_t)DataSize, &len);
         if(dir == HCD_TXR)
             memcpy(data, dma, DataSize);
         DPMI_DMAFree(dma);
-        if(len != DataSize)
+        if(len != DataSize || error)
+        {
+            _LOG("MSC DATA Failed: %x, %d, %d, %d.\n", error, dir, DataSize, len);
             return FALSE;
+        }
     }
 
     //CSW
@@ -154,7 +177,10 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     USB_MSC_CSW csw = *(USB_MSC_CSW*)dma;
     DPMI_DMAFree(dma);
     if(len != sizeof(USB_MSC_CSW) || csw.dCSWSignature != USB_MSC_SIGNATURE || csw.dCSWTag != cbw.dCBWTag)
+    {
+        _LOG("MSC Failed CSW.\n");
         return FALSE;
+    }
 
     if(csw.dCSWDataResidue != 0)
     {
