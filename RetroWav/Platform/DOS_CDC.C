@@ -56,9 +56,6 @@ static void io_callback(void *userp, uint32_t data_rate, const void *tx_buf, voi
 #define RETROWAVE_DEVID 0x000A
 int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
 
-    DPMI_Init();
-    USB_Init();
-
     USB_Device* device = NULL;
     for(int j = 0; j < USBT.HC_Count; ++j)
     {

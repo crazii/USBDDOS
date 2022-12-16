@@ -3,12 +3,14 @@
 #include <stdlib.h>
 #include <dos.h>
 #include <assert.h>
-#include "USBDDOS/DBGUTIL.h"
+#include "USBDDOS/USB.H"
+#include "USBDDOS/CLASS/MSC.H"
 #include "RetroWav/RetroWav.h"
 #include "RetroWav/Platform/DOS_CDC.h"
 #include "RetroWav/Board/OPL3.h"
 #include "EMM.h"
 #include "HDPMIPT.H"
+#include "USBDDOS/DBGUTIL.h"
 
 #define OPL_PRIMARY 0
 #define OPL_SECONDARY 1
@@ -160,62 +162,88 @@ static EMM_IOPT MAIN_HDPMI_IOPT;
 BOOL MAIN_HDPMI_PortTrapped;
 #endif
 
-int main()
+int main(int argc, char* argv[])
 {
-    unsigned short EMMVer = EMM_GetVersion();
-    _LOG("EMM386 version: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
-    if((EMMVer&0xFF) < 4 || (EMMVer&0xFF) == 4 && (EMMVer&0xFF00) < 46)
+    BOOL EnableRW = FALSE;
+    if(argc != 1)
     {
-        printf("EMM386 not installed or version not supported: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
-        return -1;
+        for(int i = 1; i < argc; ++i)
+        {
+            if(stricmp(argv[i], "/RW") == 0)
+            {
+                EnableRW = TRUE;
+                break;
+            }
+        }
     }
 
-    if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
-        return -1;
-    retrowave_io_init(&MAIN_RWContext);
-    retrowave_opl3_reset(&MAIN_RWContext);
-
-    puts("Installing...\n");
-
-    #if MAIN_ENABLE_TIMER
-    if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
+    if(EnableRW)
     {
-        puts("Failed to install interrupt handler 0x08.\n");
-        return 1;
-    }
-    MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
-    MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
-    #endif
-
-    if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
-    {
-        puts("IO trap installation failed.\n");
-        return 1;
+        unsigned short EMMVer = EMM_GetVersion();
+        _LOG("EMM386 version: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
+        if((EMMVer&0xFF) < 4 || (EMMVer&0xFF) == 4 && (EMMVer&0xFF00) < 46)
+        {
+            printf("EMM386 not installed or version not supported: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
+            return -1;
+        }
     }
 
-    #if defined(__DJ2__)
-    if(!(MAIN_HDPMI_PortTrapped=HDPMIPT_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_HDPMI_IOPT)))
-        puts("Protected mode IO trap installation failed, make sure an HDPMI that supporting port trap is used.\n");
-    #endif
+    DPMI_Init();
+    USB_Init();
 
-    if(!DPMI_TSR())
-        puts("TSR Installation failed.\n");
+    if(EnableRW)
+    {
+        if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
+            return -1;
+        retrowave_io_init(&MAIN_RWContext);
+        retrowave_opl3_reset(&MAIN_RWContext);
+
+        #if MAIN_ENABLE_TIMER
+        if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
+        {
+            puts("Failed to install interrupt handler 0x08.\n");
+            return 1;
+        }
+        MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
+        MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
+        #endif
+
+        if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
+        {
+            puts("IO trap installation failed.\n");
+            return 1;
+        }
+
+        #if defined(__DJ2__)
+        if(!(MAIN_HDPMI_PortTrapped=HDPMIPT_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_HDPMI_IOPT)))
+            puts("Protected mode IO trap installation failed, make sure an HDPMI that supporting port trap is used.\n");
+        #endif
+    }
+
+    if(USB_MSC_DOS_Install())
+    {
+        if(!DPMI_TSR())
+            puts("TSR Installation failed.\n");
+    }
     
-	BOOL uninstalled;
-    #if MAIN_ENABLE_TIMER
-    uninstalled = DPMI_UninstallISR(&MAIN_INT08Handle) == 0;
-    assert(uninstalled);
-    #endif
-
-    uninstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
-    assert(uninstalled);
-
-    #if defined(__DJ2__)
-    if(MAIN_HDPMI_PortTrapped)
+    if(EnableRW)
     {
-        uninstalled = HDPMIPT_Uninstall_IOPortTrap(&MAIN_IOPT);
+        BOOL uninstalled;
+        #if MAIN_ENABLE_TIMER
+        uninstalled = DPMI_UninstallISR(&MAIN_INT08Handle) == 0;
         assert(uninstalled);
+        #endif
+
+        uninstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
+        assert(uninstalled);
+
+        #if defined(__DJ2__)
+        if(MAIN_HDPMI_PortTrapped)
+        {
+            uninstalled = HDPMIPT_Uninstall_IOPortTrap(&MAIN_IOPT);
+            assert(uninstalled);
+        }
+        #endif
     }
-    #endif
     return 0;
 }
