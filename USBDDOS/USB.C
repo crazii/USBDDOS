@@ -584,6 +584,12 @@ void USB_ShowDeviceInfo(USB_Device* pDevice)
     return;
 }
 
+BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr)
+{
+    USB_Request req = {USB_REQ_WRITE|USB_REQTYPE_STANDARD|USB_REQREC_ENDPOINT, USB_REQ_CLEAR_FEATURE, ENDPOINT_HALT, epAddr, 0};
+    return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
+}
+
 static void USB_EnumerateDevices()
 {
     //initially all powered devices will be in default states (address 0), but ports disabled.

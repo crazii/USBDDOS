@@ -30,7 +30,8 @@
 #define USB_REQ_MSC_GET_MAX_LUN 0xFE //get max lun (in)
 
 //signature
-#define USB_MSC_SIGNATURE 0x43425355
+#define USB_MSC_CBW_SIGNATURE 0x43425355
+#define USB_MSC_CSW_SIGNATURE 0x53425355
 
 //CSW status
 #define USB_MSC_CSW_STATUS_PASSED       0
@@ -38,7 +39,7 @@
 #define USB_MSC_CSW_STATUS_PHASE_ERROR  2
 
 
-//CBW & CSW are transported via data (bulk) transfer. CBW -> data(IN/OUT) -> CSW
+//CBW & CSW are transported via data (bulk) transfer. CBW(OUT) -> data(IN/OUT) -> CSW(IN)
 
 #if defined(__DJ2__)
 #pragma pack(1)
@@ -47,7 +48,7 @@
 //CBW
 typedef struct USB_MSC_CommandBlockWrapper
 {
-    uint32_t dCBWSignature; //USB_MSC_SIGNATURE
+    uint32_t dCBWSignature; //USB_MSC_CBW_SIGNATURE
     uint32_t dCBWTag;
     uint32_t dCBWDataTransferLength;
     uint8_t bmCBWFlags; //bit 7: 0: out, 1: in. other bits obsolete or reserved and must be 0
@@ -67,10 +68,10 @@ _Static_assert(sizeof(USB_MSC_CBW) == 31, "incorrect size");
 //CSW
 typedef struct USB_MSC_CommandStatusWrapper
 {
-    uint32_t dCSWSignature; //USB_MSC_SIGNATURE
+    uint32_t dCSWSignature; //USB_MSC_CSW_SIGNATURE
     uint32_t dCSWTag;
     uint32_t dCSWDataResidue;
-    uint32_t dCSWStatus; //USB_MSC_CSW_STATUS_*
+    uint8_t bCSWStatus; //USB_MSC_CSW_STATUS_*
 }USB_MSC_CSW;
 
 //below are SCSI commands used by CBW (the CBWCB field)
@@ -272,7 +273,7 @@ typedef struct
     uint8_t MaxLUN;
     uint16_t SizeGB;
     void* pDataEP[2]; //bulk in/out
-    uint8_t bEPNo[2];
+    uint8_t bEPAddr[2];
 }USB_MSC_DriverData;
 
 #ifdef __cplusplus

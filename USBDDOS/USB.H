@@ -32,6 +32,8 @@ extern "C" {
 #define USB_REQ_SET_INTERFACE   11
 #define USB_REQ_SYNCH_FRAME     12
 
+#define ENDPOINT_HALT           0 //clear feature: halt 
+
 //Descriptor Types , wValue
 #define USB_DT_DEVICE          1
 #define USB_DT_CONFIGURATION   2
@@ -265,6 +267,8 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, uint16_t length);
 
 void USB_ShowDeviceInfo(USB_Device* pDevice);
+
+BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr); //clear stall
 
 #ifdef __cplusplus
 }

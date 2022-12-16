@@ -55,9 +55,12 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
         USB_EndpointDesc* pEndpointDesc = pIntfaceDesc->pEndpoints + i;
         assert(pEndpointDesc->bmAttributesBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK); //BULK only
         pDriverData->pDataEP[pEndpointDesc->bEndpointAddressBits.Dir] = USB_FindEndpoint(pDevice, pEndpointDesc);
-        pDriverData->bEPNo[pEndpointDesc->bEndpointAddressBits.Dir] = pEndpointDesc->bEndpointAddressBits.Num;
+        pDriverData->bEPAddr[pEndpointDesc->bEndpointAddressBits.Dir] = pEndpointDesc->bEndpointAddress;
     }
     assert(pDriverData->pDataEP[0] != NULL && pDriverData->pDataEP[1] != NULL);
+
+    USB_ClearHalt(pDevice, pDriverData->bEPAddr[0]);
+    USB_ClearHalt(pDevice, pDriverData->bEPAddr[1]);
 
     //perform other readings as sanity check
     {
@@ -128,29 +131,30 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     //CBW
     USB_MSC_CBW cbw;
     memset(&cbw, 0, sizeof(cbw));
-    cbw.dCBWSignature = USB_MSC_SIGNATURE;
+    cbw.dCBWSignature = USB_MSC_CBW_SIGNATURE;
     cbw.dCBWTag = (uintptr_t)&cbw; //use addr as tag
     cbw.dCBWDataTransferLength = DataSize;
     cbw.bmCBWFlags = dir == HCD_TXR ? 0x80U : 0;
     cbw.bCBWLUN = 0;
     cbw.bCBWCBLength = ((uint8_t)CmdSize)&0x1FU;
     memcpy(cbw.CBWCB, cmd, CmdSize);
-    void* dma = DPMI_DMAMalloc(sizeof(cbw), 16);
+    uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(sizeof(cbw), 16);
     memcpy(dma, &cbw, sizeof(cbw));
     uint16_t len = 0;
-    uint16_t size = (uint16_t)(sizeof(cbw)-sizeof(cbw.CBWCB)+CmdSize); //need actual size to work
-    uint8_t error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, size, &len);
+    uint16_t size = sizeof(cbw);
+    uint8_t error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, size, &len); //TODO: error code now is HC specific, need abstraction (wrapper).
     DPMI_DMAFree(dma);
     if(len != size || error)
     {
         _LOG("MSC CBW failed: %x, %d, %d.\n", error, size, len);
+        USB_ClearHalt(pDevice, pDriverData->bEPAddr[0]);
         return FALSE;
     }
     
     //DATA
     if(DataSize)
     {
-        dma = DPMI_DMAMalloc(DataSize, 16);
+        dma = (uint8_t*)DPMI_DMAMalloc(DataSize, 16);
         memset(dma, 0, DataSize);
         if(dir == HCD_TXW)
             memcpy(dma, data, DataSize);
@@ -162,33 +166,27 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
         if(len != DataSize || error)
         {
             _LOG("MSC DATA Failed: %x, %d, %d, %d.\n", error, dir, DataSize, len);
+            USB_ClearHalt(pDevice, pDriverData->bEPAddr[dir&0x1]);
             return FALSE;
         }
     }
 
     //CSW
     len = 0;
-    dma = DPMI_DMAMalloc(sizeof(USB_MSC_CSW), 16);
-    USB_SyncTransfer(pDevice, pDriverData->pDataEP[1], dma, sizeof(USB_MSC_CSW), &len);
+    dma = (uint8_t*)DPMI_DMAMalloc(sizeof(USB_MSC_CSW), 16);
+    error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[1], dma, sizeof(USB_MSC_CSW), &len);
     USB_MSC_CSW csw = *(USB_MSC_CSW*)dma;
     DPMI_DMAFree(dma);
-    if(len != sizeof(USB_MSC_CSW) || csw.dCSWSignature != USB_MSC_SIGNATURE || csw.dCSWTag != cbw.dCBWTag)
+    if(len != sizeof(USB_MSC_CSW) || csw.dCSWSignature != USB_MSC_CSW_SIGNATURE || csw.dCSWTag != cbw.dCBWTag
+    || csw.dCSWDataResidue != 0 || error)
     {
-        _LOG("MSC Failed CSW.\n");
+        USB_ClearHalt(pDevice, pDriverData->bEPAddr[1]);
+        _LOG("MSC CSW: %x, %x, %x, %x\n", csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
+        _LOG("MSC CSW Failed: %x, %d, %d\n", error, sizeof(USB_MSC_CSW), len);
+        _LOG("MSC CBW length: %d\n", cbw.dCBWDataTransferLength);
         return FALSE;
     }
-
-    if(csw.dCSWDataResidue != 0)
-    {
-        _LOG("MSC CBW length: %d, CSW DataResidue: %d\n", cbw.dCBWDataTransferLength, csw.dCSWDataResidue);
-        return FALSE;   
-    }
-
-    if(csw.dCSWStatus != USB_MSC_CSW_STATUS_PASSED)
-    {
-        _LOG("MSC CSW Status: %d\n", csw.dCSWStatus);
-        return FALSE;
-    }
+    
     return TRUE;
 }
 
