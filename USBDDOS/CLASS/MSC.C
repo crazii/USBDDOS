@@ -190,10 +190,199 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     return TRUE;
 }
 
-BOOL USB_MSC_DOS_Install()
+
+
+#if defined(__DJ2__)
+#pragma pack(1)
+#endif
+
+//https://stanislavs.org/helppc/bios_parameter_block.html
+//https://en.wikipedia.org/wiki/BIOS_parameter_block
+typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB 
+{
+    //2.0
+    uint16_t BPS;   //bytes per sector
+    uint8_t SPC;    //sectors per cluster
+    uint16_t RsvdSectors; //reserved sectors from the begginning
+    uint8_t FATs;
+    uint16_t RootDirs;
+    uint16_t Sectors; //sectors in total
+    uint8_t MediaDesc; //media descriptor
+    uint16_t SPF; //sectors per fat
+    //3.31
+    uint16_t SPT;   //sectors per track
+    uint16_t Heads; //heads count
+    uint32_t HiddenSectors;
+    uint32_t Sectors2; //used if Sectors=0
+}DOS_BPB;
+#if defined(__DJ2__)
+_Static_assert(sizeof(DOS_BPB) == 51, "incorrect size");
+#endif
+
+#define DOS_DDHA_32BIT_ADDRESSING   0x0002
+#define DOS_DDHA_OPENCLOSE          0x0800
+
+typedef struct DOS_DeviceDriverHeader
+{
+    uint32_t NextDDH;
+    uint16_t Attribs; //http://www.delorie.com/djgpp/doc/rbinter/it/48/16.html
+    uint16_t StrategyEntryPoint;
+    uint16_t IntEntryPoint;
+    uint8_t Drives;
+    uint8_t Signature[7];
+}DOS_DDH;
+
+typedef struct DOS_DriveParameterBlock //DOS4.0+
+{
+    uint8_t Drive; //0:A, 2:B, 3:C...
+    uint8_t Units;
+    uint16_t BPS; //bytes per sector
+    uint8_t SPC; //sectors per cluster
+    uint8_t C2SShift; //shift count for cluster to sector
+    uint16_t RsvdSectors; //reserved sectors from the begginning
+    uint8_t FATs;
+    uint16_t RootDirs; //root dir count
+    uint16_t User1stSector; //no. of first sector for user
+    uint16_t MaxCluster;
+    uint16_t SPF;    //sectors per fat
+    uint16_t Dir1stSector; //no. of first sector for dir
+    uint32_t DriverHeader; //addr of driver header
+    uint8_t MediaID;
+    uint8_t Accessed; //00 for true, FF for none
+    uint32_t NextDPB;
+    uint16_t Free1stCluster;
+    uint16_t FreeCulsters;
+}DOS_DPB;
+#if defined(__DJ2__)
+_Static_assert(sizeof(DOS_DPB) == 32, "incorrect size");
+#endif
+
+#define DOS_CDS_FLAGS_USED 0xC0
+
+typedef struct DOS_CurrentDirectoryStructure
+{
+    char path[67];
+    uint16_t flags;
+    uint32_t DPBptr;
+    uint8_t  unknown[15];
+}DOS_CDS;
+#if defined(__DJ2__)
+_Static_assert(sizeof(DOS_CDS) == 88, "incorrect size");
+#endif
+
+#if defined(__DJ2__)
+#pragma pack()
+#endif
+
+//"List of Lists" offsets
+#define DOS_LOL_CDS_PTR             0x16    //4 bytes (far ptr)
+#define DOS_LOL_BLOCK_DEVICE_COUNT  0x20    //installed device count, 1byte
+#define DOS_LOL_DRIVE_COUNT         0x21    //drive count (and CDS count), 1 byte
+#define DOS_LOL_NULDEV_HEADER       0x22    //NUL device header (18 bytes)
+#define DOS_LOL_SIZE                0x60
+
+//ease of use memory layout
+typedef struct 
+{
+    DOS_DDH ddh;
+    DOS_BPB bpb;
+    DOS_DPB dpb;
+    uint8_t STG_opcodes[1];     //retf
+    uint8_t INT_opcodes[6+1];   //call far ptr + retf
+    //PM entry points, called by INT_opcodes
+    uint16_t INT_RMCB_Off;  //TODO: allocate RMCB as entry point
+    uint16_t INT_RMCB_CS;
+}USB_MSC_DOS_TSRDATA;
+
+static void USB_MSC_DOS_DriverINT()    //PM IntEntryPoint for DDH
 {
 
-    return FALSE;
+}
+
+BOOL USB_MSC_DOS_Install()     //ref: https://gitlab.com/FreeDOS/drivers/rdisk/-/blob/master/SOURCE/RDISK/RDISK.ASM
+{
+    uint32_t DrvMem = DPMI_HighMalloc(sizeof(USB_MSC_DOS_TSRDATA), TRUE); //allocate resident memory
+    //TODO: read valid device and put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
+    USB_MSC_DOS_TSRDATA TSRData;
+    {
+        DOS_DDH ddh = {0xFFFFFFFF, DOS_DDHA_32BIT_ADDRESSING|DOS_DDHA_OPENCLOSE, offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes), offsetof(USB_MSC_DOS_TSRDATA, INT_opcodes), 1, };
+        memcpy(ddh.Signature, "USBDDOS", 7);
+        TSRData.ddh = ddh;
+    }
+    {
+        DOS_BPB bpb;
+        memset(&bpb, 0, sizeof(bpb));
+        bpb.BPS;
+        bpb.SPC;
+        bpb.RsvdSectors;
+        bpb.FATs;
+        bpb.RootDirs;
+        bpb.Sectors;
+        bpb.MediaDesc;
+        bpb.SPF;
+        bpb.SPT;
+        bpb.Heads;
+        bpb.HiddenSectors;
+        bpb.Sectors2;
+        TSRData.bpb = bpb;
+    }
+    DPMI_REG reg;
+
+    //DOS 2.0+ internal get list of lists http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm
+    memset(&reg, 0, sizeof(reg));
+    reg.h.ah = 0x52;
+    DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
+
+    uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
+    DPMI_CopyLinear(DPMI_PTR2L(buf), (uint32_t)(reg.w.es << 4) + reg.w.bx, DOS_LOL_SIZE); //copy to dpmi mem for easy access
+    uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT];
+    uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];
+    DOS_DDH* NULHeader = (DOS_DDH*)&buf[DOS_LOL_NULDEV_HEADER];
+
+    //fill CDS
+    DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //another local cache
+    uint32_t CDSFarptr = *(uint32_t*)&buf[DOS_LOL_CDS_PTR];
+    DPMI_CopyLinear(DPMI_PTR2L(cds), ((CDSFarptr>>12)&0xFFFFF)+(CDSFarptr&0xFFFF), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
+    int CDSIndex; //find an empty entry in CDS list
+    for(CDSIndex = 0; CDSIndex < DriveCount; ++CDSIndex)
+    {
+        if(!(cds[CDSIndex].flags&DOS_CDS_FLAGS_USED))
+            break;
+    }
+    cds[CDSIndex].flags |= DOS_CDS_FLAGS_USED;
+    cds[CDSIndex].DPBptr = ((DrvMem&0xFFFF)<<16) | offsetof(USB_MSC_DOS_TSRDATA, dpb);
+    memcpy(cds[CDSIndex].path, "", 0); //TODO:
+    DPMI_CopyLinear(((CDSFarptr>>12)&0xFFFFFF)+(CDSFarptr&0xFFFF), DPMI_PTR2L(cds), sizeof(DOS_CDS)*DriveCount); //cds write back to dos mem
+
+    //alter driver chain
+    uint32_t next = NULHeader->NextDDH;
+    NULHeader->NextDDH = ((DrvMem&0xFFFF)<<16) | offsetof(USB_MSC_DOS_TSRDATA, ddh);
+    TSRData.ddh.NextDDH = next;
+
+    //write tsr mem
+    TSRData.dpb.DriverHeader = (DrvMem&0xFFFF) | offsetof(USB_MSC_DOS_TSRDATA, ddh);
+    DPMI_CopyLinear((DrvMem&0xFFFF)<<4, DPMI_PTR2L(&TSRData), sizeof(TSRData));
+
+    //build DPB http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2985.htm
+    memset(&reg, 0, sizeof(reg));
+    reg.h.ah = 0x53;
+    reg.w.ds = (DrvMem&0xFFFF);
+    reg.w.si = offsetof(USB_MSC_DOS_TSRDATA, bpb);
+    reg.w.es = (DrvMem&0xFFFF);
+    reg.w.bp = offsetof(USB_MSC_DOS_TSRDATA, dpb);
+    DPMI_CallRealModeINT(0x21, &reg);
+
+    //write back DOS lists
+    //++buf[DOS_LOL_BLOCK_DEVICE_COUNT];
+    memset(&reg, 0, sizeof(reg));
+    reg.h.ah = 0x52;
+    DPMI_CallRealModeINT(0x21, &reg);
+    DPMI_CopyLinear((uint32_t)(reg.w.es << 4) + reg.w.bx, DPMI_PTR2L(buf), DOS_LOL_SIZE); //copy to dpmi mem for easy access
+
+    //clean up
+    free(cds);
+    free(buf);
+    return TRUE;
 }
 
 BOOL USB_MSC_DOS_Uninstall()

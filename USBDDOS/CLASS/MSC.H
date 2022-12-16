@@ -274,6 +274,7 @@ typedef struct
     uint16_t SizeGB;
     void* pDataEP[2]; //bulk in/out
     uint8_t bEPAddr[2];
+    uint32_t DOSDriverMem;
 }USB_MSC_DriverData;
 
 #ifdef __cplusplus
