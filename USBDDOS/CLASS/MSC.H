@@ -135,7 +135,7 @@ typedef struct USB_MSC_ReadCommand //read(10) command
     uint8_t LUN : 3;
     uint32_t LBA;   //need reverse endian
     uint8_t reserved1;
-    uint16_t TransferLength; //need reverse endian
+    uint16_t TransferLength; //length in logical blocks //need reverse endian
     uint8_t reserved2;
     uint8_t PAD[2];   //padding, need set to 0
 }USB_MSC_READ_CMD;
@@ -271,6 +271,8 @@ typedef struct
 {
     uint8_t bInterface;
     uint8_t MaxLUN;
+    uint32_t MaxLBA;
+    uint32_t BlockSize;
     uint16_t SizeGB;
     void* pDataEP[2]; //bulk in/out
     uint8_t bEPAddr[2];

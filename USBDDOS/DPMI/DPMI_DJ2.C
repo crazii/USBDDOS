@@ -417,6 +417,15 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
     return (uint16_t)(_go32_dpmi_free_iret_wrapper(&go32pa) | result);
 }
 
+uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg)
+{
+    __dpmi_raddr addr;
+    int ret = __dpmi_allocate_real_mode_callback(Fn, (__dpmi_regs*)reg, &addr);
+    if(ret != 0)
+        return 0;
+    return ((uint32_t)addr.segment<<16) | (addr.offset16);
+}
+
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
 {
     #if NEW_IMPL//doesn't work with old method.

@@ -629,6 +629,12 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
     return 0;
 }
 
+uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg)
+{
+    #error not implemented.
+    return 0;
+}
+
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
 {
     spc->baseds = DPMI_HimemDS;

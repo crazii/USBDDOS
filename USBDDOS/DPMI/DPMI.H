@@ -178,6 +178,8 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg);
 //install interrupt service routine. use normal return, no need to do IRET.
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle);
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle);
+//allocate realmode callback. return: hiword: segment, lowword: offset. return 0 if fail
+uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg);
 
 //TSR/callback usage
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc);
