@@ -338,7 +338,7 @@ _Static_assert(sizeof(DOS_CDS) == 88, "incorrect size");
 #define DOS_DRSS_READ_FAULT     0x0B
 #define DOS_DRSS_GENERAL_FAULT  0x0C
 
-//driver function parameter 
+//driver function parameter https://faydoc.tripod.com/structures/25/2597.htm
 typedef struct DOS_DriverRequestStruct
 {
     uint8_t Len;
@@ -506,7 +506,10 @@ static void USB_MSC_DOS_DriverINT()
             //_LOG("START: %d, COUNT %d\n", start, request.ReadWrite.Count);
             uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(len, 16);
             if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, len, HCD_TXR))
+            {
                 request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_READ_FAULT;
+                request.ReadWrite.Count = 0;
+            }
             DPMI_CopyLinear(MSC_FP2L(request.ReadWrite.Address), DPMI_PTR2L(dma), len);
             DPMI_DMAFree(dma);
             break;
@@ -529,7 +532,7 @@ static void USB_MSC_DOS_DriverINT()
                 request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_WRITE_FAULT;
             DPMI_DMAFree(dma);
 
-            if(request.Status == 0 && request.Cmd == DOS_DRSCMD_WRITEVERIFY)
+            if(request.Status == DOS_DRSS_DONEBIT && request.Cmd == DOS_DRSCMD_WRITEVERIFY)
             {
                 {
                     USB_MSC_VERIFY_CMD cmd;
@@ -555,15 +558,19 @@ static void USB_MSC_DOS_DriverINT()
                     DPMI_DMAFree(dma);
                 }
             }
+            if(request.Status != DOS_DRSS_DONEBIT)
+                request.ReadWrite.Count = 0;
             break;
         }
     }
 
-    DPMI_StoreD(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Status), request.Status);
+    DPMI_StoreW(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Status), request.Status);
     if(request.Cmd == DOS_DRSCMD_MEDIACHECK)
-        DPMI_StoreD(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);
+        DPMI_StoreB(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);
     if(request.Cmd == DOS_DRSCMD_BUILD_BPB)
         DPMI_StoreD(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, BuildBPB.BPBPtr), request.BuildBPB.BPBPtr);
+    if(request.Cmd == DOS_DRSCMD_READ || request.Cmd == DOS_DRSCMD_WRITE || request.Cmd == DOS_DRSCMD_WRITEVERIFY)
+        DPMI_StoreW(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, ReadWrite.Count), request.ReadWrite.Count);
 }
 
 static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gitlab.com/FreeDOS/drivers/rdisk/-/blob/master/SOURCE/RDISK/RDISK.ASM
