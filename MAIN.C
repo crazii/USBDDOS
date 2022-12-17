@@ -220,12 +220,15 @@ int main(int argc, char* argv[])
         #endif
     }
 
-    if(USB_MSC_DOS_Install())
+    BOOL TSR = EnableRW;
+    TSR = USB_MSC_DOS_Install() || TSR; //note: TSR must be put in the back
+    if(TSR) 
     {
         if(!DPMI_TSR())
             puts("TSR Installation failed.\n");
     }
     
+    //TSR failure
     if(EnableRW)
     {
         BOOL uninstalled;

@@ -419,11 +419,22 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
 
 uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg)
 {
+    #if 0
     __dpmi_raddr addr;
     int ret = __dpmi_allocate_real_mode_callback(Fn, (__dpmi_regs*)reg, &addr);
     if(ret != 0)
         return 0;
-    return ((uint32_t)addr.segment<<16) | (addr.offset16);
+    return (((uint32_t)addr.segment)<<16) | (addr.offset16);
+    #endif
+    _go32_dpmi_seginfo info;
+    info.pm_selector = (uint16_t)_my_cs();
+    info.pm_offset = (uintptr_t)Fn;
+    if(_go32_dpmi_allocate_real_mode_callback_retf(&info, (_go32_dpmi_registers*)reg) == 0)
+    {
+        return (((uint32_t)info.rm_segment)<<16) | (info.rm_offset);
+    }
+    else
+        return 0;
 }
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
