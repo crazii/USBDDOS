@@ -31,11 +31,14 @@ Modify the makefile, or changes compiler arguments in the IDE, add `-DDEBUG=1` a
 HIMEM.SYS; EMM386 4.46+(for RetroWave driver); 80386 CPU or later; 
 
 # Features
-The code is orginally written as DOS driver for RetroWave OPL3, currently only a simple CDC driver, UHCI tested on a real hardware and OHCI tested on VirtualBox & real harware. But it could be more. the following can be added:
-* EHCI driver
-* Keyborad & mouse driver (HID)
-* MSD (mass storage deivce)
-* Audio and midi stuff.
+The code is orginally written as DOS driver for RetroWave OPL3, currently only a simple CDC driver, UHCI tested on a real hardware and OHCI tested on VirtualBox & real harware. But it could be more. the following can be supported:
+* - [x] OHCI driver
+* - [x] UHCI driver
+* - [ ] EHCI driver
+* - [ ] Keyborad & mouse driver (HID)
+* - [x] MSD (mass storage deivce)
+* - [x] Simple CDC(ACM) driver and RetroWave OPL3
+* - [ ] Audio and midi stuff.
 
 # Tested games with Retrowave DOS driver
 * Skyroads
