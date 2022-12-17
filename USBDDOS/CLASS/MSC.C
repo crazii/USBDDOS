@@ -671,7 +671,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT]; //usually 26
     uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
     DOS_DDH* NULHeader = (DOS_DDH*)&buf[DOS_LOL_NULDEV_HEADER];
-    _LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount);
+    _LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount); unused(DeviceCount);
 
     //fill CDS
     DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //local cache
