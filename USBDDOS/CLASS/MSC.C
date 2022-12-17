@@ -242,7 +242,7 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
             char BootFile[12];
             uint8_t Drive70; //unit(drive) no
             uint8_t Flags;
-            uint8_t SignatureEx;
+            uint8_t Signature70;
             uint32_t Serial70;
             char Label70[11];
             char FS70[8]; //"FAT32"
@@ -290,9 +290,10 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint32_t NextDPB;
     uint16_t Free1stCluster;
     uint16_t FreeCulsters;
+    char cwd[65]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit
 }DOS_DPB;
 #if defined(__DJ2__)
-_Static_assert(sizeof(DOS_DPB) == 33, "incorrect size");
+_Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 #endif
 
 #define DOS_CDS_FLAGS_USED      0xC0
@@ -401,9 +402,20 @@ typedef struct
     uint8_t STG_opcodes[5+5+1]; //mov es:bx to RequestPtr + retf
     uint8_t INT_opcodes[5+4+1];   //call far ptr + retf + 4 push/pop
     uint8_t unused;
+    uint16_t PartitionSector;    //base sector if mounted a partition instead of a whole disk
     //PM entry points, called by INT_opcodes
     uint32_t INT_RMCB;
 }USB_MSC_DOS_TSRDATA;
+
+static char USB_MSC_FAT_PartitionTypes[] = 
+{
+    0x01,   //FAT12
+    0x04,   //FAT16
+    0x0B,   //FAT32 with CHS
+    0x0C,   //FAT32 with LBA
+    0x0E,   //FAT16 with LBA
+    0
+};
 
 static uint32_t MSC_DriverINT_RMCB;
 static DPMI_REG MSC_DOSDriverReg;   //RM regs
@@ -500,6 +512,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_READ10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
+            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, PartitionSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -523,6 +536,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_WRITE10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
+            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, PartitionSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -586,7 +600,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         TSRData.ddh = ddh;
     }
 
-    {        
+    uint32_t VBRSector = 0;
+    {
         //read boot sector
         USB_MSC_READ_CMD cmd;
         memset(&cmd, 0, sizeof(cmd));
@@ -597,10 +612,40 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         uint8_t* BootSector = (uint8_t*)DPMI_DMAMalloc(pDriverData->BlockSize, 16);
         BOOL result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
         memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB)); //BPB started at 0x0B
+        
+        //no BPB in MBR, try FAT partition's boot sector, aka volume boot record (VBR)
+        if(!result || TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.FS70, "FAT",3) != 0))
+        {
+            int partition = 0;
+            //find FAT partition (even unique partition in MBR might be any entry with empty entries around)
+            while(partition < 4) //MBR max 4 paritions
+            { //https://en.wikipedia.org/wiki/Master_boot_record#PTE
+                VBRSector = *(uint32_t*)&BootSector[0x01BE + partition*16 + 0x08]; //0x01BE=first entry offset in partition table, entry size 16
+                if(VBRSector != 0)
+                {
+                    char type = (char)BootSector[0x01BE + partition*16 + 0x04];
+                    if(type != 0 && strchr(USB_MSC_FAT_PartitionTypes, type) != NULL)
+                        break;
+                }
+                ++partition;
+            }
+            if(partition != 4)
+            { //try mount the partition. during I/O, the actual sector is "Inputsector + VBRSector", VBRSector is recorded in USB_MSC_DOS_TSRDATA as PartitionSector
+                cmd.LBA = EndianSwap32(VBRSector);
+                result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
+                memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB));
+            }
+        }
         DPMI_DMAFree(BootSector);
+
         if(!result)
         {
             printf("MSC: Error reading boot sector.\n");
+            return FALSE;
+        }
+        if(TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.FS70, "FAT",3) != 0))
+        {
+            printf("MSC: BPB not found.\n");
             return FALSE;
         }
     }
@@ -660,6 +705,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //write tsr mem
     TSRData.dpb.Drive = CDSIndex;
     TSRData.dpb.DriverHeader = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
+    TSRData.PartitionSector = (uint16_t)VBRSector;
     TSRData.INT_RMCB = MSC_DriverINT_RMCB;
     //mov cs:[off], es
     int idx = 0;
@@ -738,9 +784,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     _LOG("DPB:\n");
     DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, dpb)), sizeof(DOS_DPB), NULL);
     _LOG("ENTRY POINTS:\n");
-    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes)), 11+6, NULL);
+    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes)), 11+10, NULL);
     #endif
-
     
     //write back DOS lists
     ++buf[DOS_LOL_BLOCK_DEVICE_COUNT];

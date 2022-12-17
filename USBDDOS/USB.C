@@ -548,6 +548,8 @@ BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, ui
         if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
         {
             wcstombs(pBuffer, (wchar_t*)(Buffer+2), min(length-1U, Buffer[0]));
+            int len = (int)strlen(pBuffer);
+            while(pBuffer[--len] == ' ' && len >= 0) pBuffer[len] = '\0'; //trim
             return TRUE;
         }
     }
