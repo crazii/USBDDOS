@@ -36,9 +36,9 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * - [x] UHCI driver
 * - [ ] EHCI driver
 * - [ ] Keyborad & mouse driver (HID)
-* - [x] MSD (mass storage deivce)
+* - [x] Mass storage deivce driver (MSD)
 * - [x] Simple CDC(ACM) driver and RetroWave OPL3
-* - [ ] Audio and midi stuff.
+* - [ ] Audio and MIDI
 
 # Tested games with Retrowave DOS driver
 * Skyroads

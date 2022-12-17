@@ -801,7 +801,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
     assert(pDriverData->DOSDriverMem == 0);
     pDriverData->DOSDriverMem = DrvMem;
-    printf("Disk \'%s\' mounted as drive %c:.\n", pDevice->sProduct, 'A' + CDSIndex);
+    printf("Disk \'%s %s\' mounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
     return TRUE;
 }
 
