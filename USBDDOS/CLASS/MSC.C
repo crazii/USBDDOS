@@ -140,12 +140,11 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     cbw.bCBWLUN = 0;
     cbw.bCBWCBLength = ((uint8_t)CmdSize)&0x1FU;
     memcpy(cbw.CBWCB, cmd, CmdSize);
-    uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(sizeof(cbw), 16);
+    uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(max(max(sizeof(USB_MSC_CBW),sizeof(USB_MSC_CSW)),DataSize), 16);
     memcpy(dma, &cbw, sizeof(cbw));
     uint16_t len = 0;
     uint16_t size = sizeof(cbw);
     uint8_t error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, size, &len); //TODO: error code now is HC specific, need abstraction (wrapper).
-    DPMI_DMAFree(dma);
     if(len != size || error)
     {
         _LOG("MSC CBW failed: %x, %d, %d.\n", error, size, len);
@@ -156,7 +155,6 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     //DATA
     if(DataSize)
     {
-        dma = (uint8_t*)DPMI_DMAMalloc(DataSize, 16);
         memset(dma, 0, DataSize);
         if(dir == HCD_TXW)
             memcpy(dma, data, DataSize);
@@ -164,7 +162,6 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
         error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[dir&0x1], dma, (uint16_t)DataSize, &len);
         if(dir == HCD_TXR)
             memcpy(data, dma, DataSize);
-        DPMI_DMAFree(dma);
         if(len != DataSize || error)
         {
             _LOG("MSC DATA Failed: %x, %d, %d, %d.\n", error, dir, DataSize, len);
@@ -175,7 +172,6 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
 
     //CSW
     len = 0;
-    dma = (uint8_t*)DPMI_DMAMalloc(sizeof(USB_MSC_CSW), 16);
     error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[1], dma, sizeof(USB_MSC_CSW), &len);
     USB_MSC_CSW csw = *(USB_MSC_CSW*)dma;
     DPMI_DMAFree(dma);
@@ -261,9 +257,9 @@ typedef struct DOS_DeviceDriverHeader
 {
     uint32_t NextDDH;
     uint16_t Attribs; //http://www.delorie.com/djgpp/doc/rbinter/it/48/16.html
-    uint16_t StrategyEntryPoint;
-    uint16_t IntEntryPoint;
-    uint8_t Drives;
+    uint16_t StrategyEntryPoint; //newar ptr. segment is the header (far ptr)'s segment
+    uint16_t IntEntryPoint; //near ptr
+    uint8_t Drives; //supported drive count. TODO: mount multiple partitions? USB disk can have multiple partitions but usually only 1.
     uint8_t Signature[7];
 }DOS_DDH;
 #if defined(__DJ2__)
@@ -290,7 +286,7 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint32_t NextDPB;
     uint16_t Free1stCluster;
     uint16_t FreeCulsters;
-    char cwd[65]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit
+    char cwd[65]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
 }DOS_DPB;
 #if defined(__DJ2__)
 _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
@@ -312,7 +308,7 @@ typedef struct DOS_CurrentDirectoryStructure
     uint16_t IFSData;
 }DOS_CDS;
 #if defined(__DJ2__)
-_Static_assert(sizeof(DOS_CDS) == 88, "incorrect size");
+_Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS stores it in arrays
 #endif
 
 //https://github.com/microsoft/MS-DOS/blob/master/v2.0/source/DEVDRIV.txt
@@ -361,7 +357,7 @@ typedef struct DOS_DriverRequestStruct
         struct
         {
             uint8_t MediaDesc;
-            uint8_t Returned;
+            uint8_t Returned;   //extra code. -1:changed, 1: not changed, 0: don't know. -1 wil cause clear cache and rebuild BPB
         }MediaCheck;
         struct 
         {
@@ -400,9 +396,9 @@ typedef struct
     DOS_DPB dpb;
     uint32_t RequestPtr;        //far pointer to a DOS_DRS, saved by STG_opcodes (strategy entry point)
     uint8_t STG_opcodes[5+5+1]; //mov es:bx to RequestPtr + retf
-    uint8_t INT_opcodes[5+4+1];   //call far ptr + retf + 4 push/pop
-    uint8_t unused;
-    uint16_t PartitionSector;    //base sector if mounted a partition instead of a whole disk
+    uint8_t INT_opcodes[5+4+1]; //call far ptr + retf + 4 push/pop
+    uint8_t unused;             //padding
+    uint16_t StartSector;       //base sector if mounted a partition instead of a whole disk
     //PM entry points, called by INT_opcodes
     uint32_t INT_RMCB;
 }USB_MSC_DOS_TSRDATA;
@@ -466,35 +462,12 @@ static void USB_MSC_DOS_DriverINT()
         {
             HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
             uint16_t PortStatus = pHCI->pHCDMethod->GetPortStatus(pHCI, pDevice->HCDDevice.bHubPort);
-            if((PortStatus&USB_PORT_ATTACHED) && (PortStatus&USB_PORT_ENABLE))
+            if((PortStatus&USB_PORT_ATTACHED) && (PortStatus&USB_PORT_ENABLE) && !(PortStatus&USB_PORT_CONNECT_CHANGE))
                 request.MediaCheck.Returned = 1;
             else
             {
-                request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
+                //request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
                 request.MediaCheck.Returned = 0xFF;
-            }
-            if(request.MediaCheck.Returned == 1)
-            {
-                {
-                    USB_MSC_TESTUNITREADY_CMD cmd;
-                    memset(&cmd, 0, sizeof(cmd));
-                    cmd.opcode = USB_MSC_SBC_TESTUNITREADY;
-                    if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), NULL, 0, HCD_TXR))
-                        request.MediaCheck.Returned = 0xFF;
-                }
-                {//REQUEST SENSE to get test result
-                    USB_MSC_REQSENSE_CMD cmd;
-                    memset(&cmd, 0, sizeof(cmd));
-                    cmd.opcode = USB_MSC_SBC_REQSENSE;
-                    cmd.AllocationLength = sizeof(USB_MSC_REQSENSE_DATA);
-                    USB_MSC_REQSENSE_DATA* dma = (USB_MSC_REQSENSE_DATA*)DPMI_DMAMalloc(sizeof(USB_MSC_REQSENSE_DATA), 16);
-                    if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, sizeof(USB_MSC_REQSENSE_DATA), HCD_TXR))
-                        request.MediaCheck.Returned = 0xFF;
-                    //_LOG("REQUEST SENSE: %d, %d\n", dma->ErrorCode, dma->SenseKey);
-                    if(dma->SenseKey) //TODO: spec on errorcode & sense code
-                        request.MediaCheck.Returned = 0xFF;
-                    DPMI_DMAFree(dma);
-                }
             }
             break;
         }
@@ -512,7 +485,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_READ10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, PartitionSector)));
+            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -536,7 +509,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_WRITE10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, PartitionSector)));
+            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -578,6 +551,7 @@ static void USB_MSC_DOS_DriverINT()
         }
     }
 
+    //writ back status
     DPMI_StoreW(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Status), request.Status);
     if(request.Cmd == DOS_DRSCMD_MEDIACHECK)
         DPMI_StoreB(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);
@@ -619,8 +593,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             int partition = 0;
             //find FAT partition (even unique partition in MBR might be any entry with empty entries around)
             while(partition < 4) //MBR max 4 paritions
-            { //https://en.wikipedia.org/wiki/Master_boot_record#PTE
-                VBRSector = *(uint32_t*)&BootSector[0x01BE + partition*16 + 0x08]; //0x01BE=first entry offset in partition table, entry size 16
+            { //https://en.wikipedia.org/wiki/Master_boot_record#PTE 0x01BE=first entry offset in partition table, 16=entry size, 0x08=partition first sector offset(LBA)
+                VBRSector = *(uint32_t*)&BootSector[0x01BE + partition*16 + 0x08]; 
                 if(VBRSector != 0)
                 {
                     char type = (char)BootSector[0x01BE + partition*16 + 0x04];
@@ -630,7 +604,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
                 ++partition;
             }
             if(partition != 4)
-            { //try mount the partition. during I/O, the actual sector is "Inputsector + VBRSector", VBRSector is recorded in USB_MSC_DOS_TSRDATA as PartitionSector
+            { //try mount the partition. during I/O, the actual sector is "Inputsector + VBRSector", VBRSector is recorded in USB_MSC_DOS_TSRDATA as StartSector
                 cmd.LBA = EndianSwap32(VBRSector);
                 result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
                 memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB));
@@ -705,16 +679,16 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //write tsr mem
     TSRData.dpb.Drive = CDSIndex;
     TSRData.dpb.DriverHeader = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
-    TSRData.PartitionSector = (uint16_t)VBRSector;
+    TSRData.StartSector = (uint16_t)VBRSector;
     TSRData.INT_RMCB = MSC_DriverINT_RMCB;
-    //mov cs:[off], es
+    //mov cs:[RequestPtr+2], es
     int idx = 0;
     TSRData.STG_opcodes[idx++] = 0x2E;  //CS prefix
     TSRData.STG_opcodes[idx++] = 0x8C;  //mov sreg
     TSRData.STG_opcodes[idx++] = 0x06;  //ModR/M
     TSRData.STG_opcodes[idx++] = (offsetof(USB_MSC_DOS_TSRDATA, RequestPtr)+2) & 0xFF;
     TSRData.STG_opcodes[idx++] = (offsetof(USB_MSC_DOS_TSRDATA, RequestPtr)+2) >> 8;
-    //mov cs:[off], bx
+    //mov cs:[RequestPtr], bx
     TSRData.STG_opcodes[idx++] = 0x2E;  //CS prefix
     TSRData.STG_opcodes[idx++] = 0x89;  //mov reg
     TSRData.STG_opcodes[idx++] = 0x1E;  //ModR/M
@@ -732,7 +706,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     TSRData.INT_opcodes[idx++] = 0x0E;
     //pop ds
     TSRData.INT_opcodes[idx++] = 0x1F;
-    //call far(dword) ptr cs:[off]
+    //call far(dword) ptr cs:[INT_RMCB]
     TSRData.INT_opcodes[idx++] = 0x2E;  //CS prefix
     TSRData.INT_opcodes[idx++] = 0xFF;  //call
     TSRData.INT_opcodes[idx++] = 0x1E;  //ModR/M
