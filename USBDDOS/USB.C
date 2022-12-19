@@ -135,7 +135,6 @@ void USB_Shutdown(void)
             DPMI_UninstallISR(&USB_ISRHandle[j]);
         }
     }
-
     for(int k = 0; k < USBT.HC_Count; ++k)
     {
         HCD_Interface* pHCI = &USBT.HC_List[k];
@@ -186,11 +185,12 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
             }
             else if( DPMI_InstallISR(iv, USB_ISR_Wraper, &USB_ISRHandle[index]) != 0)
             {
+                PIC_SetIRQMask(irqmask);
                 printf("Error: Install ISR failed.\n");
                 exit(-1);
             }
             PIC_UnmaskIRQ(header->DevHeader.Device.IRQ);
-            //_LOG("IRQ mask: %04x\n", PIC_GetIRQMask());
+            //_LOG("altered IRQ mask: %04x\n", PIC_GetIRQMask());
             break;
         }
     }
@@ -598,6 +598,23 @@ static void USB_EnumerateDevices()
     //enable one port each time, and it will respond via device address (FA) 0, default pipe - endpoint 0.
     //if device inited, assign address to it (the address is used for further communication), and continue to next device.
     //otherwise disable the port (only one device can be enabled with address 0) and continue to next
+
+    //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
+    for(int j = 0; j < USBT.HC_Count; ++j)
+    {
+        HCD_Interface* pHCI = &USBT.HC_List[j];
+
+        for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
+        {
+            uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
+            
+            if(status&USB_PORT_ATTACHED)
+            {
+                pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
+            }
+        }
+    }
+    
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
         HCD_Interface* pHCI = &USBT.HC_List[j];
@@ -628,8 +645,9 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
 
     HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
     // 1st reset
-    pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
-    //pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, );
+    BOOL reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
+    if(!reset)
+        return FALSE;
 
     uint8_t* Buffer = pDevice->pDeviceBuffer;
     memset(Buffer, 0, USB_DEVBUFFER_SIZE);
@@ -648,7 +666,9 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0);//update EP0 maxpacket
 
     // 2nd reset
-    pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
+    reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
+    if(!reset)
+        return FALSE;
 
     // set device address.
     // before set address, nothing can be done except get desc.
@@ -682,13 +702,22 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     {
         // get manufacturer string
         if (pDevice->Desc.biManufacture)
+        {
+            _LOG("USB: get manufacture\n");
             USB_GetDescriptorString(pDevice, pDevice->Desc.biManufacture, pDevice->sManufacture, sizeof(pDevice->sManufacture));
+        }
         // get product string
         if (pDevice->Desc.biProduct)
+        {
+            _LOG("USB: get product\n");
             USB_GetDescriptorString(pDevice, pDevice->Desc.biProduct, pDevice->sProduct, sizeof(pDevice->sProduct));
+        }
         // get serial number string
         if (pDevice->Desc.biSerialNumber)
+        {
+            _LOG("USB: get serial num\n");
             USB_GetDescriptorString(pDevice, pDevice->Desc.biSerialNumber, pDevice->sSerialNumber, sizeof(pDevice->sSerialNumber));
+        }
     }
     //get config desc
     _LOG("USB: get config descriptor\n");
@@ -792,6 +821,7 @@ void USB_ISR(void)
                 break; //exit. level triggered event will still exist for next device
         }
     }
+    #if 1
     //default handler is empty (IRQ 9~11) and do nothing, not even EOI
     //assume 3rd party driver handler exist if previous irq mask bit is clear
     if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
@@ -800,15 +830,18 @@ void USB_ISR(void)
         //_LOG("USB_ISR: EOI\n");
         return;
     }
+    #endif
 
     //call old handler
     DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
-    assert(handle);
+    //assert(handle);
+    //_LOG("Old IRQ Handler: %04x:%04x\n", handle->rm_cs, handle->rm_offset);
     DPMI_REG r = {0};
     r.w.cs = handle->rm_cs;
     r.w.ip = handle->rm_offset;
     DPMI_CallRealModeIRET(&r);
-
+    //original handler may mask the IRQ agian, enable
+    PIC_UnmaskIRQ(irq);
 }
 
 DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)

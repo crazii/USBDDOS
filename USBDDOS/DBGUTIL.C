@@ -32,8 +32,8 @@ void DBG_Logv(const char* fmt, va_list aptr)
             DPMI_CallRealModeINT(0x10,&r);
         }
     }
-    //STIL();
     PIC_SetIRQMask(irqm);
+    //STIL();
 }
 
 void DBG_Log(const char* fmt, ...)

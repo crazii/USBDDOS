@@ -66,26 +66,38 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 
     uint32_t dwBase = pHCI->dwBaseAddress;
     // ownership handoff
-    DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, OwnershipChangeRequest);
     {
+        uint32_t HCFS = (DPMI_LoadD(dwBase + HcControl) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
+        _LOG("HCFS: %d\n", HCFS);
         if(!(DPMI_LoadD(dwBase + HcControl) & InterruptRouting))
         { // take ownership from BIOS driver
-            uint32_t HCFS = (DPMI_LoadD(dwBase + HcCommandStatus) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
-            if(HCFS != USBRESET && HCFS != USBOPERATIONAL)
+            if(HCFS != USBRESET)
             {
-                DPMI_MaskD(dwBase + HcCommandStatus, ~HostControllerFunctionalState, USBRESUME << HostControllerFunctionalState_SHIFT);
-                delay(50);
+                _LOG("OHCI: take ownership from BIOS..\n");
+                if(HCFS != USBOPERATIONAL)
+                {
+                    DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState, USBRESUME << HostControllerFunctionalState_SHIFT);
+                    delay(50); //usb1.1 requires 20ms
+                }
+            }
+            else //no BIOS driver nor SMM, do a reset
+            {
+                DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState, USBRESET << HostControllerFunctionalState_SHIFT);
+                delay(50); //10~50ms by USB1.1 spec
             }
         }
-        else
-        {                                                             // take ownership from SMM driver
+        else if(HCFS == USBRESET)
+        { // take ownership from SMM driver
+            DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, OwnershipChangeRequest);
             while(DPMI_LoadD(dwBase + HcControl) & InterruptRouting) // wait SMM driver
                 delay(50);
         }
+        //HCFS = (DPMI_LoadD(dwBase + HcControl) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
+        //_LOG("HCFS: %d\n", HCFS);
     }
     uint32_t FrameInterval = DPMI_LoadD(dwBase + HcFmInterval);
     DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, HostControllerReset);
-    delay(1);
+    delay(1); //10us max
     DPMI_StoreD(dwBase + HcFmInterval, FrameInterval);
 
     // get ports
@@ -131,10 +143,10 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 
     DPMI_StoreD(dwBase + HcPeriodicStart, (FrameInterval & 0x3FFF) * 9 / 10); // spec requires 90% for interrupt/iso.
 
-    // controller goto the USBOPERATIONAL state.
-    DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState, (USBOPERATIONAL << HostControllerFunctionalState_SHIFT));
     //DPMI_MaskD(dwBase + HcInterruptEnable, ~0UL, StartofFrame); //1ms interval. not needed for now.
     DPMI_MaskD(dwBase + HcControl, ~InterruptRouting, 0UL);
+    // controller goto the USBOPERATIONAL state.
+    DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState, (USBOPERATIONAL << HostControllerFunctionalState_SHIFT));
 
     pHCDData->ControlTail = &pHCDData->ControlHead;
     pHCDData->BulkTail = &pHCDData->BulkHead;
@@ -152,8 +164,14 @@ BOOL OHCI_DeinitController(HCD_Interface* pHCI)
     uint32_t dwBase = pHCI->dwBaseAddress;
     if(dwBase)
     {
-        DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, HostControllerReset);
-        delay(1);
+        //DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, HostControllerReset); //don't do reset on deinit, it won't init again on real hardware
+        //delay(1);
+        //disable interrupts and lists
+        DPMI_MaskD(dwBase + HcInterruptEnable, ~(0x4000003FL|MasterInterruptEnable), 0);
+        DPMI_MaskD(dwBase + HcControl, ~ControlListEnable, 0);
+        DPMI_MaskD(dwBase + HcControl, ~PeriodicListEnable, 0);
+        DPMI_MaskD(dwBase + HcControl, ~IsochronousEnable, 0);
+        DPMI_MaskD(dwBase + HcControl, ~BulkListEnable, 0);        
     }
     if(pHCI->pHCDData)
         DPMI_DMAFree(pHCI->pHCDData);
@@ -256,10 +274,14 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     OHCI_BuildTD(pSetup, PIDSETUP, OHCI_CW_NO_INTERRUPT, OHCI_CW_DATATOGGLE_DATA0, DPMI_PTR2P(setup8), 8, length > 0 ? pData : pStatus);
     pSetup->pRequest = pRequest;
     // check status
-    assert(pED->TailP == pED->HeadP && pED->TailP == DPMI_PTR2P(pSetup)); // empty ED. (tailp==headp)
+    //_LOG("Setup: %lx, Data: %lx, Status: %lx\n", DPMI_PTR2P(pSetup), pData ? DPMI_PTR2P(pData) : 0, DPMI_PTR2P(pStatus));
+    //_LOG("TailP: %lx, HeaP: %lx, EmptyTail: %lx\n", pED->TailP, pED->HeadP, DPMI_PTR2P(pEmptyTail));
+    assert(pED->TailP == pED->HeadP);
+    assert(pED->TailP == DPMI_PTR2P(pSetup)); // empty ED. (tailp==headp)
     if(length > 0) assert(pSetup->NextTD == DPMI_PTR2P(pData) && pData->NextTD == DPMI_PTR2P(pStatus) && pStatus->NextTD == DPMI_PTR2P(pEmptyTail));
     // start transfer
     pED->pTail = pEmptyTail;
+    //pED->HeadP = pED->TailP;
     pED->TailP = DPMI_PTR2P(pEmptyTail);
     STIL();
 #if DEBUG && 0
@@ -270,7 +292,7 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     DBG_Printf(&db, "ED TD before transation:\n");
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pED)); DBG_DumpPD(DPMI_PTR2P(pED), 4, &db);
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pSetup)); DBG_DumpPD(DPMI_PTR2P(pSetup), 4, &db);
-    DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, &db);
+    if(pData) {DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, &db);}
     DBG_Printf(&db, "%08lx: ", DPMI_PTR2P(pStatus)); DBG_DumpPD(DPMI_PTR2P(pStatus), 4, &db);
 
     DPMI_MaskD(dwIOBase + HcCommandStatus, ~0UL, ControlListFilled);
@@ -294,7 +316,7 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
         printf("ED TD after transation:\n");
         printf("%08lx: ", DPMI_PTR2P(pED)); DBG_DumpPD(DPMI_PTR2P(pED), 4, NULL);
         printf("%08lx: ", DPMI_PTR2P(pSetup)); DBG_DumpPD(DPMI_PTR2P(pSetup), 4, NULL);
-        printf("%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, NULL);
+        if(pData) {printf("%08lx: ", DPMI_PTR2P(pData)); DBG_DumpPD(DPMI_PTR2P(pData), 4, NULL);}
         printf("%08lx: ", DPMI_PTR2P(pStatus)); DBG_DumpPD(DPMI_PTR2P(pStatus), 4, NULL);
     }
     STIL();
@@ -409,7 +431,7 @@ void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead)
             }
             if(pED)
             {
-                pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP&~0x1UL);
+                pNext = (OHCI_TD*)DPMI_P2PTR(pED->HeadP&~0xFUL);
                 while(pNext != pED->pTail) //remove pending entries with the same request from ED
                 {
                     //_LOG("%x %x %x %x\n", pNext, pTD, pNext->pRequest, pRequest);
@@ -423,7 +445,7 @@ void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead)
                         break; //request are consecutive
                     pNext = p;
                 }
-                //_LOG("%x\n",pNext);
+                //_LOG("%x %x\n",pNext, DPMI_PTR2P(pNext));
                 pED->HeadP = DPMI_PTR2P(pNext);
             }
         }
@@ -489,7 +511,7 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         int timeout = 0;
         do
         {
-            delay(10); // spec required
+            delay(10); // spec required 10
         } while(!(DPMI_LoadD(dwPortAddr) & PortResetStatusChange) && timeout++ <= 500); // 5 sec time out (Microsoft impl)
         if(timeout > 500)
             return FALSE;
@@ -505,7 +527,7 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         {
             delay(10);
         } while(!(DPMI_LoadD(dwPortAddr) & PortEnableStatus));
-        _LOG("OHCI port endable done.\n");
+        _LOG("OHCI port enable done.\n");
     }
 
     if((status & USB_PORT_DISABLE) && (cur & PortEnableStatus))
