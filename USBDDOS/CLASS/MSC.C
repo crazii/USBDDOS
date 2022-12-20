@@ -583,7 +583,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         cmd.LUN = 0;
         cmd.LBA = 0; // 0th sector
         cmd.TransferLength = EndianSwap16(1); //sector count
-        uint8_t* BootSector = (uint8_t*)DPMI_DMAMalloc(pDriverData->BlockSize, 16);
+        uint8_t* BootSector = (uint8_t*)malloc(pDriverData->BlockSize);
         BOOL result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
         memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB)); //BPB started at 0x0B
         
@@ -610,14 +610,14 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
                 memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB));
             }
         }
-        DPMI_DMAFree(BootSector);
+        free(BootSector);
 
         if(!result)
         {
             printf("MSC: Error reading boot sector.\n");
             return FALSE;
         }
-	if(TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.DOS40.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.DOS70.FS, "FAT",3) != 0))
+        if(TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.DOS40.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.DOS70.FS, "FAT",3) != 0))
         {
             printf("MSC: BPB not found.\n");
             return FALSE;
@@ -625,11 +625,34 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     }
     {
         TSRData.dpb.BPS = TSRData.bpb.BPS;
+        TSRData.dpb.SPC = TSRData.bpb.SPC;
         TSRData.dpb.RsvdSectors = TSRData.bpb.RsvdSectors;
         TSRData.dpb.FATs = TSRData.bpb.FATs;
         TSRData.dpb.RootDirs = TSRData.bpb.RootDirs;
+        TSRData.dpb.SPF = TSRData.bpb.SPF;
         TSRData.dpb.MediaID = TSRData.bpb.MediaDesc; //hard disk=0xF8
         TSRData.dpb.NextDPB = 0xFFFF;
+        //those fields are too short for FAT32, there must be extended fields to hold 32bit free cluster
+        TSRData.dpb.Free1stCluster = 0;
+        TSRData.dpb.FreeCulsters = 0xFFFF;
+
+        if(0 && memcmp(TSRData.bpb.DOS70.FS, "FAT32",5) == 0)
+        {
+            //read FS Information sector to fill free cluster
+            USB_MSC_READ_CMD cmd;
+            memset(&cmd, 0, sizeof(cmd));
+            cmd.opcode = USB_MSC_SBC_READ10;
+            cmd.LUN = 0;
+            cmd.LBA = EndianSwap32(VBRSector + TSRData.bpb.DOS70.FSSector);
+            cmd.TransferLength = EndianSwap16(1); //sector count
+            uint8_t* FSSector = (uint8_t*)malloc(pDriverData->BlockSize);
+            BOOL result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), FSSector, pDriverData->BlockSize, HCD_TXR);
+            if(result)
+            { //https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FS_Information_Sector
+                //TSRData.dpb.FreeCulsters2 = *(uint32_t*)&FSSector[0x1E8];
+            }
+            free(FSSector);
+        }
     }
     DPMI_REG reg;
 

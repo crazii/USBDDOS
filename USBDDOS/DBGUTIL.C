@@ -15,9 +15,9 @@
 #define VGA_OFFSET_LOW 0x0f
 #define VGA_OFFSET_HIGH 0x0e
 #define VGA_VIDEO_ADDRESS 0xB8000
-#define VGA_MAX_ROWS 25 //TODO: read VGA mode in BIOS data area and device rows/cols
+#define VGA_MAX_ROWS 25 //TODO: read VGA mode in BIOS data area and decide rows/cols
 #define VGA_MAX_COLS 80
-void VGA_SetCursor(uint32_t offset)
+static void VGA_SetCursor(uint32_t offset)
 {
     outp(VGA_CTRL_REGISTER, VGA_OFFSET_HIGH);
     outp(VGA_DATA_REGISTER, (unsigned char) (offset >> 8));
@@ -25,7 +25,7 @@ void VGA_SetCursor(uint32_t offset)
     outp(VGA_DATA_REGISTER, (unsigned char) (offset & 0xff));
 }
 
-uint32_t VGA_GetCursor()
+static uint32_t VGA_GetCursor()
 {
     outp(VGA_CTRL_REGISTER, VGA_OFFSET_HIGH);
     uint32_t offset = (uint32_t)inp(VGA_DATA_REGISTER) << 8;
@@ -34,22 +34,22 @@ uint32_t VGA_GetCursor()
     return offset;
 }
 
-void VGA_SetChar(char character, uint32_t offset)
+static void VGA_SetChar(char character, uint32_t offset)
 {
     DPMI_StoreB(VGA_VIDEO_ADDRESS + offset*2, (uint8_t)character);
 }
 
-uint32_t VGA_GetOffset(uint32_t col, uint32_t row) {
+static uint32_t VGA_GetOffset(uint32_t col, uint32_t row) {
     return (uint32_t)(row * VGA_MAX_COLS + col);
 }
 
-uint32_t VGA_NewLine(uint32_t offset)
+static uint32_t VGA_NewLine(uint32_t offset)
 {
     uint32_t row = offset / VGA_MAX_COLS;
     return VGA_GetOffset(0, row+1);
 }
 
-uint32_t VGA_Scroll(uint32_t offset) {
+static uint32_t VGA_Scroll(uint32_t offset) {
     
     DPMI_CopyLinear(VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 0)*2, VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 1)*2, VGA_MAX_COLS * (VGA_MAX_ROWS - 1)*2);
 
@@ -59,20 +59,19 @@ uint32_t VGA_Scroll(uint32_t offset) {
     return offset - VGA_MAX_COLS;
 }
 
-void VGA_Print(const char *string) {
+static void VGA_Print(const char *string) {
     uint32_t offset = VGA_GetCursor();
     int i = 0;
     while (string[i] != 0)
     {
         char ch = string[i++];
         if (ch == '\n')
-        {
             offset = VGA_NewLine(offset);
-            if (offset >= VGA_MAX_ROWS * VGA_MAX_COLS)
-                offset = VGA_Scroll(offset);
-        }
         else
             VGA_SetChar(ch, offset++);
+
+        if(offset >= VGA_MAX_ROWS * VGA_MAX_COLS)
+            offset = VGA_Scroll(offset);
     }
     VGA_SetCursor(offset);
     //update cursor in BIOS data area (40:50)
