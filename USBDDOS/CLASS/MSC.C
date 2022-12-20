@@ -253,6 +253,7 @@ _Static_assert(sizeof(DOS_BPB) == 80, "incorrect size");
 #define DOS_DDHA_32BIT_ADDRESSING   0x0002
 #define DOS_DDHA_OPENCLOSE          0x0800
 
+//https://faydoc.tripod.com/structures/25/2597.htm
 typedef struct DOS_DeviceDriverHeader
 {
     uint32_t NextDDH;
@@ -266,6 +267,8 @@ typedef struct DOS_DeviceDriverHeader
 _Static_assert(sizeof(DOS_DDH) == 18, "incorrect size");
 #endif
 
+//https://faydoc.tripod.com/structures/13/1395.htm
+//https://stanislavs.org/helppc/drive_parameter_table.html
 typedef struct DOS_DriveParameterBlock //DOS4.0+
 {
     uint8_t Drive; //0:A, 2:B, 3:C...
@@ -285,7 +288,7 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint8_t Accessed; //00 for true, FF for none
     uint32_t NextDPB;
     uint16_t Free1stCluster;
-    uint32_t FreeClusters; //DOS7.0+: 4 bytes
+    uint32_t FreeClusters; //DOS7.0+: 4 bytes (teseted out)
     char cwd[63]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
 }DOS_DPB;
 #if defined(__DJ2__)
@@ -295,6 +298,7 @@ _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 #define DOS_CDS_FLAGS_USED      0xC0
 #define DOS_CDS_FLAGS_PHYSICAL  0x4000
 
+//http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm#Table1643
 typedef struct DOS_CurrentDirectoryStructure
 {
     char path[67];
@@ -405,6 +409,7 @@ typedef struct
     uint32_t INT_RMCB;
 }USB_MSC_DOS_TSRDATA;
 
+//https://en.wikipedia.org/wiki/Partition_type
 static char USB_MSC_FAT_PartitionTypes[] = 
 {
     0x01,   //FAT12
