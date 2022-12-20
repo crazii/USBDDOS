@@ -236,11 +236,11 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
             uint16_t FSSector; //sector containing FS info
             uint16_t BackupSector;
             char BootFile[12];
-            uint8_t Drive70; //unit(drive) no
+            uint8_t Drive; //unit(drive) no
             uint8_t Flags;
             uint8_t Signature;
             uint32_t Serial;
-            char Label70[11];
+            char Label[11];
             char FS[8]; //"FAT32"
         }DOS70;
     };
@@ -399,7 +399,8 @@ typedef struct
     uint8_t STG_opcodes[5+5+1]; //mov es:bx to RequestPtr + retf
     uint8_t INT_opcodes[5+4+1]; //call far ptr + retf + 4 push/pop
     uint8_t unused;             //padding
-    uint16_t StartSector;       //base sector if mounted a partition instead of a whole disk
+    uint32_t StartSector;       //base sector if mounted a partition instead of a whole disk. this value may > 0xFFFF if the first parition is not FAT and large enough.
+                                //some weirld disk may have only 1 parition but with this offset > 0xFFFF, with unallocated space before it
     //PM entry points, called by INT_opcodes
     uint32_t INT_RMCB;
 }USB_MSC_DOS_TSRDATA;
@@ -486,7 +487,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_READ10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            start += DPMI_LoadD(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -510,7 +511,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_WRITE10;
             cmd.LUN = (uint8_t)request.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadW(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            start += DPMI_LoadD(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -637,6 +638,13 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         //those fields are too short for FAT32, there must be extended fields to hold 32bit free cluster
         //TSRData.dpb.Free1stCluster = 0;
         //TSRData.dpb.FreeClusters = 0xFFFF;
+        #if 0
+        _LOG("SPF: %04x, %08x\n", TSRData.bpb.SPF, TSRData.bpb.DOS70.SPF);
+        _LOG("RootDirCluster: %08x\n", TSRData.bpb.DOS70.RootDirCluster);
+        _LOG("Label: %s\n", TSRData.bpb.DOS70.Label);
+        _LOG("Serial: %x\n", TSRData.bpb.DOS70.Serial);
+        _LOG("VBRSector: %x\n", VBRSector);
+        #endif
 
         if(memcmp(TSRData.bpb.DOS70.FS, "FAT32",5) == 0)
         {
@@ -653,7 +661,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             { //https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FS_Information_Sector
                 FreeClusters = *(uint32_t*)&FSSector[0x1E8];
                 _LOG("MSC: FAT32 Free Clusters: %08x\n", FreeClusters);
-                //TSRData.dpb.FreeClusters = FreeClusters; //need set it after build DPB
+                //TSRData.dpb.FreeClusters = FreeClusters; //need to set it after build DPB
             }
             free(FSSector);
         }
@@ -706,7 +714,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //write tsr mem
     TSRData.dpb.Drive = CDSIndex;
     TSRData.dpb.DriverHeader = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
-    TSRData.StartSector = (uint16_t)VBRSector;
+    TSRData.StartSector = VBRSector;
     TSRData.INT_RMCB = MSC_DriverINT_RMCB;
     //mov cs:[RequestPtr+2], es
     int idx = 0;
@@ -844,7 +852,7 @@ BOOL USB_MSC_DOS_Uninstall()
 }
 
 #if DEBUG
-void USB_MSC_Test()
+void USB_MSC_Test() //dump DPB
 {
     DPMI_REG reg;
     memset(&reg, 0, sizeof(reg));

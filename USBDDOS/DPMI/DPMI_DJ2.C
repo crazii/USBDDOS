@@ -167,7 +167,7 @@ static void sig_handler(int signal)
     exit(-1);   //perform DPMI clean up on atexit
 }
 
-void DPMI_InitFlat()
+static void DPMI_InitFlat()
 {
     DPMI_Selector4G = (uint16_t)__dpmi_allocate_ldt_descriptors(1);
     __dpmi_set_segment_base_address(DPMI_Selector4G, 0);

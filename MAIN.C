@@ -222,7 +222,7 @@ int main(int argc, char* argv[])
     {
         extern void DPMI_InitFlat();
         extern void USB_MSC_Test();
-        DPMI_InitFlat();
+        //DPMI_InitFlat();
         //USB_MSC_Test();
         return 0;
     }
