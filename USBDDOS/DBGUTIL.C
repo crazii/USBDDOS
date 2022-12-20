@@ -89,7 +89,7 @@ void DBG_Logv(const char* fmt, va_list aptr)
     uint32_t len = (uint32_t)vsprintf(buf, fmt, aptr);
     
     assert(len < SIZE);
-    len = min(len, SIZE);
+    len = min(len, SIZE-1);
     buf[len] = '\0';
     VGA_Print(buf);
     #undef SIZE
