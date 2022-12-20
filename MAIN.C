@@ -162,22 +162,56 @@ static EMM_IOPT MAIN_HDPMI_IOPT;
 BOOL MAIN_HDPMI_PortTrapped;
 #endif
 
+struct 
+{
+    const char* option;
+    const char* desc;
+    BOOL enable;
+}MAIN_Options[] =
+{
+    "/?", "Show help.", FALSE,
+    "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ needed.", FALSE,
+    "/disk", "Enable USB-disk support", FALSE,
+
+    NULL, NULL, 0,
+};
+enum EOption
+{
+    OPT_Help,
+    OPT_RetroWave,
+    OPT_Disk,
+
+    OPT_COUNT,
+};
+
 int main(int argc, char* argv[])
 {
-    BOOL EnableRW = FALSE;
-    if(argc != 1)
+    if(argc == 1 || argc == 2 && stricmp(argv[1],"/?") == 0)
+    {
+        printf("USBDDOS: USB driver for DOS. Usage:\n");
+        int i = 0;
+        while(MAIN_Options[i].option)
+        {
+            printf(" %-8s: %s\n", MAIN_Options[i].option, MAIN_Options[i].desc);
+            ++i;
+        }
+    }
+    else
     {
         for(int i = 1; i < argc; ++i)
         {
-            if(stricmp(argv[i], "/RW") == 0)
+            for(int j = 0; j < OPT_COUNT; ++j)
             {
-                EnableRW = TRUE;
-                break;
+                if(stricmp(argv[i], MAIN_Options[j].option) == 0)
+                {
+                    MAIN_Options[j].enable = TRUE;
+                    break;
+                }
             }
         }
     }
 
-    if(EnableRW)
+    if(MAIN_Options[OPT_RetroWave].enable)
     {
         unsigned short EMMVer = EMM_GetVersion();
         _LOG("EMM386 version: %d.%02d\n", (EMMVer&0xFF), (EMMVer>>8));
@@ -191,7 +225,7 @@ int main(int argc, char* argv[])
     DPMI_Init();
     USB_Init();
 
-    if(EnableRW)
+    if(MAIN_Options[OPT_RetroWave].enable)
     {
         if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
             return -1;
@@ -220,8 +254,8 @@ int main(int argc, char* argv[])
         #endif
     }
 
-    BOOL TSR = EnableRW;
-    TSR = USB_MSC_DOS_Install() || TSR; //note: TSR must be put in the back
+    BOOL TSR = MAIN_Options[OPT_RetroWave].enable;
+    TSR = (MAIN_Options[OPT_Disk].enable && USB_MSC_DOS_Install()) || TSR; //note: TSR must be put in the back
     if(TSR) 
     {
         if(!DPMI_TSR())
@@ -229,7 +263,7 @@ int main(int argc, char* argv[])
     }
     
     //TSR failure
-    if(EnableRW)
+    if(MAIN_Options[OPT_RetroWave].enable)
     {
         BOOL uninstalled;
         #if MAIN_ENABLE_TIMER

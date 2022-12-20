@@ -225,11 +225,11 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
             char Label[11];
             char FS[8]; //"FAT12" or "FAT16"
             uint8_t reserved[8];
-        };
+        }DOS40;
         struct
         {
             //7.0+
-            uint32_t SPF70;   //sector per FAT
+            uint32_t SPF;   //sector per FAT
             uint16_t MirrorFlags;
             uint16_t Version;
             uint32_t RootDirCluster;
@@ -238,11 +238,11 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
             char BootFile[12];
             uint8_t Drive70; //unit(drive) no
             uint8_t Flags;
-            uint8_t Signature70;
-            uint32_t Serial70;
+            uint8_t Signature;
+            uint32_t Serial;
             char Label70[11];
-            char FS70[8]; //"FAT32"
-        };
+            char FS[8]; //"FAT32"
+        }DOS70;
     };
     uint8_t unused; //padding
 }DOS_BPB;
@@ -588,7 +588,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB)); //BPB started at 0x0B
         
         //no BPB in MBR, try FAT partition's boot sector, aka volume boot record (VBR)
-        if(!result || TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.FS70, "FAT",3) != 0))
+        if(!result || TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.DOS40.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.DOS70.FS, "FAT",3) != 0))
         {
             int partition = 0;
             //find FAT partition (even unique partition in MBR might be any entry with empty entries around)
@@ -617,7 +617,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             printf("MSC: Error reading boot sector.\n");
             return FALSE;
         }
-        if(TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.FS70, "FAT",3) != 0))
+	if(TSRData.bpb.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.DOS40.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.DOS70.FS, "FAT",3) != 0))
         {
             printf("MSC: BPB not found.\n");
             return FALSE;
@@ -726,7 +726,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     reg.w.si = offsetof(USB_MSC_DOS_TSRDATA, bpb);
     reg.w.es = (DrvMem&0xFFFF);
     reg.w.bp = offsetof(USB_MSC_DOS_TSRDATA, dpb);
-    if(memcmp(TSRData.bpb.FS70,"FAT32", 5) == 0) //FAT32?
+    if(memcmp(TSRData.bpb.DOS70.FS,"FAT32", 5) == 0) //FAT32?
     {
         reg.w.cx = 0x4558; //win95 FAT32
         reg.w.dx = 0x4152;
@@ -803,6 +803,8 @@ BOOL USB_MSC_DOS_Install()
                 count += USB_MSC_DOS_InstallDevice(dev) ? 1 : 0;
         }
     }
+    if(count == 0)
+        printf("No USB disk found.\n");
     return count > 0;
  }
 
