@@ -186,7 +186,7 @@ enum EOption
 
 int main(int argc, char* argv[])
 {
-    if(argc == 1 || argc == 2 && stricmp(argv[1],"/?") == 0)
+    if(argc == 1 || (argc == 2 && stricmp(argv[1],"/?") == 0))
     {
         printf("USBDDOS: USB driver for DOS. Usage:\n");
         int i = 0;
@@ -211,6 +211,8 @@ int main(int argc, char* argv[])
         }
     }
 
+    DPMI_Init();
+
     if(MAIN_Options[OPT_RetroWave].enable)
     {
         unsigned short EMMVer = EMM_GetVersion();
@@ -222,7 +224,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    DPMI_Init();
     USB_Init();
 
     if(MAIN_Options[OPT_RetroWave].enable)

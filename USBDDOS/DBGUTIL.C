@@ -9,31 +9,92 @@
 #include "USBDDOS/PIC.H"
 #include "USBDDOS/DBGUTIL.H"
 
-//need to make it work in interrupt handler by masking out interrupt
+//https://dev.to/frosnerd/writing-my-own-vga-driver-22nn
+#define VGA_CTRL_REGISTER 0x3d4
+#define VGA_DATA_REGISTER 0x3d5
+#define VGA_OFFSET_LOW 0x0f
+#define VGA_OFFSET_HIGH 0x0e
+#define VGA_VIDEO_ADDRESS 0xB8000
+#define VGA_MAX_ROWS 25 //TODO: read VGA mode in BIOS data area and device rows/cols
+#define VGA_MAX_COLS 80
+void VGA_SetCursor(uint32_t offset)
+{
+    outp(VGA_CTRL_REGISTER, VGA_OFFSET_HIGH);
+    outp(VGA_DATA_REGISTER, (unsigned char) (offset >> 8));
+    outp(VGA_CTRL_REGISTER, VGA_OFFSET_LOW);
+    outp(VGA_DATA_REGISTER, (unsigned char) (offset & 0xff));
+}
+
+uint32_t VGA_GetCursor()
+{
+    outp(VGA_CTRL_REGISTER, VGA_OFFSET_HIGH);
+    uint32_t offset = (uint32_t)inp(VGA_DATA_REGISTER) << 8;
+    outp(VGA_CTRL_REGISTER, VGA_OFFSET_LOW);
+    offset += inp(VGA_DATA_REGISTER);
+    return offset;
+}
+
+void VGA_SetChar(char character, uint32_t offset)
+{
+    DPMI_StoreB(VGA_VIDEO_ADDRESS + offset*2, (uint8_t)character);
+}
+
+uint32_t VGA_GetOffset(uint32_t col, uint32_t row) {
+    return (uint32_t)(row * VGA_MAX_COLS + col);
+}
+
+uint32_t VGA_NewLine(uint32_t offset)
+{
+    uint32_t row = offset / VGA_MAX_COLS;
+    return VGA_GetOffset(0, row+1);
+}
+
+uint32_t VGA_Scroll(uint32_t offset) {
+    
+    DPMI_CopyLinear(VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 0)*2, VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 1)*2, VGA_MAX_COLS * (VGA_MAX_ROWS - 1)*2);
+
+    for(uint32_t i = 0; i < VGA_MAX_COLS; ++i)
+        VGA_SetChar(' ', VGA_MAX_COLS * (VGA_MAX_ROWS - 1) + i);
+
+    return offset - VGA_MAX_COLS;
+}
+
+void VGA_Print(const char *string) {
+    uint32_t offset = VGA_GetCursor();
+    int i = 0;
+    while (string[i] != 0)
+    {
+        char ch = string[i++];
+        if (ch == '\n')
+        {
+            offset = VGA_NewLine(offset);
+            if (offset >= VGA_MAX_ROWS * VGA_MAX_COLS)
+                offset = VGA_Scroll(offset);
+        }
+        else
+            VGA_SetChar(ch, offset++);
+    }
+    VGA_SetCursor(offset);
+    //update cursor in BIOS data area (40:50)
+    //https://stanislavs.org/helppc/bios_data_area.html
+    DPMI_StoreB((0x40UL<<4)+0x50, (uint8_t)(offset % VGA_MAX_COLS));
+    DPMI_StoreB((0x40UL<<4)+0x50+1, (uint8_t)(offset / VGA_MAX_COLS));
+}
+
+//needs to work in interrupt handler. now use IN/OUT controls VGA directly.
 void DBG_Logv(const char* fmt, va_list aptr)
 {
-    //CLIS();
-    uint16_t irqm = PIC_GetIRQMask();
-    PIC_SetIRQMask(0xFFFF); //this is NOT good but hack off interrrupt will help debugging.
-                            //avoid reentrance of INT 10h call in already interrupt handler
-
-    char buf[DUMP_BUFF_SIZE];
-    int len = vsprintf(buf, fmt, aptr);
-    DPMI_REG r = {0};
-    for(int i = 0; i < len; ++i)
-    {
-        r.h.ah = 0x0E;
-        r.h.al = (uint8_t)buf[i];
-        DPMI_CallRealModeINT(0x10,&r);
-        if(buf[i] =='\n')
-        {
-            r.h.ah = 0x0E;
-            r.h.al = '\r';
-            DPMI_CallRealModeINT(0x10,&r);
-        }
-    }
-    PIC_SetIRQMask(irqm);
-    //STIL();
+    CLIS();
+    #define SIZE (DUMP_BUFF_SIZE*4)
+    char buf[SIZE];
+    uint32_t len = (uint32_t)vsprintf(buf, fmt, aptr);
+    
+    assert(len < SIZE);
+    len = min(len, SIZE);
+    buf[len] = '\0';
+    VGA_Print(buf);
+    #undef SIZE
+    STIL();
 }
 
 void DBG_Log(const char* fmt, ...)
