@@ -12,13 +12,17 @@ USB driver stack for DOS
 Borland C++3.1 (native DOS or emu):
 * Setup build env: install the BC toolchains and set path to it. 
 * In folder ./Make, execute `make -f makefile.bc`. the makefile is generated from BC utils and doesn't have clean.
-* Or use BC IDE to perform build alternatively.
+* Or use BC IDE to perform build alternatively
+  > cd usbdos\make\
+  > bc
 * The BC build uses a custom (pseudo) DPMI that limit memmory to: 64K code + 64K data.
 
 DJGPP (native DOS or emu i.e.VirtualBox, cross toolchain on linux not tested):
 * ~~Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html~~
-* `make -f rwddos.mak`. the makefile is generated from RHIDE so it make have problem on dependencies/clean.
-* Or use RHIDE to perform build.
+* `make -f usbddos.mak`. the makefile is generated from RHIDE so it make have problem on dependencies.
+* Or use RHIDE to perform build
+  > cd usbddos\make\
+  > rhide
 * The DJGPP build depends on a DPMI host, i.e. its CWSDPMI. but HDPMI is recommended.
 
 OpenWatcom:  
@@ -36,8 +40,8 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * - [x] UHCI driver
 * - [ ] EHCI driver
 * - [ ] Keyborad & mouse driver (HID)
-* - [x] Mass storage deivce driver (MSD)
-* - [x] Simple CDC(ACM) driver and RetroWave OPL3
+* - [x] Mass storage deivce driver (MSD). use `USBDDOS /disk` to enable
+* - [x] Simple CDC(ACM) driver and RetroWave OPL3. use `USBDDOS /RW` to enable
 * - [ ] Audio and MIDI
 
 # Tested games with Retrowave DOS driver
