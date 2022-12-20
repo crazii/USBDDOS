@@ -204,7 +204,7 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
     uint16_t RsvdSectors; //reserved sectors from the begginning
     uint8_t FATs;
     uint16_t RootDirs;
-    uint16_t Sectors; //sectors in total
+    uint16_t Sectors; //sectors in total(FAT12)
     uint8_t MediaDesc; //media descriptor
     uint16_t SPF; //sectors per fat
     //3.31
@@ -271,7 +271,7 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint8_t Drive; //0:A, 2:B, 3:C...
     uint8_t SubUnit;  //sub unit no.
     uint16_t BPS; //bytes per sector
-    uint8_t SPC; //sectors per cluster
+    uint8_t SPC; //sectors per cluster - 1
     uint8_t C2SShift; //shift count for cluster to sector
     uint16_t RsvdSectors; //reserved sectors from the begginning
     uint8_t FATs;
@@ -285,8 +285,8 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint8_t Accessed; //00 for true, FF for none
     uint32_t NextDPB;
     uint16_t Free1stCluster;
-    uint16_t FreeCulsters;
-    char cwd[65]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
+    uint32_t FreeClusters; //DOS7.0+: 4 bytes
+    char cwd[63]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
 }DOS_DPB;
 #if defined(__DJ2__)
 _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
@@ -312,6 +312,7 @@ _Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS sto
 #endif
 
 //https://github.com/microsoft/MS-DOS/blob/master/v2.0/source/DEVDRIV.txt
+//https://faydoc.tripod.com/structures/25/2597.htm
 
 #define DOS_DRSCMD_MEDIACHECK   1
 #define DOS_DRSCMD_BUILD_BPB    2
@@ -335,7 +336,7 @@ _Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS sto
 #define DOS_DRSS_READ_FAULT     0x0B
 #define DOS_DRSS_GENERAL_FAULT  0x0C
 
-//driver function parameter https://faydoc.tripod.com/structures/25/2597.htm
+//driver function parameter
 typedef struct DOS_DriverRequestStruct
 {
     uint8_t Len;
@@ -623,6 +624,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             return FALSE;
         }
     }
+    uint32_t FreeClusters = 0xFFFF;
     {
         TSRData.dpb.BPS = TSRData.bpb.BPS;
         TSRData.dpb.SPC = TSRData.bpb.SPC;
@@ -633,10 +635,10 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         TSRData.dpb.MediaID = TSRData.bpb.MediaDesc; //hard disk=0xF8
         TSRData.dpb.NextDPB = 0xFFFF;
         //those fields are too short for FAT32, there must be extended fields to hold 32bit free cluster
-        TSRData.dpb.Free1stCluster = 0;
-        TSRData.dpb.FreeCulsters = 0xFFFF;
+        //TSRData.dpb.Free1stCluster = 0;
+        //TSRData.dpb.FreeClusters = 0xFFFF;
 
-        if(0 && memcmp(TSRData.bpb.DOS70.FS, "FAT32",5) == 0)
+        if(memcmp(TSRData.bpb.DOS70.FS, "FAT32",5) == 0)
         {
             //read FS Information sector to fill free cluster
             USB_MSC_READ_CMD cmd;
@@ -649,7 +651,9 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             BOOL result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), FSSector, pDriverData->BlockSize, HCD_TXR);
             if(result)
             { //https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#FS_Information_Sector
-                //TSRData.dpb.FreeCulsters2 = *(uint32_t*)&FSSector[0x1E8];
+                FreeClusters = *(uint32_t*)&FSSector[0x1E8];
+                _LOG("MSC: FAT32 Free Clusters: %08x\n", FreeClusters);
+                //TSRData.dpb.FreeClusters = FreeClusters; //need set it after build DPB
             }
             free(FSSector);
         }
@@ -755,6 +759,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         reg.w.dx = 0x4152;
     }
     DPMI_CallRealModeINT(0x21, &reg);
+    DPMI_StoreD(MSC_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb.FreeClusters)), FreeClusters); //this will boost initial DIR speed for calc free clusters
 
     //alter driver chain
     {
@@ -769,11 +774,12 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         do
         {
             DPBFarPtr = NextDPB;
+            //_LOG("DPB: %08x\n", DPBFarPtr);
             NextDPB = DPMI_LoadD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
         } while((NextDPB&0xFFFF) != 0xFFFF);
         DPMI_StoreD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB), cds[CDSIndex].DPBptr);
     }
-    #if DEBUG
+    #if DEBUG && 0
     _LOG("DDH:\n");
     DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, ddh)), sizeof(DOS_DDH), NULL);
     _LOG("BPB:\n");
@@ -791,6 +797,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     DPMI_CallRealModeINT(0x21, &reg);
     DPMI_CopyLinear(MSC_SEGOFF2L(reg.w.es, reg.w.bx), DPMI_PTR2L(buf), DOS_LOL_SIZE); //copy dpmi mem to dos
 
+    //_LOG("%04x:%04x %08x\n", DrvMem&0xFFFF,offsetof(USB_MSC_DOS_TSRDATA, dpb), cds[CDSIndex].DPBptr);
     //clean up
     free(cds);
     free(buf);
@@ -835,3 +842,29 @@ BOOL USB_MSC_DOS_Uninstall()
 {
     return FALSE;
 }
+
+#if DEBUG
+void USB_MSC_Test()
+{
+    DPMI_REG reg;
+    memset(&reg, 0, sizeof(reg));
+    reg.h.ah = 0x52;
+    DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
+
+    uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
+    memset(buf, 0, DOS_LOL_SIZE);
+    DPMI_CopyLinear(DPMI_PTR2L(buf), MSC_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
+    {
+        uint32_t DPBFarPtr = *(uint32_t*)&buf[DOS_LOL_DPB_PTR];
+        uint32_t NextDPB = DPBFarPtr;
+        do
+        {
+            DPBFarPtr = NextDPB;
+            //_LOG("DPB: %08x\n", DPBFarPtr);
+            NextDPB = DPMI_LoadD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
+        } while((NextDPB&0xFFFF) != 0xFFFF);
+        DBG_DumpLB(MSC_FP2L(DPBFarPtr), sizeof(DOS_DPB), NULL);
+    }
+    free(buf);
+}
+#endif

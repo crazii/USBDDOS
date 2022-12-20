@@ -173,6 +173,9 @@ struct
     "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ needed.", FALSE,
     "/disk", "Enable USB-disk support", FALSE,
 
+    #if DEBUG
+    "/test", "debug tests", FALSE,
+    #endif
     NULL, NULL, 0,
 };
 enum EOption
@@ -181,6 +184,9 @@ enum EOption
     OPT_RetroWave,
     OPT_Disk,
 
+    #if DEBUG
+    OPT_TEST,
+    #endif
     OPT_COUNT,
 };
 
@@ -210,6 +216,17 @@ int main(int argc, char* argv[])
             }
         }
     }
+
+#if DEBUG
+    if(MAIN_Options[OPT_TEST].enable)
+    {
+        extern void DPMI_InitFlat();
+        extern void USB_MSC_Test();
+        DPMI_InitFlat();
+        //USB_MSC_Test();
+        return 0;
+    }
+#endif
 
     DPMI_Init();
 

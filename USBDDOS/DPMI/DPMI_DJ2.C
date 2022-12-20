@@ -162,17 +162,13 @@ static void Init_XMS()
     #endif
 }
 
-void sig_handler(int signal)
+static void sig_handler(int signal)
 {
     exit(-1);   //perform DPMI clean up on atexit
 }
 
-void DPMI_Init(void)
+void DPMI_InitFlat()
 {
-    atexit(&DPMI_Shutdown);
-    //signal(SIGINT, sig_handler);
-    signal(SIGABRT, sig_handler);
-    
     DPMI_Selector4G = (uint16_t)__dpmi_allocate_ldt_descriptors(1);
     __dpmi_set_segment_base_address(DPMI_Selector4G, 0);
     __dpmi_set_segment_limit(DPMI_Selector4G, 0xFFFFFFFF);
@@ -181,15 +177,24 @@ void DPMI_Init(void)
 
     __dpmi_get_segment_base_address(_my_ds(), &DPMI_DSBase);
     DPMI_DSLimit = __dpmi_get_segment_limit(_my_ds());
+}
 
+void DPMI_Init(void)
+{
+    atexit(&DPMI_Shutdown);
+    //signal(SIGINT, sig_handler);
+    signal(SIGABRT, sig_handler);
+
+    DPMI_InitFlat();
+    
     Init_XMS();
 
     __dpmi_meminfo info;    //1:1 map DOS memory. (0~640K). TODO: get 640K~1M mapping from VCPI
     info.handle = -1;
     info.address = 1024;    //skip IVT and expose NULL ptr
     info.size = 640L*1024L - 1024;
-    AddAddressMap(&info, 0);
-    
+    AddAddressMap(&info, 1024);
+
     /*
     int32_t* ptr = (int32_t*)DPMI_DMAMalloc(256,16);
     *ptr = 0xDEADBEEF;
@@ -307,6 +312,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
         return info.address;
     }
     assert(FALSE);
+    exit(-1);
     return 0;
 }
 
