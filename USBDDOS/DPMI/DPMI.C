@@ -190,19 +190,28 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
     {
         result = (int32_t)(*(((uint32_t*)addr1)+i) - *(((uint32_t*)addr2)+i));
         if(result != 0)
+        {
+            result = (int32_t)i;
             break;
+        }
     }
 
     if(result == 0)
     {
         addr2 += size4 * 4;
         addr1 += size4 * 4;
-        for(i = 0; i < size1; ++i)
-        {
-            result = (int32_t)(int8_t)(*(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i));
-            if(result != 0)
-                break;
-        }
+    }
+    else //re-compare in bytes
+    {
+        addr2 += (uint32_t)result * 4;
+        addr1 += (uint32_t)result * 4;
+        size1 = 4;
+    }
+    for(i = 0; i < size1; ++i)
+    {
+        result = (int32_t)(int8_t)(*(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i));
+        if(result != 0)
+            break;
     }
     RESTORE_DS()
     return result;
