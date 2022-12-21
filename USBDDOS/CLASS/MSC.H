@@ -296,6 +296,9 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
 BOOL USB_MSC_DOS_Install();
 BOOL USB_MSC_DOS_Uninstall();
 
+void USB_MSC_PreInit();
+void USB_MSC_PostDeInit();
+
 #ifdef __cplusplus
 }
 #endif

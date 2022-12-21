@@ -6,6 +6,8 @@
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/DBGUTIL.H"
 
+static BOOL USB_MSC_ReadSector(USB_Device* pDevice, uint32_t sector, uint16_t count, void* buf, size_t size);
+
 BOOL USB_MSC_InitDevice(USB_Device* pDevice)
 {
     assert(pDevice->bStatus == DS_Configured);
@@ -395,13 +397,6 @@ typedef struct DOS_DriverRequestStruct
 #define DOS_LOL_NULDEV_HEADER       0x22    //NUL device header, 18 bytes
 #define DOS_LOL_SIZE                0x60
 
-//convert real mode far pointer to linear addr
-#define MSC_FP2L(f32) ((((f32)>>12)&0xFFFF0)+((f32)&0xFFFF))
-//convert far pointer (seg:off) to linear
-#define MSC_SEGOFF2L(seg, off) ((((uint32_t)((seg)&0xFFFF))<<4) + ((off)&0xFFFF))
-//convert far pointer (seg:off) to 32bit far ptr
-#define MSC_MKFP(seg, off) ((((uint32_t)((seg)&0xFFFF))<<16) | ((off)&0xFFFF))
-
 //ease of use memory layout
 typedef struct 
 {
@@ -429,8 +424,10 @@ static char USB_MSC_FAT_PartitionTypes[] =
     0
 };
 
+static DOS_BPB* MSC_BPBs; //temp cache of all BPBs from DOS.
 static uint32_t MSC_DriverINT_RMCB;
 static DPMI_REG MSC_DOSDriverReg;   //RM regs
+
 static void USB_MSC_DOS_DriverINT()
 {
     //DBG_DumpREG(&MSC_DOSDriverReg);
@@ -459,9 +456,9 @@ static void USB_MSC_DOS_DriverINT()
         }
     }
 
-    uint32_t ReqFarPtr = DPMI_LoadD(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, RequestPtr)));
+    uint32_t ReqFarPtr = DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, RequestPtr)));
     DOS_DRS request;
-    DPMI_CopyLinear(DPMI_PTR2L(&request), MSC_FP2L(ReqFarPtr), sizeof(request));
+    DPMI_CopyLinear(DPMI_PTR2L(&request), DPMI_FP2L(ReqFarPtr), sizeof(request));
     request.Header.Status = DOS_DRSS_DONEBIT;
 
     if(pDevice == NULL)
@@ -489,7 +486,7 @@ static void USB_MSC_DOS_DriverINT()
         }
         case DOS_DRSCMD_BUILD_BPB:
         {
-            request.BuildBPB.BPBPtr = MSC_MKFP(cs, offsetof(USB_MSC_DOS_TSRDATA, bpb));
+            request.BuildBPB.BPBPtr = DPMI_MKFP(cs, offsetof(USB_MSC_DOS_TSRDATA, bpb));
             break;
         }
         case DOS_DRSCMD_READ:
@@ -501,7 +498,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_READ10;
             cmd.LUN = (uint8_t)request.Header.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadD(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -512,7 +509,7 @@ static void USB_MSC_DOS_DriverINT()
                 request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_READ_FAULT;
                 request.ReadWrite.Count = 0;
             }
-            DPMI_CopyLinear(MSC_FP2L(request.ReadWrite.Address), DPMI_PTR2L(dma), len);
+            DPMI_CopyLinear(DPMI_FP2L(request.ReadWrite.Address), DPMI_PTR2L(dma), len);
             DPMI_DMAFree(dma);
             break;
         }
@@ -525,12 +522,12 @@ static void USB_MSC_DOS_DriverINT()
             cmd.opcode = USB_MSC_SBC_WRITE10;
             cmd.LUN = (uint8_t)request.Header.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
-            start += DPMI_LoadD(MSC_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
             uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(len, 16);
-            DPMI_CopyLinear(DPMI_PTR2L(dma), MSC_FP2L(request.ReadWrite.Address), len);
+            DPMI_CopyLinear(DPMI_PTR2L(dma), DPMI_FP2L(request.ReadWrite.Address), len);
             if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, len, HCD_TXW))
                 request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_WRITE_FAULT;
             DPMI_DMAFree(dma);
@@ -568,13 +565,13 @@ static void USB_MSC_DOS_DriverINT()
     }
 
     //writ back status
-    DPMI_StoreW(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Header.Status), request.Header.Status);
+    DPMI_StoreW(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Header.Status), request.Header.Status);
     if(request.Header.Cmd == DOS_DRSCMD_MEDIACHECK)
-        DPMI_StoreB(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);
+        DPMI_StoreB(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);
     if(request.Header.Cmd == DOS_DRSCMD_BUILD_BPB)
-        DPMI_StoreD(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, BuildBPB.BPBPtr), request.BuildBPB.BPBPtr);
+        DPMI_StoreD(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, BuildBPB.BPBPtr), request.BuildBPB.BPBPtr);
     if(request.Header.Cmd == DOS_DRSCMD_READ || request.Header.Cmd == DOS_DRSCMD_WRITE || request.Header.Cmd == DOS_DRSCMD_WRITEVERIFY)
-        DPMI_StoreW(MSC_FP2L(ReqFarPtr) + offsetof(DOS_DRS, ReadWrite.Count), request.ReadWrite.Count);
+        DPMI_StoreW(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, ReadWrite.Count), request.ReadWrite.Count);
 }
 
 static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gitlab.com/FreeDOS/drivers/rdisk/-/blob/master/SOURCE/RDISK/RDISK.ASM
@@ -593,14 +590,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     uint32_t VBRSector = 0;
     {
         //read boot sector
-        USB_MSC_READ_CMD cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode = USB_MSC_SBC_READ10;
-        cmd.LUN = 0;
-        cmd.LBA = 0; // 0th sector
-        cmd.TransferLength = EndianSwap16(1); //sector count
         uint8_t* BootSector = (uint8_t*)malloc(pDriverData->BlockSize);
-        BOOL result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
+        BOOL result = USB_MSC_ReadSector(pDevice, 0, 1, BootSector, pDriverData->BlockSize); //read sector 0
         memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB)); //BPB started at 0x0B
         
         //no BPB in MBR, try FAT partition's boot sector, aka volume boot record (VBR)
@@ -621,8 +612,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             }
             if(partition != 4)
             { //try mount the partition. during I/O, the actual sector is "Inputsector + VBRSector", VBRSector is recorded in USB_MSC_DOS_TSRDATA as StartSector
-                cmd.LBA = EndianSwap32(VBRSector);
-                result = USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), BootSector, pDriverData->BlockSize, HCD_TXR);
+                result = USB_MSC_ReadSector(pDevice, VBRSector, 1, BootSector, pDriverData->BlockSize);
                 memcpy(&TSRData.bpb, BootSector+11, sizeof(DOS_BPB));
             }
         }
@@ -682,7 +672,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     }
     DPMI_REG reg;
 
-    uint32_t DrvMem = DPMI_HighMalloc(sizeof(USB_MSC_DOS_TSRDATA), TRUE); //allocate resident memory
+    uint32_t DrvMem = DPMI_HighMalloc((sizeof(USB_MSC_DOS_TSRDATA)+15)>>4, TRUE); //allocate resident memory
 
     //DOS 2.0+ internal: get list of lists http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm
     memset(&reg, 0, sizeof(reg));
@@ -690,7 +680,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
 
     uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
-    DPMI_CopyLinear(DPMI_PTR2L(buf), MSC_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
+    DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
     uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT]; //usually 26
     uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
     DOS_DDH* NULHeader = (DOS_DDH*)&buf[DOS_LOL_NULDEV_HEADER];
@@ -699,7 +689,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //fill CDS
     DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //local cache
     uint32_t CDSFarPtr = *(uint32_t*)&buf[DOS_LOL_CDS_PTR];
-    DPMI_CopyLinear(DPMI_PTR2L(cds), MSC_FP2L(CDSFarPtr), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
+    DPMI_CopyLinear(DPMI_PTR2L(cds), DPMI_FP2L(CDSFarPtr), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
     uint8_t CDSIndex; //find an empty entry in CDS list
     BOOL overrided = FALSE;
     for(CDSIndex = 2; CDSIndex < DriveCount; ++CDSIndex) //start from C:
@@ -710,38 +700,18 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         if((cds[CDSIndex].Flags&DOS_CDS_FLAGS_PHYSICAL))
         {
             //get the BPB of this disk to see if it is the same as our USB disk (probaby setup by BIOS), if it is, override it.
-            uint32_t dpb = DPMI_LoadD(DPMI_PTR2L(&cds[CDSIndex])+offsetof(DOS_CDS, DPBptr));
-            uint32_t DrvHeader = DPMI_LoadD(MSC_FP2L(dpb)+offsetof(DOS_DPB, DriverHeader));
-
-            DOS_DRS drs;
-            drs.Header.Len = sizeof(drs.Header) + sizeof(drs.BuildBPB);
-            drs.Header.Cmd = DOS_DRSCMD_BUILD_BPB;
-            drs.Header.SubUnit = 0;
-            drs.Header.Status = 0;
-            drs.BuildBPB.BPBPtr = 0;
-            drs.BuildBPB.MediaDesc = DPMI_LoadB(MSC_FP2L(dpb)+offsetof(DOS_DPB, MediaID));
-            drs.BuildBPB.Address = 0;
-            DPMI_CopyLinear(MSC_SEGOFF2L(DrvMem, 0), DPMI_PTR2L(&drs), sizeof(drs));
-
-            memset(&reg, 0, sizeof(reg));
-            reg.w.cs = DrvHeader>>16;
-            reg.w.ip = DPMI_LoadW(MSC_FP2L(DrvHeader) + offsetof(DOS_DDH, StrategyEntryPoint));
-            reg.w.es = DrvMem>>16; //use drvMem as temporary cache
-            reg.w.bx = 0;
-            if(DPMI_CallRealModeRETF(&reg) == 0 && DPMI_LoadW(MSC_SEGOFF2L(DrvMem, offsetof(DOS_DRS, Header.Status))) == 0)
+            if(DPMI_CompareLinear(DPMI_PTR2L(MSC_BPBs+CDSIndex), DPMI_PTR2L(&TSRData.bpb), sizeof(TSRData.bpb.DOS20) + sizeof(TSRData.bpb.DOS331) + sizeof(TSRData.bpb.DOS40)) == 0)
             {
-                memset(&reg, 0, sizeof(reg));
-                reg.w.cs = DrvHeader>>16;
-                reg.w.ip = DPMI_LoadW(MSC_FP2L(DrvHeader) + offsetof(DOS_DDH, IntEntryPoint));
-                reg.w.es = DrvMem>>16; //use drvMem as temporary cache
-                reg.w.bx = 0;
-                if(DPMI_CallRealModeRETF(&reg) == 0 && DPMI_LoadW(MSC_SEGOFF2L(DrvMem, offsetof(DOS_DRS, Header.Status))) == 0)
-                {
-                    uint32_t bpb = DPMI_LoadD(MSC_SEGOFF2L(DrvMem, offsetof(DOS_DRS, BuildBPB.BPBPtr)));
-                }
+                overrided = TRUE;
+                break;
             }
         }
     }
+    free(MSC_BPBs);
+    MSC_BPBs = NULL;
+    //_LOG("Current BPB:\n");
+    //DBG_DumpLB(DPMI_PTR2L(&TSRData.bpb), sizeof(DOS_BPB), NULL);
+
     if(CDSIndex == DriveCount)
     {
         DPMI_HighFree(DrvMem);
@@ -755,14 +725,14 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     memcpy(cds[CDSIndex].path, "A:\\", 4);
     cds[CDSIndex].path[0] = (char)(cds[CDSIndex].path[0] + CDSIndex);
     cds[CDSIndex].Flags |= DOS_CDS_FLAGS_USED | DOS_CDS_FLAGS_PHYSICAL;
-    cds[CDSIndex].DPBptr = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
+    cds[CDSIndex].DPBptr = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
     cds[CDSIndex].FFFFFFFFh = 0xFFFFFFFF;
     cds[CDSIndex].SlashPos = 2;
-    DPMI_CopyLinear(MSC_FP2L(CDSFarPtr) + CDSIndex*sizeof(DOS_CDS), DPMI_PTR2L(cds) + CDSIndex*sizeof(DOS_CDS), sizeof(DOS_CDS)); //cds write back to dos mem
+    DPMI_CopyLinear(DPMI_FP2L(CDSFarPtr) + CDSIndex*sizeof(DOS_CDS), DPMI_PTR2L(cds) + CDSIndex*sizeof(DOS_CDS), sizeof(DOS_CDS)); //cds write back to dos mem
 
     //write tsr mem
     TSRData.dpb.Drive = CDSIndex;
-    TSRData.dpb.DriverHeader = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
+    TSRData.dpb.DriverHeader = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
     TSRData.StartSector = VBRSector;
     TSRData.INT_RMCB = MSC_DriverINT_RMCB;
     //mov cs:[RequestPtr+2], es
@@ -801,7 +771,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //retf
     TSRData.INT_opcodes[idx++] = 0xCB;
     assert(idx == sizeof(TSRData.INT_opcodes));
-    DPMI_CopyLinear(MSC_SEGOFF2L(DrvMem,0), DPMI_PTR2L(&TSRData), sizeof(TSRData));
+    DPMI_CopyLinear(DPMI_SEGOFF2L(DrvMem,0), DPMI_PTR2L(&TSRData), sizeof(TSRData));
 
     //build DPB http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2985.htm
     memset(&reg, 0, sizeof(reg));
@@ -816,13 +786,13 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         reg.w.dx = 0x4152;
     }
     DPMI_CallRealModeINT(0x21, &reg);
-    DPMI_StoreD(MSC_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb.FreeClusters)), FreeClusters); //this will boost initial DIR speed for calc free clusters
+    DPMI_StoreD(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb.FreeClusters)), FreeClusters); //this will boost initial DIR speed for calc free clusters
 
     //alter driver chain
     {
         uint32_t next = NULHeader->NextDDH;
-        NULHeader->NextDDH = MSC_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
-        DPMI_StoreD(MSC_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh.NextDDH)), next);//TSRData.ddh.NextDDH = next;
+        NULHeader->NextDDH = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh));
+        DPMI_StoreD(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh.NextDDH)), next);//TSRData.ddh.NextDDH = next;
     }
     //DPB chain
     {
@@ -832,19 +802,19 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         {
             DPBFarPtr = NextDPB;
             //_LOG("DPB: %08x\n", DPBFarPtr);
-            NextDPB = DPMI_LoadD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
+            NextDPB = DPMI_LoadD(DPMI_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
         } while((NextDPB&0xFFFF) != 0xFFFF);
-        DPMI_StoreD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB), cds[CDSIndex].DPBptr);
+        DPMI_StoreD(DPMI_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB), cds[CDSIndex].DPBptr);
     }
     #if DEBUG && 0
     _LOG("DDH:\n");
-    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, ddh)), sizeof(DOS_DDH), NULL);
+    DBG_DumpLB(DPMI_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, ddh)), sizeof(DOS_DDH), NULL);
     _LOG("BPB:\n");
-    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, bpb)), sizeof(DOS_BPB), NULL);
+    DBG_DumpLB(DPMI_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, bpb)), sizeof(DOS_BPB), NULL);
     _LOG("DPB:\n");
-    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, dpb)), sizeof(DOS_DPB), NULL);
+    DBG_DumpLB(DPMI_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, dpb)), sizeof(DOS_DPB), NULL);
     _LOG("ENTRY POINTS:\n");
-    DBG_DumpLB(MSC_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes)), 11+10, NULL);
+    DBG_DumpLB(DPMI_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes)), 11+10, NULL);
     #endif
     
     //write back DOS lists
@@ -852,7 +822,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     memset(&reg, 0, sizeof(reg));
     reg.h.ah = 0x52;
     DPMI_CallRealModeINT(0x21, &reg);
-    DPMI_CopyLinear(MSC_SEGOFF2L(reg.w.es, reg.w.bx), DPMI_PTR2L(buf), DOS_LOL_SIZE); //copy dpmi mem to dos
+    DPMI_CopyLinear(DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DPMI_PTR2L(buf), DOS_LOL_SIZE); //copy dpmi mem to dos
 
     //_LOG("%04x:%04x %08x\n", DrvMem&0xFFFF,offsetof(USB_MSC_DOS_TSRDATA, dpb), cds[CDSIndex].DPBptr);
     //clean up
@@ -862,7 +832,10 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
     assert(pDriverData->DOSDriverMem == 0);
     pDriverData->DOSDriverMem = DrvMem;
-    printf("Disk \'%s %s\' mounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
+    if(overrided)
+        printf("Disk \'%s %s\': BIOS driver overrided, remounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
+    else
+        printf("Disk \'%s %s\' mounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
     return TRUE;
 }
 
@@ -900,6 +873,114 @@ BOOL USB_MSC_DOS_Uninstall()
     return FALSE;
 }
 
+//note: after USB driver take ownership from BIOS, reading sector is not available
+//so do it before USB init (pre init) and cache the BPBs. those BPBs are used to compare later to decide if it is the same drive that to be mounted.
+void USB_MSC_PreInit()
+{
+   //DOS 2.0+ internal: get list of lists http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm
+    DPMI_REG reg;
+    memset(&reg, 0, sizeof(reg));
+    reg.h.ah = 0x52;
+    DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
+    MSC_BPBs = (DOS_BPB*)malloc(sizeof(DOS_BPB)*26);
+
+    uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
+    DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
+    uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT]; //usually 26
+
+    DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //local cache
+    uint32_t CDSFarPtr = *(uint32_t*)&buf[DOS_LOL_CDS_PTR];
+    DPMI_CopyLinear(DPMI_PTR2L(cds), DPMI_FP2L(CDSFarPtr), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
+    uint32_t DRSMem = DPMI_HighMalloc((sizeof(DOS_DRS)+15)>>4, FALSE);
+    for(int CDSIndex = 2; CDSIndex < DriveCount; ++CDSIndex) //start from C:
+    {
+        if((cds[CDSIndex].Flags&DOS_CDS_FLAGS_PHYSICAL))
+        {
+            //get the BPB of this disk to see if it is the same as our USB disk (probaby setup by BIOS), if it is, override it.
+            uint32_t dpb = DPMI_LoadD(DPMI_PTR2L(&cds[CDSIndex])+offsetof(DOS_CDS, DPBptr));
+            uint32_t DrvHeader = DPMI_LoadD(DPMI_FP2L(dpb)+offsetof(DOS_DPB, DriverHeader));
+            uint32_t SectorBuffer = DPMI_HighMalloc((uint16_t)((DPMI_LoadW(DPMI_FP2L(dpb)+offsetof(DOS_DPB, BPS))+15U)>>4U), FALSE);
+
+            DOS_DRS drs;
+            drs.Header.Len = sizeof(drs.Header) + sizeof(drs.ReadWrite);
+            drs.Header.Cmd = DOS_DRSCMD_READ;
+            drs.Header.SubUnit = DPMI_LoadB(DPMI_FP2L(dpb)+offsetof(DOS_DPB,SubUnit));
+            drs.Header.Status = 0;//DOS_DRSS_ERRORBIT;
+            drs.ReadWrite.MediaDesc = DPMI_LoadB(DPMI_FP2L(dpb)+offsetof(DOS_DPB, MediaID));
+            drs.ReadWrite.Address = DPMI_MKFP(SectorBuffer, 0);
+            drs.ReadWrite.Count = 1;
+            drs.ReadWrite.Start = (DPMI_LoadW(DPMI_FP2L(DrvHeader)+offsetof(DOS_DDH, Attribs))&DOS_DDHA_32BIT_ADDRESSING) ? 0xFFFF : 0;
+            drs.ReadWrite.Start32 = 0;
+            drs.ReadWrite.VolumeID = 0;
+            DPMI_CopyLinear(DPMI_SEGOFF2L(DRSMem, 0), DPMI_PTR2L(&drs), sizeof(drs));
+            //_LOG("Drive %c subunit: %d.\n", 'A' + CDSIndex, drs.Header.SubUnit);
+
+            memset(&reg, 0, sizeof(reg));
+            reg.w.cs = (uint16_t)(DrvHeader>>16);
+            reg.w.ds = reg.w.cs;
+            reg.w.ip = DPMI_LoadW(DPMI_FP2L(DrvHeader) + offsetof(DOS_DDH, StrategyEntryPoint));
+            reg.w.es = (uint16_t)(DRSMem&0xFFFF);
+            reg.w.bx = 0;
+            if(DPMI_CallRealModeRETF(&reg) == 0)
+            {
+                _LOG("Drive %c Strategy OK.\n", 'A' + CDSIndex);
+                memset(&reg, 0, sizeof(reg));
+                reg.w.cs = (uint16_t)(DrvHeader>>16);
+                reg.w.ds = reg.w.cs;
+                reg.w.ip = DPMI_LoadW(DPMI_FP2L(DrvHeader) + offsetof(DOS_DDH, IntEntryPoint));
+                reg.w.es = (uint16_t)(DRSMem&0xFFFF);
+                reg.w.bx = 0;
+                if(DPMI_CallRealModeRETF(&reg) == 0 && DPMI_LoadW(DPMI_SEGOFF2L(DRSMem, offsetof(DOS_DRS, Header.Status))) == DOS_DRSS_DONEBIT)
+                {
+                    _LOG("Drive %c IntEntry OK.\n", 'A' + CDSIndex);
+                    //uint32_t bpb = DPMI_LoadD(DPMI_SEGOFF2L(DrvMem, offsetof(DOS_DRS, BuildBPB.BPBPtr)));
+                    #if DEBUG
+                    _LOG("Drive %c BPB:\n", 'A'+ CDSIndex);
+                    DBG_DumpLB(DPMI_SEGOFF2L(SectorBuffer, 11), sizeof(DOS_BPB), NULL);
+                    #endif
+                    DPMI_CopyLinear(DPMI_PTR2L(MSC_BPBs+CDSIndex), DPMI_SEGOFF2L(SectorBuffer, 11), sizeof(DOS_BPB));
+                }
+                else
+                    _LOG("Drive %c IntEntry: %x\n", 'A'+CDSIndex, DPMI_LoadW(DPMI_SEGOFF2L(DRSMem, offsetof(DOS_DRS, Header.Status))));
+            }
+            DPMI_HighFree(SectorBuffer);
+        }
+    }
+
+    DPMI_HighFree(DRSMem);
+    free(cds);
+    free(buf);
+}
+
+void USB_MSC_PostDeInit()
+{
+    if(MSC_BPBs)
+        free(MSC_BPBs);
+    MSC_BPBs = NULL;
+}
+
+static BOOL USB_MSC_ReadSector(USB_Device* pDevice, uint32_t sector, uint16_t count, void* buf, size_t size)
+{
+    if(pDevice == NULL)
+        return FALSE;
+    USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
+    if(pDriverData == NULL)
+        return FALSE;
+    if(size < count * pDriverData->BlockSize || sector + count > pDriverData->MaxLBA)
+    {
+        assert(FALSE);
+        return FALSE;
+    }
+
+    USB_MSC_READ_CMD cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.opcode = USB_MSC_SBC_READ10;
+    cmd.LUN = 0;
+    cmd.LBA = EndianSwap32(sector);
+    cmd.TransferLength = EndianSwap16(count); //sector count
+    return USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), buf, pDriverData->BlockSize, HCD_TXR);
+}
+
 #if DEBUG
 void USB_MSC_Test() //dump DPB
 {
@@ -910,7 +991,7 @@ void USB_MSC_Test() //dump DPB
 
     uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
     memset(buf, 0, DOS_LOL_SIZE);
-    DPMI_CopyLinear(DPMI_PTR2L(buf), MSC_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
+    DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
     {
         uint32_t DPBFarPtr = *(uint32_t*)&buf[DOS_LOL_DPB_PTR];
         uint32_t NextDPB = DPBFarPtr;
@@ -918,9 +999,9 @@ void USB_MSC_Test() //dump DPB
         {
             DPBFarPtr = NextDPB;
             //_LOG("DPB: %08x\n", DPBFarPtr);
-            NextDPB = DPMI_LoadD(MSC_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
+            NextDPB = DPMI_LoadD(DPMI_FP2L(DPBFarPtr) + offsetof(DOS_DPB, NextDPB));
         } while((NextDPB&0xFFFF) != 0xFFFF);
-        DBG_DumpLB(MSC_FP2L(DPBFarPtr), sizeof(DOS_DPB), NULL);
+        DBG_DumpLB(DPMI_FP2L(DPBFarPtr), sizeof(DOS_DPB), NULL);
     }
     free(buf);
 }

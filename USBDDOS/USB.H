@@ -228,12 +228,20 @@ typedef struct USB_VendorDriver
     BOOL (*DeinitDevice)(USB_Device* pDevice);
 }USB_Driver;
 
+//custom functions before USB_Init & after USB_Deinit
+typedef struct USB_PrePostRoutine
+{
+    void (*PreInit)(void);
+    void (*PostDeInit)(void);
+}USB_Routine;
+
 typedef struct 
 {
     HCD_Type HC_Types[USB_MAX_HC_TYPE];
     HCD_Interface HC_List[USB_MAX_HC_COUNT];
     USBC_Driver ClassDrivers[USBC_MAX_DRIVER];
     USB_Device Devices[USB_MAX_DEVICE_COUNT];
+    USB_Routine InitFunctions[USB_MAX_DEVICE_COUNT]; //un-ordered function array
     uint16_t HC_Count;
     uint16_t DeviceCount;
 }USB_Table;

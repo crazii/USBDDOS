@@ -79,6 +79,14 @@ void USB_Init(void)
     atexit(&USB_Shutdown);
     USB_InitAlloc();
 
+    for(int i = 0; i < USB_MAX_DEVICE_COUNT; ++i)
+    {
+        if(USBT.InitFunctions[i].PreInit)
+            USBT.InitFunctions[i].PreInit();
+        else
+            break;
+    }
+
     USBT.HC_Count = 0;
     memset(USBT.Devices, 0, sizeof(USBT.Devices));
 
@@ -149,6 +157,14 @@ void USB_Shutdown(void)
     USBT.HC_Count = 0;
     memset(USBT.Devices, 0, sizeof(USBT.Devices));
     USB_ShutdownAlloc();
+
+    for(int i = 0; i < USB_MAX_DEVICE_COUNT; ++i)
+    {
+        if(USBT.InitFunctions[i].PostDeInit)
+            USBT.InitFunctions[i].PostDeInit();
+        else
+            break;
+    }
 }
 
 BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCIDev)
@@ -599,25 +615,20 @@ static void USB_EnumerateDevices()
     //if device inited, assign address to it (the address is used for further communication), and continue to next device.
     //otherwise disable the port (only one device can be enabled with address 0) and continue to next
 
-    //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
         HCD_Interface* pHCI = &USBT.HC_List[j];
 
-        for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
-        {
-            uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
-            
-            if(status&USB_PORT_ATTACHED)
+        {    //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
+            for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
             {
-                pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
+                uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
+
+                if(status&USB_PORT_ATTACHED)
+                    pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
             }
+
         }
-    }
-    
-    for(int j = 0; j < USBT.HC_Count; ++j)
-    {
-        HCD_Interface* pHCI = &USBT.HC_List[j];
 
         for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
         {

@@ -95,7 +95,11 @@ USB_Table USBT =
     },
     //Devices
     {0},
-    
+    //USB_Routine
+    {
+        USB_MSC_PreInit, USB_MSC_PostDeInit,
+        0,0
+    },
     0,
     0,
 };

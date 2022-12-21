@@ -254,6 +254,13 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size);
 uint32_t DPMI_HighMalloc(uint16_t size, BOOL UMB);
 void DPMI_HighFree(uint32_t segment);
 
+//convert real mode far pointer to linear addr
+#define DPMI_FP2L(f32) ((((f32)>>12)&0xFFFF0)+((f32)&0xFFFF))
+//convert far pointer (seg:off) to linear
+#define DPMI_SEGOFF2L(seg, off) ((((uint32_t)((seg)&0xFFFF))<<4) + ((off)&0xFFFF))
+//convert far pointer (seg:off) to 32bit far ptr
+#define DPMI_MKFP(seg, off) ((((uint32_t)((seg)&0xFFFF))<<16) | ((off)&0xFFFF))
+
 #ifdef __cplusplus
 }
 #endif

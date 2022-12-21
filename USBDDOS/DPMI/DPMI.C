@@ -188,7 +188,7 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
     LOAD_DS()
     for(i = 0; i < size4; ++i)
     {
-        result = *(((uint32_t*)addr1)+i) - *(((uint32_t*)addr2)+i);
+        result = (int32_t)(*(((uint32_t*)addr1)+i) - *(((uint32_t*)addr2)+i));
         if(result != 0)
             break;
     }
@@ -199,7 +199,7 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
         addr1 += size4 * 4;
         for(i = 0; i < size1; ++i)
         {
-            result = *(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i);
+            result = (int32_t)(int8_t)(*(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i));
             if(result != 0)
                 break;
         }
@@ -415,6 +415,7 @@ end:
 
 int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
 {
+    int32_t result;
     LOAD_DS();
     __asm {
         push esi
@@ -430,9 +431,9 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
     }
 loop4b:
     __asm {
-        mov eax, dword ptr ds:[esi+ebx]
-        cmp dword ptr ds:[edi+ebx], eax
-        jne end
+        mov eax, dword ptr ds:[edi+ebx]
+        sub eax, dword ptr ds:[esi+ebx]
+        jne loop1b //perform byte wide test on 4 bytes
         add ebx, 4
         cmp ebx, ecx
         jne loop4b
@@ -445,32 +446,23 @@ loop4b:
     }
 loop1b:
     __asm {
-        mov al, byte ptr ds:[esi+ebx]
-        cmp byte ptr ds:[edi+ebx], al
+        mov al, byte ptr ds:[edi+ebx]
+        sub al, byte ptr ds:[esi+ebx]
         jne end
         inc ebx
         cmp ebx, edx
         jne loop1b
-
-        xor eax, eax  //return 0
-        jmp end2
     }
 end:
-    __asm {
-        ja GT
-        mov eax, 0xFFFFFFFF //return -1
-    }
-GT:
-    __asm {
-        mov eax, 1 //return 1
-    }
-end2:
     __asm {
         pop ebx
         pop edi
         pop esi
+        movsx eax, al
+        movsx result, eax
     }
     RESTORE_DS();
+    return result;
 }
 
 #endif
