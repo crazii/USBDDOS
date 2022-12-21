@@ -175,6 +175,39 @@ void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size)
     RESTORE_DS()
 }
 
+int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
+{
+    uint32_t size4 = size >> 2;
+    uint32_t size1 = size & 0x3;
+    uint32_t i;
+    int32_t result = 0;
+
+    addr1 = UNMAP_ADDR(addr1);
+    addr2 = UNMAP_ADDR(addr2);
+
+    LOAD_DS()
+    for(i = 0; i < size4; ++i)
+    {
+        result = *(((uint32_t*)addr1)+i) - *(((uint32_t*)addr2)+i);
+        if(result != 0)
+            break;
+    }
+
+    if(result == 0)
+    {
+        addr2 += size4 * 4;
+        addr1 += size4 * 4;
+        for(i = 0; i < size1; ++i)
+        {
+            result = *(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i);
+            if(result != 0)
+                break;
+        }
+    }
+    RESTORE_DS()
+    return result;
+}
+
 #elif defined(__BC__)//BC doesn't support linear addr, but TASM does, use asm
 
 //note: cdecl ABI: eax, edx, ecx caller preserved.
@@ -376,6 +409,66 @@ end:
     __asm {
         pop ebx
         pop edi
+    }
+    RESTORE_DS();
+}
+
+int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
+{
+    LOAD_DS();
+    __asm {
+        push esi
+        push edi
+        push ebx
+        mov esi, dword ptr addr2
+        mov edi, dword ptr addr1
+        mov ecx, dword ptr size
+        mov edx, ecx
+        and ecx, 0xFFFFFFFC
+        and edx, 0x3
+        xor ebx, ebx
+    }
+loop4b:
+    __asm {
+        mov eax, dword ptr ds:[esi+ebx]
+        cmp dword ptr ds:[edi+ebx], eax
+        jne end
+        add ebx, 4
+        cmp ebx, ecx
+        jne loop4b
+
+        test edx, edx
+        jz end
+        add esi, ebx
+        add edi, ebx
+        xor ebx, ebx
+    }
+loop1b:
+    __asm {
+        mov al, byte ptr ds:[esi+ebx]
+        cmp byte ptr ds:[edi+ebx], al
+        jne end
+        inc ebx
+        cmp ebx, edx
+        jne loop1b
+
+        xor eax, eax  //return 0
+        jmp end2
+    }
+end:
+    __asm {
+        ja GT
+        mov eax, 0xFFFFFFFF //return -1
+    }
+GT:
+    __asm {
+        mov eax, 1 //return 1
+    }
+end2:
+    __asm {
+        pop ebx
+        pop edi
+        pop esi
     }
     RESTORE_DS();
 }
