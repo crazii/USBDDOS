@@ -52,8 +52,12 @@ static void io_callback(void *userp, uint32_t data_rate, const void *tx_buf, voi
         DPMI_DMAFree(packed_data);
 }
 
-#define RETROWAVE_VENDOR 0x04D8
-#define RETROWAVE_DEVID 0x000A
+//Thoese are from Sudomaker
+#define RETROWAVE_VENDOR_EXPRESS 0x04D8
+#define RETROWAVE_DEVID_EXPRESS 0x000A
+#define RETROWAVE_VENDOR_LITE 0x0483
+#define RETROWAVE_DEVID_LITE 0x5740
+
 int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
 
     USB_Device* device = NULL;
@@ -66,7 +70,9 @@ int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
             if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
                 continue;
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
-            if(dev->Desc.widVendor == RETROWAVE_VENDOR)
+            if((dev->Desc.widVendor == RETROWAVE_VENDOR_EXPRESS && dev->Desc.widProduct == RETROWAVE_DEVID_EXPRESS)
+            || (dev->Desc.widVendor == RETROWAVE_VENDOR_LITE && dev->Desc.widProduct == RETROWAVE_DEVID_LITE)
+            || stricmp(dev->sProduct, "RetroWave OPL", 13) == 0)
             {
                 device = dev;
                 break;
