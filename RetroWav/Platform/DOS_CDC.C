@@ -72,7 +72,7 @@ int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
             if((dev->Desc.widVendor == RETROWAVE_VENDOR_EXPRESS && dev->Desc.widProduct == RETROWAVE_DEVID_EXPRESS)
             || (dev->Desc.widVendor == RETROWAVE_VENDOR_LITE && dev->Desc.widProduct == RETROWAVE_DEVID_LITE)
-            || stricmp(dev->sProduct, "RetroWave OPL", 13) == 0)
+            || memicmp(dev->sProduct, "RetroWave OPL", 13) == 0)
             {
                 device = dev;
                 break;
