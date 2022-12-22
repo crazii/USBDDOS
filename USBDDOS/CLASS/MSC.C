@@ -699,7 +699,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             break;
         if((cds[CDSIndex].Flags&DOS_CDS_FLAGS_PHYSICAL))
         {
-            //get the BPB of this disk to see if it is the same as our USB disk (probaby setup by BIOS), if it is, override it.
+            //get the BPB of this disk/parition (probaby setup by BIOS) to see if it is the same as our USB disk/partition, if it is, override it.
+            //compare BPB becausse it contains serial number which should be identical for disk/partition
             if(DPMI_CompareLinear(DPMI_PTR2L(MSC_BPBs+CDSIndex), DPMI_PTR2L(&TSRData.bpb), sizeof(TSRData.bpb.DOS20) + sizeof(TSRData.bpb.DOS331) + sizeof(TSRData.bpb.DOS40)) == 0)
             {
                 overrided = TRUE;
@@ -707,8 +708,6 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             }
         }
     }
-    free(MSC_BPBs);
-    MSC_BPBs = NULL;
     //_LOG("Current BPB:\n");
     //DBG_DumpLB(DPMI_PTR2L(&TSRData.bpb), sizeof(DOS_BPB), NULL);
 
@@ -818,7 +817,8 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     #endif
     
     //write back DOS lists
-    ++buf[DOS_LOL_BLOCK_DEVICE_COUNT];
+    if(!overrided)
+        ++buf[DOS_LOL_BLOCK_DEVICE_COUNT];
     memset(&reg, 0, sizeof(reg));
     reg.h.ah = 0x52;
     DPMI_CallRealModeINT(0x21, &reg);
@@ -863,6 +863,9 @@ BOOL USB_MSC_DOS_Install()
                 count += USB_MSC_DOS_InstallDevice(dev) ? 1 : 0;
         }
     }
+
+    USB_MSC_PostDeInit(); //if TSRed, post-deinit clean up will not be called. call it here.
+
     if(count == 0)
         printf("No USB disk found.\n");
     return count > 0;

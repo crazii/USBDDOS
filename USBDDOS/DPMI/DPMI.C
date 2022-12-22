@@ -209,7 +209,7 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
     }
     for(i = 0; i < size1; ++i)
     {
-        result = (int32_t)(int8_t)(*(((uint8_t*)addr1)+i) - *(((uint8_t*)addr2)+i));
+        result = (int32_t)((uint32_t)*(((uint8_t*)addr1)+i) - (uint32_t)*(((uint8_t*)addr2)+i));
         if(result != 0)
             break;
     }
@@ -442,34 +442,48 @@ loop4b:
     __asm {
         mov eax, dword ptr ds:[edi+ebx]
         sub eax, dword ptr ds:[esi+ebx]
-        jne loop1b //perform byte wide test on 4 bytes
+        jne not_equal4 //perform byte wide test on 4 bytes
         add ebx, 4
         cmp ebx, ecx
         jne loop4b
 
         test edx, edx
-        jz end
+        jz equal
         add esi, ebx
         add edi, ebx
         xor ebx, ebx
+        jmp loop1b
     }
+not_equal4:
+    __asm mov edx, 4
 loop1b:
     __asm {
         mov al, byte ptr ds:[edi+ebx]
         sub al, byte ptr ds:[esi+ebx]
-        jne end
+        jne not_qual
         inc ebx
         cmp ebx, edx
         jne loop1b
     }
-end:
+equal:
+    __asm {
+        xor eax, eax //equal
+        jmp _return
+    }
+not_qual:    
+    __asm {
+        mov eax, 1
+        ja _return //use unsigned char compare, compatible to memcmp()
+        not eax
+    }
+_return:
     __asm {
         pop ebx
         pop edi
         pop esi
-        movsx eax, al
-        movsx result, eax
+        mov result, eax
     }
+
     RESTORE_DS();
     return result;
 }
