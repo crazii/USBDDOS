@@ -629,7 +629,13 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
     return 0;
 }
 
-uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg)
+uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
+{
+    #error not implemented.
+    return 0;
+}
+
+uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
 {
     #error not implemented.
     return 0;

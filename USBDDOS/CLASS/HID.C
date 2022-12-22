@@ -120,39 +120,17 @@ static uint8_t KEY_USBCODES2SCANCODES[256*2] =
     0x59, 0,    //KEYPAD=
 };
 
-//shared data among all HID devices
-static volatile int KeyboardInterrupt; //counter
+//shared data among all HID devices, each device's interrupt routine put its input to here.
+//the interrupts are not re-entrant so there's no conflict
+#define USB_HID_KEYBUFFER_SIZE 64
+static volatile uint16_t USB_HID_KeyBuffer[USB_HID_KEYBUFFER_SIZE];
+static volatile uint8_t USB_HID_KBHead;
+static volatile uint8_t USB_HID_KBTail;
+static volatile uint16_t USB_HID_KeyModifer;
 
 
+static void USB_HID_InputCallback(HCD_Request* pRequest);
 static void USB_HID_INT16Hook(void);
-
-static void USB_HID_InputCallback(HCD_Request* pRequest)
-{
-    USB_Device* pDevice = HC2USB(pRequest->pDevice);
-    USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
-
-    int mode = (int)(uintptr_t)pRequest->pCBData;
-    if(mode == 0) //keyboard
-    {
-        int index = pDriverData->Interface[mode].Local[2]*2;
-        uint8_t scancode = KEY_USBCODES2SCANCODES[index];
-        uint8_t prefix = 0;
-        uint8_t ascii = KEY_USBCODES2SCANCODES[index+1];
-        if(ascii == 0xE0)
-        {
-            prefix = ascii;
-            ascii = 0;
-        }
-        _LOG("%d: %d %d %c\n", pDriverData->Interface[mode].Local[2], prefix, scancode, ascii);
-    }
-    else
-    {
-
-    }
-
-    //continue input
-    USB_Transfer(pDevice, pDriverData->Interface[mode].pDataEP[HCD_TXR], pDriverData->Interface[mode].Local, sizeof(pDriverData->Interface[mode].Local), &USB_HID_InputCallback, (void*)mode);
-}
 
 BOOL USB_HID_InitDevice(USB_Device* pDevice)
 {
@@ -213,6 +191,7 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
                 ++valid;
 
             //bye default the device will send data even if no input data change, set_idle will make it only sending data only changes, i.e. keydown/keyup
+            //maybe we can use the frequent interrupt to implement 'repeating'. otherwise we need a timer to implement it.
             USB_Request req2 = {USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, 0 /*indefinite until input detected, all reports*/, (uint16_t)DrvIntface->bInterface, 0};
             USB_SyncSendRequest(pDevice, &req2, NULL);
         }
@@ -230,7 +209,7 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
     else
         free(pDriverData);
 
-    //start input
+    //start input, aynsc (interrupt)
     for(int i = 0; i < 2; ++i)
     {
         if(pDriverData->Interface[i].Descirptors && pDriverData->Interface[i].pDataEP[HCD_TXR])
@@ -288,27 +267,98 @@ static int16_t USB_HID_INT16Handler(uint8_t ah)
 {
     switch (ah)
     {
-    case 0x00: case 0x10:
+    case 0x00: case 0x10: //read next key (destructive)
     {
-        // int intr = KeyboardInterrupt;
-        // while(intr == KeyboardInterrupt)
-        //     USB_IdleWait();
+        uint16_t keycode = 0;
+        do
+        {
+            CLIS();
+            if(USB_HID_KBHead != USB_HID_KBTail)
+            {
+                keycode = USB_HID_KeyBuffer[USB_HID_KBHead];
+                USB_HID_KBHead = (USB_HID_KBHead+1) % USB_HID_KEYBUFFER_SIZE;
+            }
+            else //read BIOS keyboard buffer
+            { //https://stanislavs.org/helppc/bios_data_area.html
+                uint16_t head = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1A));
+                uint16_t tail = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1C));
+                if(head != tail)
+                {
+                    keycode = DPMI_LoadW(DPMI_SEGOFF2L(0x40,head));
+                    head = (head + 2) % 32;
+                    DPMI_StoreW(DPMI_SEGOFF2L(0x40,0x1A), head);
+                }
+            }
+            STIL();
+            if(!keycode)
+                USB_IdleWait();
+        }while(keycode == 0);
+        if(ah == 0x00)
+            keycode = (uint16_t)(keycode&~0xFFL);
     }
-        break;
-    case 0x01: case 0x11:
+    break;
+    case 0x01: case 0x11: //peek key (non-destructive) ZF=1: no key, ZF=0: key exist
     {
-
+        uint16_t keycode = 0;
+        CLIS();
+        if(USB_HID_KBHead != USB_HID_KBTail)
+            keycode = USB_HID_KeyBuffer[USB_HID_KBHead];
+        else //read BIOS keyboard buffer
+        {
+            uint16_t head = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1A));
+            uint16_t tail = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1C));
+            if(head != tail)
+                keycode = DPMI_LoadW(DPMI_SEGOFF2L(0x40,head));
+        }
+        STIL();
+        if(ah == 0x00 && keycode&0xFF == 0xE0 )
+            keycode = (uint16_t)(keycode&0xFF00);
     }
-        break;
-    case 0x02: case 0x12:
+    break;
+    case 0x02: case 0x12: //get modifier
     {
-
+        CLIS();
+        uint16_t Modifier = USB_HID_KeyModifer;
+        Modifier |= DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x17));
+        STIL();
+        if(ah == 0x02)
+            Modifier = (uint16_t)(Modifier&0x00FF);
     }
-        break;
+    break;
     default:
         break;
     }
     return 0;
+}
+
+static void USB_HID_InputCallback(HCD_Request* pRequest)
+{
+    USB_Device* pDevice = HC2USB(pRequest->pDevice);
+    USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
+
+    int mode = (int)(uintptr_t)pRequest->pCBData;
+    if(mode == 0) //keyboard
+    {
+        int index = pDriverData->Interface[mode].Local[2]*2;
+        uint8_t scancode = KEY_USBCODES2SCANCODES[index];
+        uint8_t ascii = KEY_USBCODES2SCANCODES[index+1];
+        if(USB_HID_KBTail == (USB_HID_KBTail+1)%USB_HID_KEYBUFFER_SIZE) //full
+        {
+            //beep?
+        }
+        else
+        {
+            USB_HID_KeyBuffer[USB_HID_KBTail] = (uint16_t)(((uint16_t)scancode<<8) | ascii);
+            USB_HID_KBTail = (USB_HID_KBTail+1) % USB_HID_KEYBUFFER_SIZE;
+        }
+    }
+    else
+    {
+
+    }
+
+    //continue input, async don't wait
+    USB_Transfer(pDevice, pDriverData->Interface[mode].pDataEP[HCD_TXR], pDriverData->Interface[mode].Local, sizeof(pDriverData->Interface[mode].Local), &USB_HID_InputCallback, (void*)mode);
 }
 
 static void USB_HID_INT16Hook(void)
@@ -321,10 +371,13 @@ static void USB_HID_INT16Hook(void)
     #endif
     uint8_t AH = (uint8_t)((IntNO>>8)&0xFF);
 
+    uint16_t result = 0;
+    int zf = 0;
+
     if(AH == 0x00 || AH == 0x01 || AH == 0x02
     || AH == 0x10 || AH == 0x11 || AH == 0x12)
     {
-        int result = USB_HID_INT16Handler(AH);
+        result = USB_HID_INT16Handler(AH);
     }
     else
     {
@@ -332,5 +385,16 @@ static void USB_HID_INT16Hook(void)
         r.w.cs = USB_HID_INT16Handle.rm_cs;
         r.w.ip = USB_HID_INT16Handle.rm_offset;
         DPMI_CallRealModeIRET(&r);
+        result = r.w.ax;
     }
+    zf = result ? 0 : CPU_ZFLAG;
+
+    //the pm int handler may not return modified registers
+    //need to use RMCB and set realmode handler. the RMCB have register set to read & modify
+    //result AH:AL
+    #if defined(__DJ2__)
+    asm("pushf\n\t and $0xFFBF, 0(%%esp)\n\t mov %0, %%ax\n\t or %%ax, 0(%%eesp)\n\t mov %1, %%ax\n\t "::"m"(zf),"m"(result));
+    #else
+    _ASM_BEGIN _ASM(pushf) _ASM(and [esp], 0xFFBF) _ASM(mov ax, word ptr zf) _ASM(or [esp], ax) _ASM(popf) _ASM(mov ax, result) _ASM_END
+    #endif
 }

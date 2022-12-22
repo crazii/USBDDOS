@@ -181,7 +181,8 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle);
 //allocate realmode callback. return: hiword: segment, lowword: offset. return 0 if fail
 //input: Fn is a common function with normal return. the RMCB will use RETF finally
-uint32_t DPMI_AllocateRMCB(void(*Fn)(void), DPMI_REG* reg);
+uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg);
+uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg);
 
 //TSR/callback usage
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc);
