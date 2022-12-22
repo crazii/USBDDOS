@@ -5,6 +5,7 @@
 #include <assert.h>
 #include "USBDDOS/USB.H"
 #include "USBDDOS/CLASS/MSC.H"
+#include "USBDDOS/CLASS/HID.H"
 #include "RetroWav/RetroWav.h"
 #include "RetroWav/Platform/DOS_CDC.h"
 #include "RetroWav/Board/OPL3.h"
@@ -17,7 +18,7 @@
 #if defined(__BC__)
 #define MAIN_ENABLE_TIMER 0 //BC build uses VCPI. it has compatibility issues with Miles Sound (DOS/4GW Extender protected mode, no keyboard input)
 #else
-#define MAIN_ENABLE_TIMER 1
+#define MAIN_ENABLE_TIMER 0 //real machine doesn't need buffer queue, no need to use timer to flush
 #endif
 
 RetroWaveContext MAIN_RWContext = {0};
@@ -43,9 +44,14 @@ static uint8_t MAIN_OPLIndexReg[2];
 static uint32_t ADLG_CtrlEnable = 0;    //seems not working for Miles Sound, don't use it
 static uint32_t ADLG_Volume[2] = {0x08,0x08};
 static uint32_t MAIN_OPL_WriteCount = 0;
-static uint32_t MAIN_OPL_DelayCount = 0;
 
-#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
+//doesn't need buffer on real machines, the bandwidth is OK. guess it's slow on VirtualBox only.
+//#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
+#define MAIN_OPL_MAX_INSTANT_WRITE 1024
+
+#if MAIN_ENABLE_TIMER || (MAIN_OPL_MAX_INSTANT_WRITE<25)
+static uint32_t MAIN_OPL_DelayCount = 0;
+#endif
 
 #if MAIN_ENABLE_TIMER
 DPMI_ISR_HANDLE MAIN_INT08Handle;
@@ -72,7 +78,7 @@ static uint32_t MAIN_OPL_Primary_Index(uint32_t port, uint32_t reg, uint32_t out
         if ((MAIN_OPLTimerCtrlReg[1] & (OPL_TIMER2_MASK|OPL_TIMER2_START)) == OPL_TIMER2_START)
             reg |= OPL_TIMER2_TIMEOUT;
         inp((uint16_t)port); //instant delay
-#if !MAIN_ENABLE_TIMER
+#if (!MAIN_ENABLE_TIMER) && (MAIN_OPL_MAX_INSTANT_WRITE<25)
         if(MAIN_OPL_WriteCount >= MAIN_OPL_MAX_INSTANT_WRITE)
         {
             if(++MAIN_OPL_DelayCount == 100)
@@ -172,6 +178,7 @@ struct
     "/?", "Show help.", FALSE,
     "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ needed.", FALSE,
     "/disk", "Enable USB-disk support", FALSE,
+    "/HID", "Enable USB keyboard & mouse support", FALSE,
 
     #if DEBUG
     "/test", "debug tests", FALSE,
@@ -183,6 +190,7 @@ enum EOption
     OPT_Help,
     OPT_RetroWave,
     OPT_Disk,
+    OPT_HID,
 
     #if DEBUG
     OPT_TEST,
@@ -217,7 +225,7 @@ int main(int argc, char* argv[])
         }
     }
 
-#if DEBUG
+#if DEBUG && 0
     if(MAIN_Options[OPT_TEST].enable)
     {
         extern void DPMI_InitFlat();
@@ -274,6 +282,10 @@ int main(int argc, char* argv[])
 
     BOOL TSR = MAIN_Options[OPT_RetroWave].enable;
     TSR = (MAIN_Options[OPT_Disk].enable && USB_MSC_DOS_Install()) || TSR; //note: TSR must be put in the back
+    TSR = (MAIN_Options[OPT_HID].enable && USB_HID_DOS_Install()) || TSR;
+#if DEBUG
+    TSR = MAIN_Options[OPT_TEST].enable || TSR;
+#endif
     if(TSR) 
     {
         if(!DPMI_TSR())

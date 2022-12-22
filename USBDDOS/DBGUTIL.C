@@ -84,17 +84,36 @@ static void VGA_Print(const char *string) {
 //needs to work in interrupt handler. now use IN/OUT controls VGA directly.
 void DBG_Logv(const char* fmt, va_list aptr)
 {
-    CLIS();
     #define SIZE (DUMP_BUFF_SIZE*4)
-    char buf[SIZE];
-    uint32_t len = (uint32_t)vsprintf(buf, fmt, aptr);
-    
-    assert(len < SIZE);
-    len = min(len, SIZE-1);
-    buf[len] = '\0';
-    VGA_Print(buf);
+
+    if(!(CPU_FLAGS()&CPU_IFLAG))
+    { //use VGA when in interrupt
+        char buf[SIZE];
+        uint32_t len = (uint32_t)vsprintf(buf, fmt, aptr);
+        assert(len < SIZE);
+        len = min(len, SIZE-1);
+        buf[len] = '\0';
+        VGA_Print(buf);
+    }
+    else
+    { //direct VGA mode will mess other tools, i.e. SCROLLit, normally use BIOS function
+        char buf[SIZE];
+        int len = vsprintf(buf, fmt, aptr);
+        DPMI_REG r = {0};
+        for(int i = 0; i < len; ++i)
+        {
+            r.h.ah = 0x0E;
+            r.h.al = (uint8_t)buf[i];
+            DPMI_CallRealModeINT(0x10,&r);
+            if(buf[i] =='\n')
+            {
+                r.h.ah = 0x0E;
+                r.h.al = '\r';
+                DPMI_CallRealModeINT(0x10,&r);
+            }
+        }
+    }
     #undef SIZE
-    STIL();
 }
 
 void DBG_Log(const char* fmt, ...)

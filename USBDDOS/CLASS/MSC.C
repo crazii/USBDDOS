@@ -720,13 +720,16 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         return FALSE;
     }
 
-    memset(&cds[CDSIndex], 0, sizeof(DOS_CDS));
-    memcpy(cds[CDSIndex].path, "A:\\", 4);
-    cds[CDSIndex].path[0] = (char)(cds[CDSIndex].path[0] + CDSIndex);
-    cds[CDSIndex].Flags |= DOS_CDS_FLAGS_USED | DOS_CDS_FLAGS_PHYSICAL;
+    if(!overrided)
+    {
+        memset(&cds[CDSIndex], 0, sizeof(DOS_CDS));
+        memcpy(cds[CDSIndex].path, "A:\\", 4);
+        cds[CDSIndex].path[0] = (char)(cds[CDSIndex].path[0] + CDSIndex);
+        cds[CDSIndex].Flags |= DOS_CDS_FLAGS_USED | DOS_CDS_FLAGS_PHYSICAL;
+        cds[CDSIndex].FFFFFFFFh = 0xFFFFFFFF;
+        cds[CDSIndex].SlashPos = 2;        
+    }
     cds[CDSIndex].DPBptr = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
-    cds[CDSIndex].FFFFFFFFh = 0xFFFFFFFF;
-    cds[CDSIndex].SlashPos = 2;
     DPMI_CopyLinear(DPMI_FP2L(CDSFarPtr) + CDSIndex*sizeof(DOS_CDS), DPMI_PTR2L(cds) + CDSIndex*sizeof(DOS_CDS), sizeof(DOS_CDS)); //cds write back to dos mem
 
     //write tsr mem

@@ -175,7 +175,8 @@ void DPMI_DOSFree(uint32_t segment);
 uint16_t DPMI_CallRealModeRETF(DPMI_REG* reg);
 uint16_t DPMI_CallRealModeINT(uint8_t i, DPMI_REG* reg);
 uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg);
-//install interrupt service routine. use normal return, no need to do IRET.
+//install interrupt service routine. ISR use normal return, no need to do IRET.
+//return 0 if succeed
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle);
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle);
 //allocate realmode callback. return: hiword: segment, lowword: offset. return 0 if fail

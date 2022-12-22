@@ -608,6 +608,11 @@ BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr)
     return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
 }
 
+void USB_IdleWait()
+{
+    USB_IDLE_WAIT();
+}
+
 static void USB_EnumerateDevices()
 {
     //initially all powered devices will be in default states (address 0), but ports disabled.
@@ -891,6 +896,8 @@ void USB_Completion_SyncCallback(HCD_Request* pRequest)
 void USB_Completion_UserCallback(HCD_Request* pRequest)
 {
     USB_UserCallbackResult* pUserData = (USB_UserCallbackResult*)pRequest->pCBData;
+    if(pRequest->dir == HCD_TXR)
+        memcpy(pUserData->pUserBuffer, pRequest->pBuffer, pRequest->transferred);
     USB_TFree(pRequest->pBuffer);
     if(pUserData->pSetup8)
         USB_TFree(pUserData->pSetup8);

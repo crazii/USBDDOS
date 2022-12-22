@@ -43,7 +43,7 @@ extern "C" {
 #define USB_DT_DEVICE_QUALIFIER  6
 #define USB_DT_OTHER_SPEED_CONFIGURATION 7
 #define USB_DT_INTERFACE_POWER 8
-#define USB_DT_CSINTERFACE       0x24 //class-specific interface
+#define USB_DT_CSINTERFACE     0x24 //class-specific interface
 
 //Descriptor Index , wIndex
 #define USB_LANG_ID_ENG         0x0409    //for USB_DT_STRING
@@ -277,6 +277,8 @@ BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, ui
 void USB_ShowDeviceInfo(USB_Device* pDevice);
 
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr); //clear stall
+
+void USB_IdleWait();
 
 #ifdef __cplusplus
 }

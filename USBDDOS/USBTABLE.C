@@ -17,9 +17,11 @@
 #include "USBDDOS/HCD/UHCI.H"
 #include "USBDDOS/CLASS/CDC.H"
 #include "USBDDOS/CLASS/MSC.H"
+#include "USBDDOS/CLASS/HID.H"
 
 #define USE_CDC 1
 #define USE_MSC 1
+#define USE_HID 1
 
 USB_Table USBT = 
 {
@@ -63,7 +65,9 @@ USB_Table USBT =
         0,0
         #endif
         //USBC_HID              0x3
-        0,0,
+        #if USE_HID
+        USB_HID_InitDevice, USB_HID_DeinitDevice,
+        #endif
         //no 0x4 from spec
         0,0,
         //USBC_PHYSICAL         0x5
@@ -98,7 +102,7 @@ USB_Table USBT =
     //USB_Routine
     {
         USB_MSC_PreInit, USB_MSC_PostDeInit,
-        0,0
+        USB_HID_PreInit, USB_HID_PostDeInit,
     },
     0,
     0,

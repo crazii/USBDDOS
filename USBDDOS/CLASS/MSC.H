@@ -5,8 +5,14 @@
 // https://www.usb.org/sites/default/files/usbmassbulk_10.pdf
 // https://www.usb.org/sites/default/files/usb_msc_boot_1.0.pdf
 
-//the mass storage class support 2 modes: CBI(control/bulk/interrupt) and BBB(bulk only transport).
+//the mass storage class support 2 modes: CBI(control/bulk/interrupt) and BBB(bulk only transport, BOT).
 //CBI is for floppy disk only. and here it is not intended to support.
+
+//Tested devices:
+//Kingston DataTraveller        2G, FAT16, BPB in boot sector
+//Toshiba Transmemory           8G, FAT32, BPB in FAT32 VBR
+//USB2.0 disk (unknown vendor)  64G,FAT32, BPB in FAT32 VBR
+//HP x306w                      64G,FAT32, BPB in FAT32 VBR
 
 #include "USBDDOS/USB.H"
 
