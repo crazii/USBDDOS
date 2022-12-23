@@ -47,11 +47,11 @@
 
 //bit masks for modifier, chapter 8.3
 #define USB_HID_LCTRL       0x01
-#define USB_HID_LSHFIT      0x02
+#define USB_HID_LSHIFT      0x02
 #define USB_HID_LALT        0x04
 #define USB_HID_LGUI        0x08
 #define USB_HID_RCTRL       0x10
-#define USB_HID_RSHFIT      0x20
+#define USB_HID_RSHIFT      0x20
 #define USB_HID_RALT        0x40
 #define USB_HID_RGUI        0x80
 
@@ -61,6 +61,27 @@
 #define USB_HID_LED_SCROLLLOCK  0x04
 #define USB_HID_LED_COMPOSE     0x08
 #define USB_HID_LED_KANA        0x10
+
+//BIOS modifier mask
+#define USB_HID_BIOS_RSHIFT     0x0001
+#define USB_HID_BIOS_LSHIFT     0x0002
+#define USB_HID_BIOS_CTRL       0x0004
+#define USB_HID_BIOS_ALT        0x0008
+#define USB_HID_BIOS_SCRLLOCK_S 0x0010 //scroll locked staus
+#define USB_HID_BIOS_NUMLOCK_S  0x0020 //num locked staus
+#define USB_HID_BIOS_CAPSLOCK_S 0x0040 //caps locked staus
+#define USB_HID_BIOS_INSLOCK_S  0x0080 //insert locked staus
+
+#define USB_HID_BIOS_LCTRL      0x0100
+#define USB_HID_BIOS_LALT       0x0200
+#define USB_HID_BIOS_RCTRL      0x0400
+#define USB_HID_BIOS_RALT       0x0800
+#define USB_HID_BIOS_SCRLLOCK   0x1000 //scroll lock pressed
+#define USB_HID_BIOS_NUMLOCK    0x2000 //num lock pressed
+#define USB_HID_BIOS_CAPSLOCK   0x4000 //caps lock pressed
+#define USB_HID_BIOS_SYSREQ     0x8000 //sys req pressed
+
+
 
 #if defined(__DJ2__)
 #pragma pack(1)
@@ -112,9 +133,9 @@ typedef struct USB_HIDE_MousePacket_Boot
 
 typedef union 
 {
-    uint8_t Local[8];
-    USB_HID_KEY key;
-    USB_HID_MOUSE mouse;
+    uint8_t Buffer[8];
+    USB_HID_KEY Key;
+    USB_HID_MOUSE Mouse;
 }USB_HID_Data;
 
 typedef struct
