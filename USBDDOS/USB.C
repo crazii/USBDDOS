@@ -134,6 +134,7 @@ void USB_Shutdown(void)
         USB_RemoveDevice(pDevice);
     }
 
+    CLIS();
     PIC_SetIRQMask(USB_IRQMask);
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
@@ -143,6 +144,8 @@ void USB_Shutdown(void)
             DPMI_UninstallISR(&USB_ISRHandle[j]);
         }
     }
+    STIL();
+
     for(int k = 0; k < USBT.HC_Count; ++k)
     {
         HCD_Interface* pHCI = &USBT.HC_List[k];
@@ -176,6 +179,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
     PCI_HEADER* header = &pPCIDev->Header;
     //note: the PCI BIOS will setup the IRQ and write the IRQ register, the IRQ is setup as level triggered.
     _LOG("Host Controller: Bus:%d, Dev:%d, Func:%d, pi:0x%02x, IRQ: %d, INT Pin: INT%c#\n", bus, dev, func, header->PInterface, header->DevHeader.Device.IRQ, 'A'+header->DevHeader.Device.INTPIN-1);
+    CLIS();
     for(int i = 0; i < USB_MAX_HC_TYPE; ++i)
     {
         if(USBT.HC_Types[i].InitController != NULL)
@@ -210,6 +214,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
             break;
         }
     }
+    STIL();
     return OK;
 }
 

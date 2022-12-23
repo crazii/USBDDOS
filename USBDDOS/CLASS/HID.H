@@ -40,6 +40,11 @@
 #define USB_HID_PROTOCOL_BOOT       0
 #define USB_HID_PROTOCOL_REPORT     1
 
+//USB_REQ_HID_SET_IDLE
+#define USB_HID_MAKE_IDLE(duration, reportID) ((uint16_t)(((duration)<<8)|((reportID)&0xFF)))
+#define USB_HID_IDLE_INDEFINITE 0
+#define USB_HID_IDLE_REPORTALL 0
+
 //bit masks for modifier, chapter 8.3
 #define USB_HID_LCTRL       0x01
 #define USB_HID_LSHFIT      0x02
@@ -105,19 +110,27 @@ typedef struct USB_HIDE_MousePacket_Boot
 #pragma pack()
 #endif
 
+typedef union 
+{
+    uint8_t Local[8];
+    USB_HID_KEY key;
+    USB_HID_MOUSE mouse;
+}USB_HID_Data;
+
 typedef struct
 {
-    uint8_t bInterface;
     USB_HID_DESC* Descirptors;
     void* pDataEP[2]; //interrupt in/out
     uint8_t bEPAddr[2];
+    uint8_t bInterface;
+    uint8_t Idle;
+    uint8_t Interval; //interval for interrupt input endpoint
+    uint8_t Index;    //index to Data, flipped each time
 
-    union
-    {
-        uint8_t Local[8];
-        USB_HID_KEY key;
-        USB_HID_MOUSE mouse;
-    };
+    USB_HID_Data Data[2];
+    uint32_t DelayTimer;
+    uint32_t RepeatingTimer;
+
 }USB_HID_Interface;
 
 typedef struct

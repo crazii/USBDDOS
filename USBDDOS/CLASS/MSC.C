@@ -845,7 +845,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
 BOOL USB_MSC_DOS_Install()
  {
     assert(MSC_DriverINT_RMCB == 0);
-    MSC_DriverINT_RMCB = DPMI_AllocateRMCB(&USB_MSC_DOS_DriverINT, &MSC_DOSDriverReg);
+    MSC_DriverINT_RMCB = DPMI_AllocateRMCB_RETF(&USB_MSC_DOS_DriverINT, &MSC_DOSDriverReg);
     if(MSC_DriverINT_RMCB == 0)
     {
         printf("MSC Driver Install: Error Allocating RMCB.\n");
