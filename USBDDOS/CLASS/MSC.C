@@ -41,7 +41,7 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
     pMaxLUN = NULL;
     _LOG("MSC MaxLUN: %d\n", maxLUN);
     
-    USB_Request Req2 =  {USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, bInterface, 0};
+    USB_Request Req2 =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, bInterface, 0};
     if(USB_SyncSendRequest(pDevice, &Req2, NULL) != 0)
     {
         _LOG("MSC Error reset bulk.\n");
@@ -121,7 +121,7 @@ BOOL USB_MSC_BulkReset(USB_Device* pDevice)
 {
     if(pDevice == NULL || pDevice->pDriverData == NULL)
         return FALSE;
-    USB_Request Req =  {USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, ((USB_MSC_DriverData*)pDevice->pDriverData)->bInterface, 0};
+    USB_Request Req =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, ((USB_MSC_DriverData*)pDevice->pDriverData)->bInterface, 0};
     return USB_SyncSendRequest(pDevice, &Req, NULL) != 0;
 }
 

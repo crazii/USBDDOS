@@ -41,9 +41,15 @@
 #define USB_HID_PROTOCOL_REPORT     1
 
 //USB_REQ_HID_SET_IDLE
-#define USB_HID_MAKE_IDLE(duration, reportID) ((uint16_t)(((duration)<<8)|((reportID)&0xFF)))
+#define USB_HID_MAKE_IDLE(duration, ReportID) ((uint16_t)(((duration)<<8)|((ReportID)&0xFF)))
 #define USB_HID_IDLE_INDEFINITE 0
 #define USB_HID_IDLE_REPORTALL 0
+
+//USB_REQ_HID_?ET_REPORT
+#define USB_HID_REPORT_INPUT    0x1
+#define USB_HID_REPORT_OUTPUT   0x2
+#define USB_HID_REPORT_FEATURE  0x2
+#define USB_HID_MAKE_REPORT(ReportType, ReportID) ((uint16_t)(((ReportType)<<8)|((ReportID)&0xFF)))
 
 //bit masks for modifier, chapter 8.3
 #define USB_HID_LCTRL       0x01
@@ -56,6 +62,7 @@
 #define USB_HID_RGUI        0x80
 
 //keyboard LEDs (use output report to set)
+//B.1 Protocol 1(Keyboard)
 #define USB_HID_LED_NUMLOCK     0x01
 #define USB_HID_LED_CAPSLOCK    0x02
 #define USB_HID_LED_SCROLLLOCK  0x04
@@ -154,9 +161,12 @@ typedef struct
 
 }USB_HID_Interface;
 
+#define USB_HID_KEYBOARD 0
+#define USB_HID_MOUSE 1
+
 typedef struct
 {
-    USB_HID_Interface Interface[2]; //USB_HIDP_KEYBOARD-1 or USB_HIDP_MOUSE-1 for keyboard/mouse. There're wireless kbd & mouse devices with one USB receiver.
+    USB_HID_Interface Interface[2]; //USB_HID_KEYBOARD or USB_HID_MOUSE. There're wireless kbd & mouse devices with one USB receiver.
 }USB_HID_DriverData;
 
 #ifdef __cplusplus

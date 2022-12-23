@@ -276,7 +276,7 @@ uint8_t OHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     // check status
     //_LOG("Setup: %lx, Data: %lx, Status: %lx\n", DPMI_PTR2P(pSetup), pData ? DPMI_PTR2P(pData) : 0, DPMI_PTR2P(pStatus));
     //_LOG("TailP: %lx, HeaP: %lx, EmptyTail: %lx\n", pED->TailP, pED->HeadP, DPMI_PTR2P(pEmptyTail));
-    assert(pED->TailP == pED->HeadP);
+    //assert(pED->TailP == pED->HeadP); //note: successive async call of control request may not finish, HeaP not processed to TailP.
     assert(pED->TailP == DPMI_PTR2P(pSetup)); // empty ED. (tailp==headp)
     if(length > 0) assert(pSetup->NextTD == DPMI_PTR2P(pData) && pData->NextTD == DPMI_PTR2P(pStatus) && pStatus->NextTD == DPMI_PTR2P(pEmptyTail));
     // start transfer
