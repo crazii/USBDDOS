@@ -12,127 +12,130 @@
 //usb keycodes to scan codes and ascii
 //ref: USB HID to PS/2 Scan Code Translation Table
 //https://download.microsoft.com/download/1/6/1/161ba512-40e2-4cc9-843a-923143f3456c/translate.pdf
-static uint8_t USB_HID_KEYBOARD_USAGE2SCANCODES[256*3] = 
+static uint8_t USB_HID_KEYBOARD_USAGE2SCANCODES[256*2] = 
 {
-    0, 0, 0,        //reserved
-    0, 0, 0,        //RollOver
-    0, 0, 0,        //POSTFail
-    0, 0, 0,        //Unddefined
-    0x1E, 'A', 'a',
-    0x30, 'B', 'b',
-    0x2E, 'C', 'c',
-    0x20, 'D', 'd',
-    0x12, 'E', 'e',
-    0x21, 'F', 'f',
-    0x22, 'G', 'g',
-    0x23, 'H', 'h',
-    0x17, 'I', 'i',
-    0x24, 'J', 'j',
-    0x25, 'K', 'k',
-    0x26, 'L', 'l',
-    0x32, 'M', 'm',
-    0x31, 'N', 'n',
-    0x18, 'O', 'o',
-    0x19, 'P', 'p',
-    0x10, 'Q', 'q',
-    0x13, 'R', 'r',
-    0x1F, 'S', 's',
-    0x14, 'T', 't',
-    0x16, 'U', 'u',
-    0x2F, 'V', 'v',
-    0x11, 'W', 'w',
-    0x2D, 'X', 'x',
-    0x15, 'Y', 'y',
-    0x2C, 'Z', 'z',
-    0x02, '1', '!',
-    0x03, '2', '@',
-    0x04, '3', '#',
-    0x05, '4', '$',
-    0x06, '5', '%',
-    0x07, '6', '^',
-    0x08, '7', '&',
-    0x09, '8', '*',
-    0x0A, '9', '(',
-    0x0B, '0', ')',
-    0x1C, '\r', '\r',   //ENTER
-    0x01, 0x1B,   0,    //ESC
-    0x0E, '\b', '\b',   //BACKSPACE
-    0x0F, '\t', 't',    //TAB
-    0x39, ' ',  ' ',    //SPACE
-    0x0C, '-',  '_',
-    0x0D, '=',  '+',
-    0x1A, '[',  '{',
-    0x1B, ']',  '}',
-    0x2B, '\\', '|',
-    0x2B, '\\', '|',    //EUROPE 1 (NOTE2)
-    0x27, ';', ':',
-    0x28, '\'', '|',
-    0x29, '`', '~',
-    0x33, ',', '<',
-    0x34, '.', '>',
-    0x35, '/', '?',
-    0x3A, 0, 0,    //CAPSLOCK
-    0x3B, 0, 0,    //F1
-    0x3C, 0, 0,    //F2
-    0x3D, 0, 0,    //F3
-    0x3E, 0, 0,    //F4
-    0x3F, 0, 0,    //F5
-    0x40, 0, 0,    //F6
-    0x41, 0, 0,    //F7
-    0x42, 0, 0,    //F8
-    0x43, 0, 0,    //F9
-    0x44, 0, 0,    //F10
-    0x57, 0, 0,    //F11
-    0x58, 0, 0,    //F12
+    0, 0,           //reserved
+    0, 0,           //RollOver
+    0, 0,           //POSTFail
+    0, 0,           //Unddefined
+    0x1E, 0,
+    0x30, 0,
+    0x2E, 0,
+    0x20, 0,
+    0x12, 0,
+    0x21, 0,
+    0x22, 0,
+    0x23, 0,
+    0x17, 0,
+    0x24, 0,
+    0x25, 0,
+    0x26, 0,
+    0x32, 0,
+    0x31, 0,
+    0x18, 0,
+    0x19, 0,
+    0x10, 0,
+    0x13, 0,
+    0x1F, 0,
+    0x14, 0,
+    0x16, 0,
+    0x2F, 0,
+    0x11, 0,
+    0x2D, 0,
+    0x15, 0,
+    0x2C, 0,
+    0x02, 0,
+    0x03, 0,
+    0x04, 0,
+    0x05, 0,
+    0x06, 0,
+    0x07, 0,
+    0x08, 0,
+    0x09, 0,
+    0x0A, 0,
+    0x0B, 0,
+    0x1C, 0,   //ENTER
+    0x01, 0,    //ESC
+    0x0E, 0,   //BACKSPACE
+    0x0F, 0,    //TAB
+    0x39, 0,    //SPACE
+    0x0C, 0,
+    0x0D, 0,
+    0x1A, 0,
+    0x1B, 0,
+    0x2B, 0,
+    0x2B, 0,    //EUROPE 1 (NOTE2)
+    0x27, 0,
+    0x28, 0,
+    0x29, 0,
+    0x33, 0,
+    0x34, 0,
+    0x35, 0,
+    0x3A, 0,    //CAPSLOCK
+    0x3B, 0,    //F1
+    0x3C, 0,    //F2
+    0x3D, 0,    //F3
+    0x3E, 0,    //F4
+    0x3F, 0,    //F5
+    0x40, 0,    //F6
+    0x41, 0,    //F7
+    0x42, 0,    //F8
+    0x43, 0,    //F9
+    0x44, 0,    //F10
+    0x57, 0,    //F11
+    0x58, 0,    //F12
 
-    0x37, 0, 0,    //PrScrn, E0 37
-    0x46, 0, 0,    //SCROLLLOCK
-    0xC6, 0xE0, 0xE0,    //PAUSE, E0 46/E0 C6
-    0x52, 0xE0, 0xE0,    //INSERT
-    0x47, 0xE0, 0xE0,    //HOME
-    0x49, 0xE0, 0xE0,    //PGUP
-    0x53, 0xE0, 0xE0,    //DEL
-    0x4F, 0xE0, 0xE0,    //END
-    0x51, 0xE0, 0xE0,    //PGDOWN
-    0x4D, 0xE0, 0xE0,    //RIGHT ARROW
-    0x4B, 0xE0, 0xE0,    //LEFT ARROW
-    0x50, 0xE0, 0xE0,    //DOWN ARROW
-    0x48, 0xE0, 0xE0,    //UP ARROW
+    0x37, 0,    //PrScrn, E0 37
+    0x46, 0,    //SCROLLLOCK
+    0xC6, 0xE0,   //PAUSE, E0 46/E0 C6
+    0x52, 0xE0,    //INSERT
+    0x47, 0xE0,    //HOME
+    0x49, 0xE0,    //PGUP
+    0x53, 0xE0,    //DEL
+    0x4F, 0xE0,    //END
+    0x51, 0xE0,    //PGDOWN
+    0x4D, 0xE0,    //RIGHT ARROW
+    0x4B, 0xE0,    //LEFT ARROW
+    0x50, 0xE0,    //DOWN ARROW
+    0x48, 0xE0,    //UP ARROW
 
-    0x45, 0, 0,    //NUMLOCK
-    0x35, 0xE0, 0xE0, //KEYPAD/, E0 35
-    0x37, '*', '*',    //KEYPAD*
-    0x4A, '-', '-',    //KEYPAD-
-    0x4E, '+', '+',    //KEYPAD+
-    0x1C, '\r', 0xE0, //KEYPAD ENTER, E0 1C
-    0x4F, '1', '1',    //KEYPAD1
-    0x50, '2', '2',    //KEYPAD2
-    0x51, '3', '3',    //KEYPAD3
-    0x4B, '4', '4',    //KEYPAD4
-    0x4C, '5', '5',    //KEYPAD5
-    0x4D, '6', '6',    //KEYPAD6
-    0x47, '7', '7',    //KEYPAD7
-    0x48, '8', '8',    //KEYPAD8
-    0x49, '9', '9',    //KEYPAD9
-    0x52, '0', '0',    //KEYPAD0
-    0x53, '.', '.',    //KEYPAD.
-    0x56, 0, 0,    //EUROPE 2 (NOTE 2)
-    0x5D, 0xE0, 0xE0, //APP, E0 5D
-    0x5E, 0xE0, 0xE0, //KB POWER, E0 5E
-    0x59, 0, 0,    //KEYPAD=
+    0x45, 0,    //NUMLOCK
+    0x35, 0xE0, //KEYPAD/, E0 35
+    0x37, 0,    //KEYPAD*
+    0x4A, 0,    //KEYPAD-
+    0x4E, 0,    //KEYPAD+
+    0x1C, 0xE0, //KEYPAD ENTER, E0 1C
+    0x4F, 0,    //KEYPAD1
+    0x50, 0,    //KEYPAD2
+    0x51, 0,    //KEYPAD3
+    0x4B, 0,    //KEYPAD4
+    0x4C, 0,    //KEYPAD5
+    0x4D, 0,    //KEYPAD6
+    0x47, 0,    //KEYPAD7
+    0x48, 0,    //KEYPAD8
+    0x49, 0,    //KEYPAD9
+    0x52, 0,    //KEYPAD0
+    0x53, 0,    //KEYPAD.
+    0x56, 0,    //EUROPE 2 (NOTE 2)
+    0x5D, 0xE0, //APP, E0 5D
+    0x5E, 0xE0, //KB POWER, E0 5E
+    0x59, 0,    //KEYPAD=
 };
 
 //TODO: INT 16h, ah=03h, al=06h: typematic rate and delay //http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-1757.htm
 #define USB_HID_KEYBOARD_REPEAT_DELAY   300     //300ms
 #define USB_HID_KEYBOARD_REPEAT         50      //repeat interval
-#define USB_HID_KEYBOARD_LOADBIOS_MMASK DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x17)) //load BIOS modifier mask
-#define USB_HID_KEYBOARD_STOREBIOS_MMASK(x) DPMI_StoreW(DPMI_SEGOFF2L(0x40,0x17), (uint16_t)(x))
+
+#define USB_HID_BIOS_SCRLLOCK_S 0x0010 //scroll locked staus
+#define USB_HID_BIOS_NUMLOCK_S  0x0020 //num locked staus
+#define USB_HID_BIOS_CAPSLOCK_S 0x0040 //caps locked staus
+#define USB_HID_BIOS_MMASK      0x0070
 
 static BOOL USB_HID_Keyboard_IsDataEmpty(USB_HID_Data* data);
 static int USB_HID_Keyboard_GetInputCount(USB_HID_Data* data);
 static int USB_HID_Keyboard_CompareInput(USB_HID_Data* data1, USB_HID_Data* data2);
-static uint16_t USB_HID_Keyboard_CheckKeyDown(USB_HID_Data* data, uint8_t BIOSScanCode);
-static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice, uint16_t BIOSModiferMask);
+static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice); //updae LED and BIOS modifier
+static int USB_HID_Keyboard_FindNewInput(USB_HID_Data* data1, USB_HID_Data* data2); //find new input in data1, return -1 if not found
 static void USB_HID_DummyCallback(HCD_Request* pRequest) {}
 static void USB_HID_InputCallback(HCD_Request* pRequest);
 static void USB_HID_InputKeyboard(USB_Device* pDevice);
@@ -166,7 +169,7 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
             && (pIntfaceDesc->bInterfaceProtocol == USB_HIDP_KEYBOARD || pIntfaceDesc->bInterfaceProtocol == USB_HIDP_MOUSE) )
         {
             int index = pIntfaceDesc->bInterfaceProtocol - 1;
-            assert(index >= 0 && index <= 1);
+            assert(index >= USB_HID_KEYBOARD && index <= USB_HID_MOUSE);
             USB_HID_Interface* DrvIntface = &pDriverData->Interface[index];
             DrvIntface->bInterface = pIntfaceDesc->bInterfaceNumber;
             
@@ -177,12 +180,12 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
                 DrvIntface->pDataEP[pEndpointDesc->bEndpointAddressBits.Dir] = USB_FindEndpoint(pDevice, pEndpointDesc);
                 DrvIntface->bEPAddr[pEndpointDesc->bEndpointAddressBits.Dir] = pEndpointDesc->bEndpointAddress;
                 if(pEndpointDesc->bEndpointAddressBits.Dir)
-                    DrvIntface->Interval = pEndpointDesc->bInterval;
+                    DrvIntface->Interval = pEndpointDesc->bInterval&0x7FU;
             }
             //_LOG("%x %x\n", DrvIntface->pDataEP[0], DrvIntface->pDataEP[1]);
 
             uint8_t* desc = pDescBuffer + pIntfaceDesc->offset + pIntfaceDesc->bLength;
-            while(*(desc+1) != USB_DT_INTERFACE && desc + *desc <= pDescBuffer + DescLength) //until next interface or to the end
+            while(*(desc+1) != USB_DT_INTERFACE && desc + *desc < pDescBuffer + DescLength) //until next interface or to the end
             {
                 if(*(desc+1) == USB_DT_HID)
                 {
@@ -194,12 +197,15 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
             }
 
             //set boot protocol
+            _LOG("HID: Set boot protocol\n");
             USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_PROTOCOL, USB_HID_PROTOCOL_BOOT, (uint16_t)DrvIntface->bInterface, 0};
             if(DrvIntface->pDataEP[HCD_TXR] != NULL && USB_SyncSendRequest(pDevice, &req, NULL) == 0)
                 ++valid;
 
             //bye default the device will send data even if no input data change, set_idle will make it only sending data only changes, i.e. keydown/keyup
             //maybe we can use the frequent interrupt to implement 'repeating'. otherwise we need a timer to implement it.
+            //now use non-idle to implement repeating, will save timer irq and DPMI RMCB, but use USB badwidth when a key is long pressed 
+            _LOG("HID Set idle\n");
             USB_Request req2 = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(USB_HID_IDLE_INDEFINITE, USB_HID_IDLE_REPORTALL) /*indefinite until input detected, all reports*/, (uint16_t)DrvIntface->bInterface, 0};
             USB_SyncSendRequest(pDevice, &req2, NULL);
             DrvIntface->Idle = TRUE;
@@ -236,15 +242,17 @@ BOOL USB_HID_DOS_Install()
             {
                 ++count;
                 USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
-                if(pDriverData->Interface[USB_HID_KEYBOARD].Descirptors != NULL)
-                    USB_HID_Keyboard_SetupLED(pDevice, USB_HID_KEYBOARD_LOADBIOS_MMASK);
 
+                if(pDriverData->Interface[USB_HID_KEYBOARD].Descirptors != NULL)
+                    USB_HID_Keyboard_SetupLED(pDevice);
+
+                _LOG("HID: start driver.\n");
                 //start input, aynsc (interrupt)
                 for(int i = 0; i < 2; ++i)
                 {
                     if(pDriverData->Interface[i].Descirptors && pDriverData->Interface[i].pDataEP[HCD_TXR])
                         USB_Transfer(pDevice, pDriverData->Interface[i].pDataEP[HCD_TXR], pDriverData->Interface[i].Data[0].Buffer, sizeof(USB_HID_Data), &USB_HID_InputCallback, (void*)i);
-                }
+                }                
             }
         }
     }
@@ -273,20 +281,18 @@ BOOL USB_HID_DeinitDevice(USB_Device* pDevice)
 
 void USB_HID_PreInit()
 {
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0x9A*3] = 0;  //sys req
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0x9A*2] = 0;  //sys req
 
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE0*3] = 0x1D;  //left control
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE1*3] = 0x2A;  //left shift
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE2*3] = 0x38;  //left alt
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE3*3] = 0x5B;  //left gui, E0 5B
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE3*3+1] = 0xE0;
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE3*3+2] = 0xE0;
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*3] = 0x1D;  //left control, E0 1D
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*3+1] = 0xE0;
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*3+2] = 0xE0;
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE5*3] = 0x36;  //left shift
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE6*3] = 0x38;  //left alt
-    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE7*3] = 0x5C;  //left gui
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE0*2] = 0x1D;  //left control
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE1*2] = 0x2A;  //left shift
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE2*2] = 0x38;  //left alt
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE3*2] = 0x5B;  //left gui, E0 5B
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE3*2+1] = 0xE0;
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*2] = 0x1D;  //left control, E0 1D
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*2+1] = 0xE0;
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE5*2] = 0x36;  //left shift
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE6*2] = 0x38;  //left alt
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE7*2] = 0x5C;  //left gui
 }
 
 void USB_HID_PostDeInit()
@@ -294,11 +300,10 @@ void USB_HID_PostDeInit()
 
 }
 
-
 static BOOL USB_HID_Keyboard_IsDataEmpty(USB_HID_Data* data)
 {
     static char empty[8] = {0};
-    return data->Key.modifier == 0 && memcmp(&data->Key.keycodes[0], &empty[0], 6) == 0;
+    return /*data->Key.modifier == 0 && */memcmp(&data->Key.keycodes[0], &empty[0], 6) == 0; //treat pure modifier keys are empty, so no repeating for them
 }
 
 static int USB_HID_Keyboard_GetInputCount(USB_HID_Data* data)
@@ -315,33 +320,45 @@ static int USB_HID_Keyboard_CompareInput(USB_HID_Data* data1, USB_HID_Data* data
     return val != 0 ? val : memcmp(&data1->Key.keycodes[0], &data2->Key.keycodes[0], sizeof(data1->Key.keycodes));
 }
 
-static uint16_t USB_HID_Keyboard_CheckKeyDown(USB_HID_Data* data, uint8_t BIOSScanCode)
-{
-    for(int i = 0; i < 6; ++i)
-    {
-        uint8_t index = data->Key.keycodes[i];
-        if(index >= 4 && USB_HID_KEYBOARD_USAGE2SCANCODES[index*3] == BIOSScanCode)
-            return (uint16_t)((((uint16_t)USB_HID_KEYBOARD_USAGE2SCANCODES[index*3+1])<<8) | index);
-    }
-    return 0;
-}
-
-static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice, uint16_t BIOSModiferMask)
+static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice)
 {
     if(pDevice == NULL)
         return FALSE;
     USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
     if(pDriverData == NULL)
         return FALSE;
-    int LED = 0;
-    LED |= (BIOSModiferMask&USB_HID_BIOS_SCRLLOCK_S) ? USB_HID_LED_SCROLLLOCK : 0;
-    LED |= (BIOSModiferMask&USB_HID_BIOS_NUMLOCK_S) ? USB_HID_LED_NUMLOCK : 0;
-    LED |= (BIOSModiferMask&USB_HID_BIOS_CAPSLOCK_S) ? USB_HID_LED_CAPSLOCK : 0;
-    //BIOS modifier have no compose & kana.
+    uint16_t BiosModifier = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x17));
+    if(!((BiosModifier^pDriverData->Interface[USB_HID_KEYBOARD].BIOSModifier)&USB_HID_BIOS_MMASK))
+        return TRUE;
 
-    USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_REPORT, USB_HID_MAKE_REPORT(USB_HID_REPORT_OUTPUT, 0), (uint16_t)pDriverData->Interface[USB_HID_KEYBOARD].bInterface, 1};
+    int LED = 0;
+    if(BiosModifier&USB_HID_BIOS_SCRLLOCK_S) LED |= USB_HID_LED_SCROLLLOCK;
+    if(BiosModifier&USB_HID_BIOS_CAPSLOCK_S) LED |= USB_HID_LED_CAPSLOCK;
+    if(BiosModifier&USB_HID_BIOS_NUMLOCK_S) LED |= USB_HID_LED_NUMLOCK;
+    pDriverData->Interface[USB_HID_KEYBOARD].BIOSModifier = BiosModifier;
+
+    USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_REPORT, USB_HID_MAKE_REPORT(USB_HID_REPORT_OUTPUT, 0), (uint16_t)pDriverData->Interface[USB_HID_KEYBOARD].bInterface, 1}; //1 byte data
     USB_SendRequest(pDevice, &req, &LED, USB_HID_DummyCallback, NULL);
     return TRUE;
+}
+
+static int USB_HID_Keyboard_FindNewInput(USB_HID_Data* data1, USB_HID_Data* data2)
+{
+    for(int i = 0; i < 6; ++i)
+    {
+        uint8_t input = data1->Key.keycodes[i];
+        if(input == 0)
+            continue;
+        int found = 1;
+        for(int j = 0; j < 6; ++j)
+        {
+            if((found=(input == data2->Key.keycodes[j])))
+                break;
+        }
+        if(!found)
+            return input;
+    }
+    return -1;
 }
 
 static void USB_HID_InputCallback(HCD_Request* pRequest)
@@ -357,7 +374,7 @@ static void USB_HID_InputCallback(HCD_Request* pRequest)
 
     //continue input, async don't wait
     int index = (pDriverData->Interface[mode].Index+1)&0x1;
-    pDriverData->Interface[mode].Index = (uint8_t)index;
+    pDriverData->Interface[mode].Index = (uint8_t)index&0x1U;
     USB_Transfer(pDevice, pDriverData->Interface[mode].pDataEP[HCD_TXR], pDriverData->Interface[mode].Data[index].Buffer, sizeof(USB_HID_Data), &USB_HID_InputCallback, (void*)mode);
 }
 
@@ -382,14 +399,16 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
         USB_SendRequest(pDevice, &req, NULL, USB_HID_DummyCallback, NULL);
         kbd->Idle = TRUE;
     }
+
+    USB_HID_Keyboard_SetupLED(pDevice);
+    
     int count = USB_HID_Keyboard_GetInputCount(data);
     int PrevCount = USB_HID_Keyboard_GetInputCount(prev);
-    if(empty || count < PrevCount) //no key down, or key up
-        return;
 
     //_LOG("delay timer: %d, rpt timer: %d\n", kbd->DelayTimer, kbd->RepeatingTimer);
     BOOL DoOut = FALSE;
-    if(count > PrevCount || USB_HID_Keyboard_CompareInput(prev, data) != 0) //input changed
+    BOOL InputChanged = (count != PrevCount) || (USB_HID_Keyboard_CompareInput(prev, data) != 0);
+    if(InputChanged) //input changed
     {
         kbd->DelayTimer = 0;
         kbd->RepeatingTimer = 0;
@@ -400,7 +419,7 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
         if(kbd->DelayTimer >= USB_HID_KEYBOARD_REPEAT_DELAY)
         {
             kbd->RepeatingTimer += kbd->Interval;
-            if(kbd->RepeatingTimer > USB_HID_KEYBOARD_REPEAT)
+            if(kbd->RepeatingTimer >= USB_HID_KEYBOARD_REPEAT)
             {
                 DoOut = TRUE;
                 kbd->RepeatingTimer = 0;
@@ -409,64 +428,71 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
         else
             kbd->DelayTimer += kbd->Interval;
     }
-    if(!DoOut)
+    if(!DoOut || (!InputChanged && empty))
         return;
 
-    int BIOSModifer = (int)USB_HID_KEYBOARD_LOADBIOS_MMASK; //don't store modifer for each keyboard device, instead, sync to BIOS's flag
-    BOOL ScrollLockPressed = USB_HID_Keyboard_CheckKeyDown(data, 0x46) != 0;
-    BOOL NumLockPressed = USB_HID_Keyboard_CheckKeyDown(data, 0x45) != 0;
-    BOOL CapsLockPressed = USB_HID_Keyboard_CheckKeyDown(data, 0x3A) != 0;
-    BIOSModifer |= ScrollLockPressed ? USB_HID_BIOS_SCRLLOCK : 0; //scroll lock
-    BIOSModifer |= NumLockPressed ? USB_HID_BIOS_NUMLOCK : 0; //num lock
-    BIOSModifer |= CapsLockPressed ? USB_HID_BIOS_CAPSLOCK : 0; //caps lock
-    if(ScrollLockPressed && USB_HID_Keyboard_CheckKeyDown(prev, 0x46) == 0) BIOSModifer ^= USB_HID_BIOS_SCRLLOCK_S;
-    if(NumLockPressed && USB_HID_Keyboard_CheckKeyDown(prev, 0x45) == 0) BIOSModifer ^= USB_HID_BIOS_NUMLOCK_S;
-    if(CapsLockPressed && USB_HID_Keyboard_CheckKeyDown(prev, 0x3A) == 0) BIOSModifer ^= USB_HID_BIOS_CAPSLOCK_S;
-    uint16_t insert;
-    if(USB_HID_Keyboard_CheckKeyDown(prev, 0x52) == 0 && (insert=USB_HID_Keyboard_CheckKeyDown(data, 0x52)) != 0) //insert
+    #if 0
+    if(InputChanged)
     {
-        if((insert&0xE000) == 0xE000 || !(BIOSModifer&USB_HID_BIOS_NUMLOCK_S)) //"normal" insert, or insert in numpad with numlock off
-            BIOSModifer ^= USB_HID_BIOS_INSLOCK_S;
+        DBG_DumpB(data->Key.keycodes, 6, NULL);
+        DBG_DumpB(prev->Key.keycodes, 6, NULL);
     }
-    BIOSModifer &= 0xF0F0;
-    if(data->Key.modifier&USB_HID_LCTRL) BIOSModifer |= USB_HID_BIOS_LCTRL | USB_HID_BIOS_CTRL;
-    if(data->Key.modifier&USB_HID_LSHIFT) BIOSModifer |= USB_HID_BIOS_LSHIFT;
-    if(data->Key.modifier&USB_HID_LALT) BIOSModifer |= USB_HID_BIOS_LALT | USB_HID_BIOS_ALT;
-    if(data->Key.modifier&USB_HID_RCTRL) BIOSModifer |= USB_HID_BIOS_RCTRL | USB_HID_BIOS_CTRL;
-    if(data->Key.modifier&USB_HID_RSHIFT) BIOSModifer |= USB_HID_BIOS_RSHIFT;
-    if(data->Key.modifier&USB_HID_RALT) BIOSModifer |= USB_HID_BIOS_RALT | USB_HID_BIOS_ALT;
-    //update LED
-    if((BIOSModifer^USB_HID_KEYBOARD_LOADBIOS_MMASK)&(USB_HID_BIOS_SCRLLOCK_S|USB_HID_BIOS_NUMLOCK_S|USB_HID_BIOS_CAPSLOCK_S))
-        USB_HID_Keyboard_SetupLED(pDevice, (uint16_t)BIOSModifer);
-    //sotre BIOS modifier
-    USB_HID_KEYBOARD_STOREBIOS_MMASK(BIOSModifer);
+    #endif
+    int index = InputChanged ?
+        (count < PrevCount ? USB_HID_Keyboard_FindNewInput(prev, data) : USB_HID_Keyboard_FindNewInput(data, prev))
+        : kbd->LastKeyIndex; //compare to find the change. by the spec, the new downed key is not always the first
+
+    if(index == -1) //only modifier changed. seems that modifier keys won't get to keycodes but only the modifier mask.
+    {
+        uint8_t modifier = prev->Key.modifier^data->Key.modifier;
+        if(modifier != 0)
+        {
+            uint32_t bitIndex = BSF((uint32_t)modifier);
+            index = 0xE0 + (int)bitIndex; //modifier key inited in USB_HID_PreInit. the bit order is the same order in the table.
+        }
+        //else _LOG("ERROR");
+        if(prev->Key.modifier&modifier) //cleared bit, fake break (PrevCount > count)
+            PrevCount = count + 1;
+    }
     
-    int index = data->Key.keycodes[0]*3; //TODO: compare to find the change. by the spec, the new downed key is not always the first
-    int offset = 0;
-    uint8_t scancode = USB_HID_KEYBOARD_USAGE2SCANCODES[index++];
+    kbd->LastKeyIndex = (uint8_t)index&0x7FU;
+    index *= 2;
+    uint8_t scancode = USB_HID_KEYBOARD_USAGE2SCANCODES[index];
+    uint8_t prefix = USB_HID_KEYBOARD_USAGE2SCANCODES[index+1];
+    if(count < PrevCount) //key break
+        scancode = (uint8_t)(scancode + 0x80);
 
-    //handle shift
-    if(BIOSModifer&(USB_HID_BIOS_RSHIFT|USB_HID_BIOS_LSHIFT))
-        ++offset;
-    //handle caps lock
-    if(!(BIOSModifer&USB_HID_BIOS_CAPSLOCK_S)  && isalpha(USB_HID_KEYBOARD_USAGE2SCANCODES[index + offset]))
-        offset = 1 - offset;
+    //_LOG("%d %02x %02x", index, prefix, scancode);
+    
+    //putting the key to BIOS keyboard buffer works for applications that use BIOS function (int 16h) to access the keyboard
+    //but a lot program doesn't do that. instead, they read the keyborad port
+    //so here is another method to fake keyboard input using port IO, from another USB driver made years ago:
+    //https://bretjohnson.us/
+    //other refs:
+    //https://wiki.osdev.org/%228042%22_PS/2_Controller
 
-    uint8_t ascii = USB_HID_KEYBOARD_USAGE2SCANCODES[index + offset];
-    //handle numlock
-    if(!(BIOSModifer&USB_HID_BIOS_NUMLOCK_S) && scancode >=0x47 && scancode <= 0x53 && ascii !='5' && (ascii == '.' || isdigit(ascii)))
-        ascii = 0;
+    //note: USb_IdleWait() will temporarily enable interrupt and let IRQ1 handled
+    //so that the 2nd scancode after prefix can write to the port
+    //the code of https://bretjohnson.us/ didn't do that so it canno send 2 bytes with prefix
+    //we don't need to do special fix for Ctrl+C/Ctrl+Pause, Numlock for [HOME,UP ARROW] etc.
+    #define WAIT_KEYBOARD_IN_EMPTY() while((inp(0x64)&2)) //USB_IdleWait()
+    #define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) USB_IdleWait()
 
-    //put directly to BIOS keyboard buffer
-    //we are modifying the buffer int Int handler so it is safe.
-    uint16_t head = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1A));
-    uint16_t tail = DPMI_LoadW(DPMI_SEGOFF2L(0x40,0x1C));
-    if((tail+2-0x1E) % 32 != head - 0x1E)
+    if(prefix)
     {
-        DPMI_StoreW(DPMI_SEGOFF2L(0x40,tail), (uint16_t)(((uint16_t)scancode<<8) | ascii));
-        tail = (uint16_t)(((tail+2 - 0x1E) % 32) + 0x1E);
-        DPMI_StoreW(DPMI_SEGOFF2L(0x40,0x1C), tail);
+        WAIT_KEYBOARD_IN_EMPTY();
+        outp(0x64, 0xD2);
+        WAIT_KEYBOARD_IN_EMPTY();
+        outp(0x60, prefix);
+        WAIT_KEYBOARD_IN_EMPTY();
+        WAIT_KEYBOARD_OUT_EMPTY();
     }
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0xD2);
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x60, scancode);
+    WAIT_KEYBOARD_IN_EMPTY();
+    //WAIT_KEYBOARD_OUT_EMPTY();
 }
 
 static void USB_HID_InputMouse(USB_Device* pDevice)

@@ -69,27 +69,6 @@
 #define USB_HID_LED_COMPOSE     0x08
 #define USB_HID_LED_KANA        0x10
 
-//BIOS modifier mask
-#define USB_HID_BIOS_RSHIFT     0x0001
-#define USB_HID_BIOS_LSHIFT     0x0002
-#define USB_HID_BIOS_CTRL       0x0004
-#define USB_HID_BIOS_ALT        0x0008
-#define USB_HID_BIOS_SCRLLOCK_S 0x0010 //scroll locked staus
-#define USB_HID_BIOS_NUMLOCK_S  0x0020 //num locked staus
-#define USB_HID_BIOS_CAPSLOCK_S 0x0040 //caps locked staus
-#define USB_HID_BIOS_INSLOCK_S  0x0080 //insert locked staus
-
-#define USB_HID_BIOS_LCTRL      0x0100
-#define USB_HID_BIOS_LALT       0x0200
-#define USB_HID_BIOS_RCTRL      0x0400
-#define USB_HID_BIOS_RALT       0x0800
-#define USB_HID_BIOS_SCRLLOCK   0x1000 //scroll lock pressed
-#define USB_HID_BIOS_NUMLOCK    0x2000 //num lock pressed
-#define USB_HID_BIOS_CAPSLOCK   0x4000 //caps lock pressed
-#define USB_HID_BIOS_SYSREQ     0x8000 //sys req pressed
-
-
-
 #if defined(__DJ2__)
 #pragma pack(1)
 #endif
@@ -151,9 +130,11 @@ typedef struct
     void* pDataEP[2]; //interrupt in/out
     uint8_t bEPAddr[2];
     uint8_t bInterface;
-    uint8_t Idle;
-    uint8_t Interval; //interval for interrupt input endpoint
-    uint8_t Index;    //index to Data, flipped each time
+    uint8_t Idle : 1;
+    uint8_t Interval : 7; //interval for interrupt input endpoint
+    uint8_t Index : 1;    //index to Data, flipped each time
+    uint8_t LastKeyIndex : 7; //last index to Key.kecodes
+    uint16_t BIOSModifier;
 
     USB_HID_Data Data[2];
     uint32_t DelayTimer;
