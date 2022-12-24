@@ -13,6 +13,7 @@
 
 //Keyboard working in Virtualbox, DOS7.0 command line, but not working in EDIT.COM, neither some games.
 //But wholly working in real machines, tested in DOS7.1(win98 real dos).
+//tested with Skyroads, cannot jump(SPACE) when both UP+LEFT(or RIGHT) are pressed, debug shows the keyboard won't send 3 key combinations, it's not a driver's bug 
 
 #include "USBDDOS/USB.H"
 
@@ -138,7 +139,7 @@ typedef struct
     uint16_t BIOSModifier;
     uint8_t Interval; //interval for interrupt input endpoint
     uint8_t RecordCount; //
-    uint16_t Records[6]; //record key in pressed order. after one key up, deciding the effective one
+    uint8_t Records[6]; //record key in pressed order. after one key up, deciding the effective one
 
     USB_HID_Data Data[2];
     uint32_t DelayTimer;

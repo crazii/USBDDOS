@@ -140,9 +140,10 @@ static int USB_HID_Keyboard_CompareInput(USB_HID_Data* data1, USB_HID_Data* data
 static int USB_HID_Keyboard_FindNewInput(USB_HID_Data* data1, USB_HID_Data* data2); //find new input in data1, return -1 if not found
 static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice); //updae LED and BIOS modifier
 //keyboard input record management
-static BOOL USB_HID_Keyboard_PushRecord(USB_HID_Interface* keyboard, uint16_t KeyIndex);
-static uint16_t USB_HID_Keyboard_TopRecord(USB_HID_Interface* keyboard);
-static BOOL USB_HID_Keyboard_RemoveRecord(USB_HID_Interface* keyboard, uint16_t KeyIndex);
+static BOOL USB_HID_Keyboard_PushRecord(USB_HID_Interface* keyboard, uint8_t KeyIndex);
+static uint8_t USB_HID_Keyboard_TopRecord(USB_HID_Interface* keyboard);
+static BOOL USB_HID_Keyboard_RemoveRecord(USB_HID_Interface* keyboard, uint8_t KeyIndex);
+static void USB_HID_Keyboard_GenerateKey(uint8_t scancode);
 static void USB_HID_Keyboard_Finalizer(void* data);
 //driver routines
 static void USB_HID_DummyCallback(HCD_Request* pRequest) {}
@@ -302,7 +303,9 @@ void USB_HID_PreInit()
     USB_HID_KEYBOARD_USAGE2SCANCODES[0xE4*2+1] = 0xE0;
     USB_HID_KEYBOARD_USAGE2SCANCODES[0xE5*2] = 0x36;  //right shift
     USB_HID_KEYBOARD_USAGE2SCANCODES[0xE6*2] = 0x38;  //right alt
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE6*2+1] = 0xE0;  //right alt
     USB_HID_KEYBOARD_USAGE2SCANCODES[0xE7*2] = 0x5C;  //right gui
+    USB_HID_KEYBOARD_USAGE2SCANCODES[0xE7*2+1] = 0xE0;  //right gui
 }
 
 void USB_HID_PostDeInit()
@@ -372,7 +375,7 @@ static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice)
 }
 
 
-static BOOL USB_HID_Keyboard_PushRecord(USB_HID_Interface* keyboard, uint16_t KeyIndex)
+static BOOL USB_HID_Keyboard_PushRecord(USB_HID_Interface* keyboard, uint8_t KeyIndex)
 {
     if(keyboard->RecordCount < 6)
     {
@@ -382,14 +385,14 @@ static BOOL USB_HID_Keyboard_PushRecord(USB_HID_Interface* keyboard, uint16_t Ke
     return FALSE;
 }
 
-static uint16_t USB_HID_Keyboard_TopRecord(USB_HID_Interface* keyboard)
+static uint8_t USB_HID_Keyboard_TopRecord(USB_HID_Interface* keyboard)
 {
     if(keyboard->RecordCount == 0)
         return 0;
     return keyboard->Records[keyboard->RecordCount-1];
 }
 
-static BOOL USB_HID_Keyboard_RemoveRecord(USB_HID_Interface* keyboard, uint16_t KeyIndex)
+static BOOL USB_HID_Keyboard_RemoveRecord(USB_HID_Interface* keyboard, uint8_t KeyIndex)
 {
     for(int i = 0; i < keyboard->RecordCount; ++i)
     {
@@ -404,6 +407,40 @@ static BOOL USB_HID_Keyboard_RemoveRecord(USB_HID_Interface* keyboard, uint16_t 
     return FALSE;
 }
 
+static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
+{
+    //note: USb_IdleWait() will temporarily enable interrupt and let IRQ1 handled
+    //so that the 2nd scancode after prefix can write to the port
+    //the code of https://bretjohnson.us/ didn't do that so it cannot send 2 bytes with prefix
+    //we don't need to do special fix Numlock for [HOME,UP ARROW] etc.
+
+    //method 1 from https://bretjohnson.us/
+#if 1
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0xD2);   //write to out buffer (fake input)
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x60, scancode);
+    WAIT_KEYBOARD_IN_EMPTY();
+    WAIT_KEYBOARD_OUT_EMPTY();
+#else
+    //method 2. worked if put in finalizer
+    PIC_MaskIRQ(1);
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0x60);   //write KCCB
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x60, scancode);
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0x20);   //KCCB to port 60h
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0x60);   //write KCCB
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x60, 0x45);   //return normal mode
+    DPMI_REG r = {0};
+    DPMI_CallRealModeINT(0x09, &r); //call kbd irq
+    PIC_UnmaskIRQ(1);
+#endif
+}
+
 static void USB_HID_Keyboard_Finalizer(void* data)
 {
     uint32_t bytes = (uint32_t)(uintptr_t)data;
@@ -411,32 +448,14 @@ static void USB_HID_Keyboard_Finalizer(void* data)
     uint8_t prefix = (uint8_t)(bytes>>8);
 
     if(prefix)
-    {
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x64, 0xD2);
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x60, prefix);
-        WAIT_KEYBOARD_IN_EMPTY();
-        WAIT_KEYBOARD_OUT_EMPTY();
-    }
-    WAIT_KEYBOARD_IN_EMPTY();
-    outp(0x64, 0xD2);
-    WAIT_KEYBOARD_IN_EMPTY();
-    outp(0x60, scancode);
-    WAIT_KEYBOARD_IN_EMPTY();
-    //WAIT_KEYBOARD_OUT_EMPTY();
+        USB_HID_Keyboard_GenerateKey(prefix);
+    USB_HID_Keyboard_GenerateKey(scancode);
 
-    #if 0
-    //special case: PAUSE: 0xE1 0x1D 0x45
-    if(prefix == 0xE1)
+    #if 0 //Ctrl + Break 0xE0 0x46 0xE0 0xC6
+    if(prefix == 0xE0 && scancode == 0x46)
     {
-    WAIT_KEYBOARD_OUT_EMPTY();
-    WAIT_KEYBOARD_IN_EMPTY();
-    outp(0x64, 0xD2);
-    WAIT_KEYBOARD_IN_EMPTY();
-    outp(0x60, 0x45);
-    WAIT_KEYBOARD_IN_EMPTY();
-    //WAIT_KEYBOARD_OUT_EMPTY();
+        USB_HID_Keyboard_GenerateKey(0xE0);
+        USB_HID_Keyboard_GenerateKey(0xC6);
     }
     #endif
 }
@@ -487,7 +506,7 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
 
     //_LOG("delay timer: %d, rpt timer: %d\n", kbd->DelayTimer, kbd->RepeatingTimer);
     BOOL DoOut = FALSE;
-    BOOL InputChanged = (count != PrevCount) || (USB_HID_Keyboard_CompareInput(prev, data) != 0);
+    BOOL InputChanged = (count != PrevCount) || (USB_HID_Keyboard_CompareInput(prev, data) != 0) || prev->Key.modifier != data->Key.modifier;
     if(InputChanged) //input changed
     {
         kbd->DelayTimer = 0;
@@ -538,14 +557,17 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
     uint8_t scancode = USB_HID_KEYBOARD_USAGE2SCANCODES[index*2];
     uint8_t prefix = USB_HID_KEYBOARD_USAGE2SCANCODES[index*2+1];
     if(count > PrevCount) //key make
-        USB_HID_Keyboard_PushRecord(kbd, (uint16_t)index);
+        USB_HID_Keyboard_PushRecord(kbd, (uint8_t)index);
     else if(count < PrevCount) //key break
     {
-        USB_HID_Keyboard_RemoveRecord(kbd, (uint16_t)index); //remove key record
+        USB_HID_Keyboard_RemoveRecord(kbd, (uint8_t)index); //remove key record
         scancode = (uint8_t)(scancode + 0x80);
     }
 
     //_LOG("%d %02x %02x", index, prefix, scancode);
+
+     if(prefix == 0xE1) //pause/break. TODO: handle ctrl+break
+        return;
     
     //putting the key to BIOS keyboard buffer works for applications that use BIOS function (int 16h) to access the keyboard
     //but a lot program doesn't do that. instead, they read the keyborad port
@@ -553,60 +575,14 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
     //https://bretjohnson.us/
     //other refs:
     //https://wiki.osdev.org/%228042%22_PS/2_Controller
-
-    //note: USb_IdleWait() will temporarily enable interrupt and let IRQ1 handled
-    //so that the 2nd scancode after prefix can write to the port
-    //the code of https://bretjohnson.us/ didn't do that so it cannot send 2 bytes with prefix
-    //we don't need to do special fix Numlock for [HOME,UP ARROW] etc.
-
-    if(prefix)
-    {
-        if(prefix == 0xE1) //Pause
-        {
-            if(scancode == 0x1D + 0x80) //ignore key up
-                return;
-            USB_HID_Keyboard_RemoveRecord(kbd, (uint16_t)index);
-            if(count == 1 && (data->Key.modifier&(USB_HID_LCTRL|USB_HID_RCTRL)))
-            { //generate Ctrl+Break
-                prefix = 0xE0;
-                scancode = 0x46;
-            }
-        }
     
-        //IRQ1 handler will send EOI and conflict with current interrupt handler.
-        //need send our EOI first. add support to custom finalize function to do key out after USB EOI
-        //only a few of scancodes have prefix, so the overhead is OK.
-        USB_ISR_Finalizer* finalizer = (USB_ISR_Finalizer*)malloc(sizeof(USB_ISR_Finalizer));
-        finalizer->FinalizeISR = USB_HID_Keyboard_Finalizer;
-        finalizer->data = (void*)(uintptr_t)((prefix<<8) | scancode);
-        USB_ISR_AddFinalizer(finalizer);
-    }
-    else
-    {
-        //method 1 from https://bretjohnson.us/
-        #if 1
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x64, 0xD2);   //write to out buffer (fake input)
-         WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x60, scancode);
-        WAIT_KEYBOARD_IN_EMPTY();
-        //WAIT_KEYBOARD_OUT_EMPTY();
-        #else
-        //method 2. worked if put in finalizer
-        PIC_MaskIRQ(1);
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x64, 0x60);   //write KCCB
-        outp(0x60, scancode);
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x64, 0x20);   //KCCB to port 60h
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x64, 0x60);   //write KCCB
-        outp(0x60, 0x45);   //return normal mode
-        DPMI_REG r = {0};
-        DPMI_CallRealModeINT(0x09, &r); //call kbd irq
-        PIC_UnmaskIRQ(1);
-        #endif
-    }
+    //IRQ1 handler will send EOI and conflict with current interrupt handler.
+    //need send our EOI first. add support to custom finalize function to do key out after USB EOI
+    //only a few of scancodes have prefix, so the overhead is OK.
+    USB_ISR_Finalizer* finalizer = (USB_ISR_Finalizer*)malloc(sizeof(USB_ISR_Finalizer));
+    finalizer->FinalizeISR = USB_HID_Keyboard_Finalizer;
+    finalizer->data = (void*)(uintptr_t)((prefix<<8) | scancode);
+    USB_ISR_AddFinalizer(finalizer);
 }
 
 static void USB_HID_InputMouse(USB_Device* pDevice)

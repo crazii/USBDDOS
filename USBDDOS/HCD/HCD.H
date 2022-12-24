@@ -8,8 +8,8 @@
 
 #define USB_MAX_HC_TYPE 3   //only to support uhci, ohci, ehci
 
-struct HCD_HostControllerIterface;
-typedef struct HCD_HostControllerIterface HCD_Interface;
+struct HCD_HostControllerInterface;
+typedef struct HCD_HostControllerInterface HCD_Interface;
 struct HCD_RequestBlock;
 typedef struct HCD_RequestBlock HCD_Request;
 
@@ -93,9 +93,9 @@ typedef struct HCD_HostControllerType
     BOOL (*ISR)(HCD_Interface* pHCI); //DON'T do IO, memory allocation in ISR.
 }HCD_Type;
 
-typedef struct HCD_HostControllerIterface
+typedef struct HCD_HostControllerInterface
 {
-    HCD_Type*       pType;  
+    HCD_Type*       pType;
     HCD_Method*     pHCDMethod; //host controller driver methods
     void*           pHCDData;   //host controller driver data
     PCI_Addr        PCIAddr;    //BDF,set by outside routine

@@ -871,21 +871,21 @@ void USB_ISR(void)
     r.w.cs = handle->rm_cs;
     r.w.ip = handle->rm_offset;
     DPMI_CallRealModeIRET(&r);
-    CLI();
-    
+
+    PIC_MaskIRQ(irq);
+
+    USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
+    while(USB_ISR_FinalizerPtr)
+    {
+        USB_ISR_FinalizerPtr->FinalizeISR(USB_ISR_FinalizerPtr->data);
+        USB_ISR_Finalizer* next = USB_ISR_FinalizerPtr->next;
+        free(USB_ISR_FinalizerPtr);
+        USB_ISR_FinalizerPtr = next;
+    }
+    USB_ISR_FinalizerHeader.next = NULL;
+
     //original handler may mask the IRQ agian, enable
     PIC_UnmaskIRQ(irq);
-
-        USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
-        while(USB_ISR_FinalizerPtr)
-        {
-            USB_ISR_FinalizerPtr->FinalizeISR(USB_ISR_FinalizerPtr->data);
-            USB_ISR_Finalizer* next = USB_ISR_FinalizerPtr->next;
-            free(USB_ISR_FinalizerPtr);
-            USB_ISR_FinalizerPtr = next;
-        }
-        USB_ISR_FinalizerHeader.next = NULL;
-
 }
 
 DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)
