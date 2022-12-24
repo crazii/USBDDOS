@@ -13,7 +13,9 @@
 
 //Keyboard working in Virtualbox, DOS7.0 command line, but not working in EDIT.COM, neither some games.
 //But wholly working in real machines, tested in DOS7.1(win98 real dos).
-//tested with Skyroads, cannot jump(SPACE) when both UP+LEFT(or RIGHT) are pressed, debug shows the keyboard won't send 3 key combinations, it's not a driver's bug 
+//tested with Skyroads, cannot jump(SPACE) when both UP+LEFT(or RIGHT) are pressed, debug shows the keyboard won't send 3 key combinations, it's not a driver's bug
+
+//tested mouse with WarcraftII, movement go wild soon after in game. need more test & bugfix.
 
 #include "USBDDOS/USB.H"
 
@@ -35,9 +37,9 @@
 //bRequest. see Appendix G for requirments:     Boot mouse, Nonboot mouse, Boot keyboard, Nonboot keyboard (Y=required, O=optional)
 #define USB_REQ_HID_GET_REPORT      0x01    //      Y           Y               Y               Y
 #define USB_REQ_HID_GET_IDLE        0x02    //      O           O               O               O
-#define USB_REQ_HID_GET_PROTOCOL    0x03    //      O           O               Y               Y
+#define USB_REQ_HID_GET_PROTOCOL    0x03    //      Y           O               Y               Y
 #define USB_REQ_HID_SET_REPORT      0x09    //      O           O               Y               Y
-#define USB_REQ_HID_SET_IDLE        0x0A    //      Y           O               Y               O
+#define USB_REQ_HID_SET_IDLE        0x0A    //      O           O               Y               O
 #define USB_REQ_HID_SET_PROTOCOL    0x0B    //      Y           O               Y               O
 
 //USB_REQ_HID_?ET_PROTOCOL
@@ -99,21 +101,22 @@ _Static_assert(sizeof(USB_HID_DESC) == 9, "incorrect size"); //minimal size
 //boot protocol keyboard packet. Appendix B.1
 typedef struct USB_HID_KeyPacket_Boot
 {
-    uint8_t modifier;
-    uint8_t reserved;   //not used in boot protocol
-    uint8_t keycodes[6];
+    uint8_t Modifier;
+    uint8_t Reserved;   //not used in boot protocol
+    uint8_t Keycodes[6];
 }USB_HID_KEY;
 
 //boot protocol mouse packet. Appendix B.2
 typedef struct USB_HIDE_MousePacket_Boot
 {
-    uint8_t Button1 : 1;
-    uint8_t Button2 : 1;
-    uint8_t Button3 : 1;
-    uint8_t unused : 5;
+    //uint8_t Button1 : 1;
+    //uint8_t Button2 : 1;
+    //uint8_t Button3 : 1;
+    //uint8_t unused : 5;
+    uint8_t Button;
 
-    uint8_t X;
-    uint8_t Y;
+    int8_t DX;
+    int8_t DY;
     
 }USB_HID_MOUSE;
 
@@ -137,13 +140,14 @@ typedef struct
     uint8_t Idle : 1;
     uint8_t Index : 1;    //index to Data, flipped each time
     uint16_t BIOSModifier;
+    uint8_t PrevCount;
     uint8_t Interval; //interval for interrupt input endpoint
     uint8_t RecordCount; //
     uint8_t Records[6]; //record key in pressed order. after one key up, deciding the effective one
 
     USB_HID_Data Data[2];
-    uint32_t DelayTimer;
-    uint32_t RepeatingTimer;
+    uint16_t DelayTimer;
+    uint16_t RepeatingTimer;
 
 }USB_HID_Interface;
 
