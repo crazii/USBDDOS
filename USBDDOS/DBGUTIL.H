@@ -25,13 +25,14 @@ extern "C"
 
 #if _LOG_ENABLE
 
+//_LOG() can be called in interrupt handler. DO NOT use sys calls, i.e. printf/INT10h in interrupt handler.
 void DBG_Logv(const char* fmt, va_list aptr);
 void DBG_Log(const char* fmt, ...);
 #define _LOG DBG_Log
 
 #else //_LOG_ENABLE
 
-#if defined(__BC__) //no variadic macro
+#if defined(__BC__) //no variadic macro, so string constants may not optimized out
 inline int DBG_Nolog(const char* fmt, ...) {return 0;}
 #define _LOG DBG_Nolog
 #else

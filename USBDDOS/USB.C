@@ -56,6 +56,8 @@ typedef struct
     uint8_t* pSetup8;
 }USB_UserCallbackResult;
 
+static USB_ISR_Finalizer USB_ISR_FinalizerHeader;
+static USB_ISR_Finalizer* USB_ISR_FinalizerPtr;
 static DPMI_ISR_HANDLE USB_ISRHandle[USB_MAX_HC_COUNT];
 static BOOL USB_IRQShared[USB_MAX_HC_COUNT];
 static BOOL USB_InISR = FALSE;
@@ -618,6 +620,13 @@ void USB_IdleWait()
     USB_IDLE_WAIT();
 }
 
+void USB_ISR_AddFinalizer(USB_ISR_Finalizer* finalizer)
+{
+    finalizer->next = NULL;
+    USB_ISR_FinalizerPtr->next = finalizer;
+    USB_ISR_FinalizerPtr = finalizer;
+}
+
 static void USB_EnumerateDevices()
 {
     //initially all powered devices will be in default states (address 0), but ports disabled.
@@ -827,6 +836,7 @@ void USB_ISR(void)
     if(irq == 0xFF)
         return;
     //_LOG("USB_ISR: irq: %d\n",irq);
+    USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
 
     const uint8_t vec = PIC_IRQ2VEC(irq);
 
@@ -842,13 +852,13 @@ void USB_ISR(void)
                 break; //exit. level triggered event will still exist for next device
         }
     }
-    #if 1
+    #if 0
     //default handler is empty (IRQ 9~11) and do nothing, not even EOI
     //assume 3rd party driver handler exist if previous irq mask bit is clear
     if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
     {
         PIC_SendEOI();
-        //_LOG("USB_ISR: EOI\n");
+        //_LOG("USB_ISR: EOI\n");        
         return;
     }
     #endif
@@ -861,8 +871,21 @@ void USB_ISR(void)
     r.w.cs = handle->rm_cs;
     r.w.ip = handle->rm_offset;
     DPMI_CallRealModeIRET(&r);
+    CLI();
+    
     //original handler may mask the IRQ agian, enable
     PIC_UnmaskIRQ(irq);
+
+        USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
+        while(USB_ISR_FinalizerPtr)
+        {
+            USB_ISR_FinalizerPtr->FinalizeISR(USB_ISR_FinalizerPtr->data);
+            USB_ISR_Finalizer* next = USB_ISR_FinalizerPtr->next;
+            free(USB_ISR_FinalizerPtr);
+            USB_ISR_FinalizerPtr = next;
+        }
+        USB_ISR_FinalizerHeader.next = NULL;
+
 }
 
 DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)

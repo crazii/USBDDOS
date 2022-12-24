@@ -280,6 +280,22 @@ BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr); //clear stall
 
 void USB_IdleWait();
 
+//ISR related
+//the finalizer is a routine called after EOI, so that other IRQ can be handled.
+//currently used by HID to simulate scancodes with multiple bytes (E0 prefix) 
+typedef struct _USB_ISR_Finalizer
+{
+    void* data;
+    void (*FinalizeISR)(void* data);
+    struct _USB_ISR_Finalizer* next;
+}USB_ISR_Finalizer;
+
+//temporarily add finalizer. must be called in USB ISR handler (usually a data-callback from real HC interrupt, i.e.
+//callback passed to USB_Transfer/USB_SendRequest)
+//param finalizer will be released on ISR return, by calling free()
+//FinalizeISR is responsible to manage data ptr i.e. if data in USB_ISRFinalizer is malloced, FinalizeISR is responsible to free it.
+void USB_ISR_AddFinalizer(USB_ISR_Finalizer* finalizer);
+
 #ifdef __cplusplus
 }
 #endif

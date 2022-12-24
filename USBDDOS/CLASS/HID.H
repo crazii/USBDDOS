@@ -11,6 +11,9 @@
 //the boot interface is required for bootable HID devices, i.e. used by BIOS to support simple input in BIOS setup menu, or in DOS
 //the boot interface is more simple and here is to be supported and supported only.
 
+//Keyboard working in Virtualbox, DOS7.0 command line, but not working in EDIT.COM, neither some games.
+//But wholly working in real machines, tested in DOS7.1(win98 real dos).
+
 #include "USBDDOS/USB.H"
 
 #define USB_REQ_TYPE_HID    (USB_REQTYPE_CLASS | USB_REQREC_INTERFACE)
@@ -131,10 +134,11 @@ typedef struct
     uint8_t bEPAddr[2];
     uint8_t bInterface;
     uint8_t Idle : 1;
-    uint8_t Interval : 7; //interval for interrupt input endpoint
     uint8_t Index : 1;    //index to Data, flipped each time
-    uint8_t LastKeyIndex : 7; //last index to Key.kecodes
     uint16_t BIOSModifier;
+    uint8_t Interval; //interval for interrupt input endpoint
+    uint8_t RecordCount; //
+    uint16_t Records[6]; //record key in pressed order. after one key up, deciding the effective one
 
     USB_HID_Data Data[2];
     uint32_t DelayTimer;
