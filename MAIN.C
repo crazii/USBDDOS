@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <dos.h>
@@ -47,7 +46,7 @@ static uint32_t MAIN_OPL_WriteCount = 0;
 
 //doesn't need buffer on real machines, the bandwidth is OK. guess it's slow on VirtualBox only.
 //#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
-#define MAIN_OPL_MAX_INSTANT_WRITE 1024
+#define MAIN_OPL_MAX_INSTANT_WRITE 10240
 
 #if MAIN_ENABLE_TIMER || (MAIN_OPL_MAX_INSTANT_WRITE<25)
 static uint32_t MAIN_OPL_DelayCount = 0;
