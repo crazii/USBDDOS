@@ -221,7 +221,6 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         return;
     }
 
-    CLIS();
     //make it re-entrant. reentrance hapeens on interrupt with 2 scenarios:
     //A, proteced mode IRQ handling will call realmode handler through here
     //B, real mode IRQ handling, if hooked, will call to PM handler through RMCB, then the PM handler might call realmode functions (i.e.debug print)
@@ -295,7 +294,6 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
     _ASM_END
     _fmemcpy(reg, stackREG, sizeof(DPMI_REG));
     DPMI_Rmcb->TranslationSP += sizeof(DPMI_REG) + DPMI_RMCB_TRASNLATION_STACK_SIZE;
-    STIL();
 }
 
 
@@ -631,24 +629,36 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
 
 uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
 {
+    if(Fn == NULL || reg == NULL)
+        return 0;
     int RmcbIndex = DPMI_FindEmptyRMCBTableEntry();
     if(RmcbIndex == -1)
     {
         assert(FALSE);
         return 0;
     }
-    return 0;
+    DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
+
+    //patch return code to RETF (default is IRET)
+    int size = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
+    DPMI_Rmcb->Table[RmcbIndex].Code[size-1] = 0xCB;
+
+    return (((uint32_t)DPMI_Rmcb->RMSegment) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
 {
+    if(Fn == NULL || reg == NULL)
+        return 0;
     int RmcbIndex = DPMI_FindEmptyRMCBTableEntry();
     if(RmcbIndex == -1)
     {
         assert(FALSE);
         return 0;
     }
-    return 0;
+
+    DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
+    return (((uint32_t)DPMI_Rmcb->RMSegment) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
