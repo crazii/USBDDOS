@@ -52,8 +52,6 @@ typedef void (near* DPMI_RMCB_ENTRY)(void);
 typedef struct
 {
     DPMI_RMCB_ENTRY Target; //asm optimization based the layout, do not change
-    //uint16_t oldcs;
-    //uint16_t oldip;
     char Code[DPMI_RMCB_ENTRYCODE_SIZE]; //call common entry, iret
 }DPMI_RMCBTable;
 
@@ -63,6 +61,7 @@ typedef struct
 //1. rm => pm: rm => CB => pm
 //2. pm => rm (INT,RETF,IRET) => pm:
 //3. INT (rm) => pm => rm:
+//4. rm => pm (allocated user call backs)
 typedef struct //real mode callback
 {
     IDTR RMCB_OldIDTR;
@@ -84,12 +83,13 @@ typedef struct //real mode callback
     uint8_t ProtectedModeIRQ0Vec;
     uint8_t RealModeIRQ8Vec;
     uint8_t ProtectedModeIRQ8Vec;
-    uint8_t Interrupt : 1; //interrupt status. don't remap PIC in int handling. make sure IF is always cleared: use pushf/popf instead of sti.
+    //uint8_t Interrupt : 1; //interrupt status. don't remap PIC in int handling. make sure IF is always cleared: use pushf/popf instead of sti.
     uint8_t NeedRemapPIC : 1;
     uint8_t Ready : 1;
-    uint8_t Unused : 5;
+    uint8_t Unused : 6;
     DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
     DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
+    uint16_t UserRegs[DPMI_RMCB_COUNT];  //for user call backs. pm mode DS's offset
 }DPMI_RMCB;
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
@@ -172,7 +172,7 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
 #define DPMI_RemapPIC(rmcb, pm, v86) do {\
-    if(rmcb->Interrupt || !rmcb->NeedRemapPIC) \
+    if(/*rmcb->Interrupt || */!rmcb->NeedRemapPIC) \
         break;\
     int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
     int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
@@ -199,8 +199,7 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 } while(0)
 
 #define DPMI_EnableA20(rmcb) do { \
-    if(rmcb->Interrupt)\
-        break;\
+    /*if(rmcb->Interrupt) break;*/\
     while(inp(0x64) & 2)\
     outp(0x64, 0xd1);\
     while(inp(0x64) & 2)\
@@ -746,8 +745,8 @@ static void DPMI_HWIRQHandler()
     {
         uint8_t vec = PIC_IRQ2VEC(irq);
         assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
-        BOOL Interrupt = DPMI_Rmcb->Interrupt;
-        DPMI_Rmcb->Interrupt = TRUE;
+        //BOOL Interrupt = DPMI_Rmcb->Interrupt;
+        //DPMI_Rmcb->Interrupt = TRUE;
         if(DPMI_UserINTHandler[vec])
             DPMI_UserINTHandler[vec]();
         else
@@ -755,7 +754,7 @@ static void DPMI_HWIRQHandler()
             static DPMI_REG r = {0};
             DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
         }
-        DPMI_Rmcb->Interrupt = Interrupt;
+        //DPMI_Rmcb->Interrupt = Interrupt;
     }
     _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(leave) _ASM(iret) _ASM_END
 }
@@ -815,7 +814,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov ds, ax)
     _ASM_END
 
-    ((DPMI_RMCB*)0)->Interrupt = TRUE; //after ds setup, set int flag. rmcb=ds:[0]
+    //((DPMI_RMCB*)0)->Interrupt = TRUE; //after ds setup, set int flag. rmcb=ds:[0]
 
     _ASM_BEGIN
         //get caller IP and calc target. target addr = TableOffset + (IP-TableOffset)/TableSize*TableSize + 0 (offsetof(DPMI_RMCBTable, Target))
@@ -866,7 +865,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         //now in rm. fs=gs=es=ss=ds=RMCB segement
     _ASM_END
 
-        ((DPMI_RMCB*)0)->Interrupt = FALSE;
+        //((DPMI_RMCB*)0)->Interrupt = FALSE;
 
     _ASM_BEGIN
         _ASM(pop fs) _ASM(pop gs) _ASM(pop es) _ASM(pop ds)

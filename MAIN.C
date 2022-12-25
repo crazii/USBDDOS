@@ -12,13 +12,16 @@
 #include "HDPMIPT.H"
 #include "USBDDOS/DBGUTIL.h"
 
-#define OPL_PRIMARY 0
-#define OPL_SECONDARY 1
 #if defined(__BC__)
 #define MAIN_ENABLE_TIMER 0 //BC build uses VCPI. it has compatibility issues with Miles Sound (DOS/4GW Extender protected mode, no keyboard input)
 #else
 #define MAIN_ENABLE_TIMER 0 //real machine doesn't need buffer queue, no need to use timer to flush
 #endif
+//doesn't need buffer on real machines, the bandwidth is OK. guess it's slow on VirtualBox only.
+//#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
+
+#define OPL_PRIMARY 0
+#define OPL_SECONDARY 1
 
 RetroWaveContext MAIN_RWContext = {0};
 static uint32_t MAIN_OPLTimerCtrlReg[2]; //if start 1 and 2 seperately we will miss one, so use 2 cache
@@ -42,9 +45,6 @@ static uint8_t MAIN_OPLIndexReg[2];
 #define KEY_ON 0x10 //channel on bit
 static uint32_t ADLG_CtrlEnable = 0;    //seems not working for Miles Sound, don't use it
 static uint32_t ADLG_Volume[2] = {0x08,0x08};
-
-//doesn't need buffer on real machines, the bandwidth is OK. guess it's slow on VirtualBox only.
-//#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
 
 #if defined(MAIN_OPL_MAX_INSTANT_WRITE)
 static uint32_t MAIN_OPL_DelayCount = 0;
@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
     BOOL TSR = MAIN_Options[OPT_RetroWave].enable;
     TSR = (MAIN_Options[OPT_Disk].enable && USB_MSC_DOS_Install()) || TSR; //note: TSR must be put in the back
     TSR = (MAIN_Options[OPT_HID].enable && USB_HID_DOS_Install()) || TSR;
-#if DEBUG
+#if DEBUG && 0
     TSR = MAIN_Options[OPT_TEST].enable || TSR;
 #endif
     if(TSR) 

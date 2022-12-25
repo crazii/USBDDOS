@@ -490,13 +490,11 @@ static void USB_HID_Keyboard_Finalizer(void* data)
         USB_HID_Keyboard_GenerateKey(prefix);
     USB_HID_Keyboard_GenerateKey(scancode);
 
-    #if 1 //Ctrl + Break 0xE0 0x46 0xE0 0xC6
     if(prefix == 0xE0 && scancode == 0x46)
-    {
+    { //Ctrl + Break 0xE0 0x46 0xE0 0xC6
         USB_HID_Keyboard_GenerateKey(0xE0);
         USB_HID_Keyboard_GenerateKey(0xC6);
     }
-    #endif
 
     PIC_SetIRQMask(mask);
 }

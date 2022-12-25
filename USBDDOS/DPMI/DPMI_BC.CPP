@@ -631,13 +631,23 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
 
 uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
 {
-    #error not implemented.
+    int RmcbIndex = DPMI_FindEmptyRMCBTableEntry();
+    if(RmcbIndex == -1)
+    {
+        assert(FALSE);
+        return 0;
+    }
     return 0;
 }
 
 uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
 {
-    #error not implemented.
+    int RmcbIndex = DPMI_FindEmptyRMCBTableEntry();
+    if(RmcbIndex == -1)
+    {
+        assert(FALSE);
+        return 0;
+    }
     return 0;
 }
 
@@ -656,7 +666,7 @@ BOOL DPMI_TSR(void)
     if(!DPMI_PM)
         return FALSE;
 
-    assert(!DPMI_Rmcb->Interrupt);
+    //assert(!DPMI_Rmcb->Interrupt);
     CLIS();
     DPMI_Rmcb->PM_SP = 0xFFF8;
     DPMI_TSRed = TRUE;
