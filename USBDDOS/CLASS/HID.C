@@ -213,7 +213,10 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
             _LOG("HID: Set boot protocol\n");
             USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_PROTOCOL, USB_HID_PROTOCOL_BOOT, (uint16_t)DrvIntface->bInterface, 0};
             if(DrvIntface->pDataEP[HCD_TXR] != NULL && USB_SyncSendRequest(pDevice, &req, NULL) == 0)
+            {
+                printf("Found USB %s: %s\n", index == 0 ? "keyboard" : "mouse", pDevice->sProduct);
                 ++valid;
+            }
 
             //bye default the device will send data even if no input data change, set_idle will make it only sending data only changes, i.e. keydown/keyup
             //maybe we can use the frequent interrupt to implement 'repeating'. otherwise we need a timer to implement it.
