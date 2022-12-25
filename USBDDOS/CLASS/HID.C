@@ -130,8 +130,8 @@ static uint8_t USB_HID_KEYBOARD_USAGE2SCANCODES[256*2] =
 #define USB_HID_BIOS_CAPSLOCK_S 0x0040 //caps locked staus
 #define USB_HID_BIOS_MMASK      0x0070
 
-#define WAIT_KEYBOARD_IN_EMPTY() while((inp(0x64)&2)) //USB_IdleWait()
-#define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) USB_IdleWait()
+#define WAIT_KEYBOARD_IN_EMPTY() while((inp(0x64)&2))
+#define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) {STI();NOP();CLI();}//USB_IdleWait()
 
 //keyboard device input processing
 static BOOL USB_HID_Keyboard_IsInputEmpty(USB_HID_Data* data);
@@ -512,11 +512,19 @@ void USB_HID_Mouse_Finalizer(void* data)
     status |= hiddata->Mouse.DX < 0 ? 0x10 : 0;
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
 
-    PIC_MaskIRQ(1); //disable keyboard interrupt
+    //PIC_MaskIRQ(1); //disable keyboard interrupt
+    //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
+    //keyboard irq need be disabled for sure because kbd & mouse use the same port
+    //but any irq handler may read the port, i.e. mouse become random when play Warcraft2
+    //so disable them all
+    uint16_t mask = PIC_GetIRQMask();
+    //PIC_SetIRQMask(PIC_IRQ_UNMASK(PIC_IRQ_UNMASK(0xFFFF,12),2));
+    PIC_SetIRQMask((uint16_t)(~0x1004U)); //only enable IRQ12 & PIC slave
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
-    PIC_UnmaskIRQ(1);
+    //PIC_UnmaskIRQ(1);
+    PIC_SetIRQMask(mask);
 }
 
 static void USB_HID_InputCallback(HCD_Request* pRequest)

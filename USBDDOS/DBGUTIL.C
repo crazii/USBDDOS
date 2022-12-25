@@ -7,7 +7,6 @@
 #include <stdarg.h>
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/USB.H"
-#include "USBDDOS/PIC.H"
 #include "USBDDOS/DBGUTIL.H"
 
 //https://dev.to/frosnerd/writing-my-own-vga-driver-22nn

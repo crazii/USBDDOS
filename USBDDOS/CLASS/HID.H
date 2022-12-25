@@ -15,7 +15,7 @@
 //But wholly working in real machines, tested in DOS7.1(win98 real dos).
 //tested with Skyroads, cannot jump(SPACE) when both UP+LEFT(or RIGHT) are pressed, debug shows the keyboard won't send 3 key combinations, it's not a driver's bug
 
-//tested mouse with WarcraftII, movement go wild soon after in game. need more test & bugfix.
+//tested mouse with WarcraftII, movement go wild soon after in game. need more test & bugfix - now it works
 
 #include "USBDDOS/USB.H"
 
