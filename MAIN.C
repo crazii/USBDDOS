@@ -12,14 +12,6 @@
 #include "HDPMIPT.H"
 #include "USBDDOS/DBGUTIL.h"
 
-#if defined(__BC__)
-#define MAIN_ENABLE_TIMER 0 //BC build uses VCPI. it has compatibility issues with Miles Sound (DOS/4GW Extender protected mode, no keyboard input)
-#else
-#define MAIN_ENABLE_TIMER 0 //real machine doesn't need buffer queue, no need to use timer to flush
-#endif
-//doesn't need buffer on real machines, the bandwidth is OK. guess it's slow on VirtualBox only.
-//#define MAIN_OPL_MAX_INSTANT_WRITE (71/4) //USB1.1 maxium bulk:71(*8bytes), 19(*64 bytes). TODO: read EP config
-
 #define OPL_PRIMARY 0
 #define OPL_SECONDARY 1
 
@@ -46,25 +38,6 @@ static uint8_t MAIN_OPLIndexReg[2];
 static uint32_t ADLG_CtrlEnable = 0;    //seems not working for Miles Sound, don't use it
 static uint32_t ADLG_Volume[2] = {0x08,0x08};
 
-#if defined(MAIN_OPL_MAX_INSTANT_WRITE)
-static uint32_t MAIN_OPL_DelayCount = 0;
-static uint32_t MAIN_OPL_WriteCount = 0;
-#endif
-
-#if MAIN_ENABLE_TIMER
-DPMI_ISR_HANDLE MAIN_INT08Handle;
-DPMI_REG MAIN_RealModeINT08 = {0};
-static void MAIN_Timer_Interrupt(void) //may need a higher flush frequency to solve some missing notes and timing issue.
-{ //clients (game) audio usually have high freqeuncy but invoke the chain as BIOS frequency (18.2Hz)
-    #if defined(MAIN_OPL_MAX_INSTANT_WRITE)
-    MAIN_OPL_WriteCount = 0;
-    MAIN_OPL_DelayCount = 0;
-    #endif
-    retrowave_flush(&MAIN_RWContext);
-    DPMI_CallRealModeIRET(&MAIN_RealModeINT08);
-}
-#endif
-
 static uint32_t MAIN_OPL_Primary_Index(uint32_t port, uint32_t reg, uint32_t out)
 {
     unused(port);
@@ -78,18 +51,6 @@ static uint32_t MAIN_OPL_Primary_Index(uint32_t port, uint32_t reg, uint32_t out
         if ((MAIN_OPLTimerCtrlReg[1] & (OPL_TIMER2_MASK|OPL_TIMER2_START)) == OPL_TIMER2_START)
             reg |= OPL_TIMER2_TIMEOUT;
         inp((uint16_t)port); //instant delay
-#if (!MAIN_ENABLE_TIMER) && defined(MAIN_OPL_MAX_INSTANT_WRITE)
-        if(MAIN_OPL_WriteCount >= MAIN_OPL_MAX_INSTANT_WRITE)
-        {
-            if(++MAIN_OPL_DelayCount == 100)
-            {
-                //retrowave_opl3_queue_delay(&MAIN_RWContext); //buffer delay
-                retrowave_flush(&MAIN_RWContext);
-                ++MAIN_OPL_WriteCount;
-                MAIN_OPL_DelayCount = 0;
-            }
-        }
-#endif
     }
     return reg;
 }
@@ -106,12 +67,8 @@ static uint32_t MAIN_OPL_Primary_Data(uint32_t port, uint32_t val, uint32_t out)
             if(val&(OPL_TIMER2_START|OPL_TIMER2_MASK))
                 MAIN_OPLTimerCtrlReg[1] = val;
         }
-        #if defined(MAIN_OPL_MAX_INSTANT_WRITE)
-        if(MAIN_OPL_WriteCount++ > MAIN_OPL_MAX_INSTANT_WRITE)
-            retrowave_opl3_queue_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
-        else
-        #endif
-            retrowave_opl3_emit_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
+
+        retrowave_opl3_emit_port0(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_PRIMARY], (uint8_t)val);
         return val;
     }
     return MAIN_OPL_Primary_Index(port, val, out);
@@ -140,12 +97,8 @@ static uint32_t MAIN_OPL_Secondary_Data(uint32_t port, uint32_t val, uint32_t ou
     {
         if(/*ADLG_CtrlEnable && */(MAIN_OPLIndexReg[OPL_SECONDARY] == ADLG_VOLL_REG_INDEX || MAIN_OPLIndexReg[OPL_SECONDARY] == ADLG_VOLR_REG_INDEX))
             ADLG_Volume[MAIN_OPLIndexReg[OPL_SECONDARY]-ADLG_VOLL_REG_INDEX] = val;
-        #if defined(MAIN_OPL_MAX_INSTANT_WRITE)
-        if(MAIN_OPL_WriteCount++ > MAIN_OPL_MAX_INSTANT_WRITE)
-            retrowave_opl3_queue_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
-        else
-        #endif
-            retrowave_opl3_emit_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
+
+        retrowave_opl3_emit_port1(&MAIN_RWContext, MAIN_OPLIndexReg[OPL_SECONDARY], (uint8_t)val);
         return val;
     }
     //in
@@ -260,16 +213,6 @@ int main(int argc, char* argv[])
         retrowave_io_init(&MAIN_RWContext);
         retrowave_opl3_reset(&MAIN_RWContext);
 
-        #if MAIN_ENABLE_TIMER
-        if( DPMI_InstallISR(0x08, &MAIN_Timer_Interrupt, &MAIN_INT08Handle) != 0)
-        {
-            puts("Failed to install interrupt handler 0x08.\n");
-            return 1;
-        }
-        MAIN_RealModeINT08.w.cs = MAIN_INT08Handle.rm_cs;
-        MAIN_RealModeINT08.w.ip = MAIN_INT08Handle.rm_offset;
-        #endif
-
         if(!EMM_Install_IOPortTrap(0x388, 0x38B, MAIN_IODT, sizeof(MAIN_IODT)/sizeof(EMM_IODT), &MAIN_IOPT))
         {
             puts("IO trap installation failed.\n");
@@ -298,10 +241,6 @@ int main(int argc, char* argv[])
     if(MAIN_Options[OPT_RetroWave].enable)
     {
         BOOL uninstalled;
-        #if MAIN_ENABLE_TIMER
-        uninstalled = DPMI_UninstallISR(&MAIN_INT08Handle) == 0;
-        assert(uninstalled);
-        #endif
 
         uninstalled = EMM_Uninstall_IOPortTrap(&MAIN_IOPT);
         assert(uninstalled);
