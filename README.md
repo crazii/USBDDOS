@@ -39,9 +39,9 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * - [x] OHCI driver
 * - [x] UHCI driver
 * - [ ] EHCI driver
-* - [ ] Keyborad & mouse driver (HID)
-* - [x] Mass storage deivce driver (MSD). use `USBDDOS /disk` to enable
-* - [x] Simple CDC(ACM) driver and RetroWave OPL3. use `USBDDOS /RW` to enable
+* - [x] Keyborad & mouse driver (HID). use `USBDDOSP /hid` to enable
+* - [x] Mass storage deivce driver (MSD). use `USBDDOSP /disk` to enable
+* - [x] Simple CDC(ACM) driver and RetroWave OPL3. use `USBDDOSP /RW` to enable
 * - [ ] Audio and MIDI
 
 # Tested games with Retrowave DOS driver
@@ -52,3 +52,4 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * Theme Hospital, Miles Sound
 * DOOM (DJGPP build only, need a modified HDPMI with port trapping feature, see https://github.com/crazii/HX)
 * The Jungle Book
+* Warcraft II
