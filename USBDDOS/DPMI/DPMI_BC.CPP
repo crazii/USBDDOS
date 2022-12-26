@@ -282,7 +282,7 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(pop dx) //old ss
         _ASM2(cmp dx, SEL_HIMEM_DS*8)
         _ASM(jne TranslationSkipSaveSP2)
-        _ASM2(mov es:[bx.PM_SP], bp);
+        _ASM2(mov ss:[bx.PM_SP], bp);
     _ASMLBL(TranslationSkipSaveSP2:)
 
         _ASM2(mov bx, sp)

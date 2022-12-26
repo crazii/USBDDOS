@@ -738,8 +738,11 @@ static void DPMI_NullINTHandler()
 }
 #pragma option -k
 
-static void DPMI_HWIRQHandlerInternal()
+static void DPMI_HWIRQHandler()
 {
+    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
+    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
+
     uint8_t irq = PIC_GetIRQ();
     if(irq < 16)
     {
@@ -753,13 +756,7 @@ static void DPMI_HWIRQHandlerInternal()
             DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
         }
     }
-}
 
-static void DPMI_HWIRQHandler()
-{
-    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
-    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
-    DPMI_HWIRQHandlerInternal();
     _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(leave) _ASM(iret) _ASM_END
 }
 
