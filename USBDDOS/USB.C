@@ -862,8 +862,6 @@ void USB_ISR(void)
 
     //call old handler
     DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
-    //assert(handle);
-    //_LOG("Old IRQ Handler: %04x:%04x\n", handle->rm_cs, handle->rm_offset);
     DPMI_REG r = {0};
     r.w.cs = handle->rm_cs;
     r.w.ip = handle->rm_offset;

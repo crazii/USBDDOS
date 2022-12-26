@@ -244,12 +244,12 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM2(shl ecx, 16)
         _ASM2(mov cx, RegOffset) //ss:bp[xx] DPMI_REG near* for translation call
         _ASM2(mov ax, sp) //save SP before switching stack
-        _ASM2(lss sp, stackptr) //ss:bp[xx] load ss:sp in one shot, or interrutp will be on wrong stack
-        _ASM2(lss bx, DPMI_Rmcb)
+        _ASM2(lss sp, stackptr) //stackptr stored at ss:bp[xx]. load ss:sp in one shot, or interrutp will be on wrong stack
+        _ASM2(les bx, DPMI_Rmcb)
         _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp
         _ASM(jne TranslationSkipSaveSP)
-        _ASM2(mov bp, ss:[bx.PM_SP]);
-        _ASM2(mov ss:[bx.PM_SP], ax);
+        _ASM2(mov bp, es:[bx.PM_SP]);
+        _ASM2(mov es:[bx.PM_SP], ax);
     _ASMLBL(TranslationSkipSaveSP:)
         _ASM(push dx)
         _ASM(push ax)
@@ -264,14 +264,14 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(push cx)
         _ASM(push 0)
         //chained call switch pm (return of translation)
-        _ASM(push word ptr ss:[bx.RMSegment]);
-        _ASM(push word ptr ss:[bx.SwitchPM]);
+        _ASM(push word ptr es:[bx.RM_SEG]);
+        _ASM(push word ptr es:[bx.SwitchPM]);
         //chained call translation. NOTE: use pascal calling convention so that stack parameters are clared by callee
-        _ASM(push word ptr ss:[bx.RMSegment]);
-        _ASM(push word ptr ss:[bx.Translation]);
+        _ASM(push word ptr es:[bx.RM_SEG]);
+        _ASM(push word ptr es:[bx.Translation]);
         //chained call switch rm
         _ASM(push SEL_RMCB_CS*8)
-        _ASM(push word ptr ss:[bx.SwitchRM]);
+        _ASM(push word ptr es:[bx.SwitchRM]);
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM(retf)
@@ -282,7 +282,7 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(pop dx) //old ss
         _ASM2(cmp dx, SEL_HIMEM_DS*8)
         _ASM(jne TranslationSkipSaveSP2)
-        _ASM2(mov ss:[bx.PM_SP], bp);
+        _ASM2(mov es:[bx.PM_SP], bp);
     _ASMLBL(TranslationSkipSaveSP2:)
 
         _ASM2(mov bx, sp)
@@ -591,8 +591,14 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
 
     DPMI_UserINTHandler[i] = ISR;
     DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandler; //resue PM handler. temporary implementation for IRQs
+    DPMI_Rmcb->UserRegs[RmcbIndex] = 0;
+    
+    //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
+    static const int size = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
+    DPMI_Rmcb->Table[RmcbIndex].Code[size-1] = 0xCF;
+
     DPMI_StoreW(i*4, offsetof(DPMI_RMCB, Table) + RmcbIndex * sizeof(DPMI_RMCBTable) + offsetof(DPMI_RMCBTable, Code));
-    DPMI_StoreW(i*4+2, DPMI_Rmcb->RMSegment);
+    DPMI_StoreW(i*4+2, DPMI_Rmcb->RM_SEG);
     STIL();
     return 0;
 }
@@ -640,10 +646,10 @@ uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
     DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
 
     //patch return code to RETF (default is IRET)
-    int size = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
+    static const int size = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
     DPMI_Rmcb->Table[RmcbIndex].Code[size-1] = 0xCB;
 
-    return (((uint32_t)DPMI_Rmcb->RMSegment) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
+    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
@@ -657,8 +663,12 @@ uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
         return 0;
     }
 
+    //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
+    static const int size = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
+    DPMI_Rmcb->Table[RmcbIndex].Code[size-1] = 0xCF;
+
     DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
-    return (((uint32_t)DPMI_Rmcb->RMSegment) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
+    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)

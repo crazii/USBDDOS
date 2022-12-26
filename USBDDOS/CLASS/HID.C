@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <malloc.h>
 #include <ctype.h>
+#include <conio.h>
 #include "USBDDOS/CLASS/HID.H"
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/PIC.H"
