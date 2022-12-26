@@ -830,8 +830,6 @@ void USB_ISR(void)
 {
     const uint8_t irq = PIC_GetIRQ();
     BOOL handled = FALSE;
-    if(irq == 0xFF)
-        return;
     //_LOG("USB_ISR: irq: %d\n",irq);
     USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
 
@@ -849,23 +847,20 @@ void USB_ISR(void)
                 break; //exit. level triggered event will still exist for next device
         }
     }
-    #if 0
     //default handler is empty (IRQ 9~11) and do nothing, not even EOI
     //assume 3rd party driver handler exist if previous irq mask bit is clear
-    if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
-    {
+    if(PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
         PIC_SendEOI();
-        //_LOG("USB_ISR: EOI\n");        
-        return;
+        //_LOG("USB_ISR: EOI\n");
+    else
+    {
+        //call old handler
+        DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
+        DPMI_REG r = {0};
+        r.w.cs = handle->rm_cs;
+        r.w.ip = handle->rm_offset;
+        DPMI_CallRealModeIRET(&r);
     }
-    #endif
-
-    //call old handler
-    DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
-    DPMI_REG r = {0};
-    r.w.cs = handle->rm_cs;
-    r.w.ip = handle->rm_offset;
-    DPMI_CallRealModeIRET(&r);
 
     PIC_MaskIRQ(irq);
 
