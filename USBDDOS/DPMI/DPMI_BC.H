@@ -169,7 +169,7 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //simplified to works only for real mode before init
 #define DPMI_PTUnmap(pt, laddr) (DPMI_V86 ? PTE_ADDR((pt)[(laddr)>>12L]) : laddr);
 
-//wki.osdev.org/8259_PIC
+//wiki.osdev.org/8259_PIC
 //only remap master pic. will informs the VCPI server in v86 mode.
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
@@ -936,6 +936,7 @@ static void DPMI_RMCBEntryIRET() //keep it as small as possible
 }
 static void DPMI_RMCBEntryIRETEnd() {}
 #pragma option -k
+static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
 
 //input: BX as DPMI_REG PTR (seems BC doesn't need type override)
 //output: full register set loaded from ptr, inclluding EBX itself

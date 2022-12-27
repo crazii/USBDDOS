@@ -5,9 +5,14 @@
 #include <string.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <dos.h>
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/USB.H"
 #include "USBDDOS/DBGUTIL.H"
+
+#if defined(__BC__)
+extern BOOL DPMI_IsInProtectedMode();
+#endif
 
 //https://dev.to/frosnerd/writing-my-own-vga-driver-22nn
 #define VGA_CTRL_REGISTER 0x3d4
@@ -36,10 +41,18 @@ static uint32_t VGA_GetCursor()
 
 static void VGA_SetChar(char character, uint32_t offset)
 {
-    DPMI_StoreB(VGA_VIDEO_ADDRESS + offset*2, (uint8_t)character);
+    #if defined(__BC__)
+    if(!DPMI_IsInProtectedMode())
+        *(char far*)MK_FP(0xB800, offset*2) = character;
+    else
+    #endif
+    {
+        DPMI_StoreB(VGA_VIDEO_ADDRESS + offset*2, (uint8_t)character);
+    }
 }
 
-static uint32_t VGA_GetOffset(uint32_t col, uint32_t row) {
+static uint32_t VGA_GetOffset(uint32_t col, uint32_t row)
+{
     return (uint32_t)(row * VGA_MAX_COLS + col);
 }
 
@@ -49,9 +62,20 @@ static uint32_t VGA_NewLine(uint32_t offset)
     return VGA_GetOffset(0, row+1);
 }
 
-static uint32_t VGA_Scroll(uint32_t offset) {
-    
-    DPMI_CopyLinear(VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 0)*2, VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 1)*2, VGA_MAX_COLS * (VGA_MAX_ROWS - 1)*2);
+static uint32_t VGA_Scroll(uint32_t offset)
+{
+    #if defined(__BC__)
+    if(!DPMI_IsInProtectedMode())
+    {
+        char far* line0 = (char far*)MK_FP(0xB800, VGA_GetOffset(0, 0)*2);
+        char far* line1 = (char far*)MK_FP(0xB800, VGA_GetOffset(0, 1)*2);
+        _fmemcpy(line0, line1, VGA_MAX_COLS * (VGA_MAX_ROWS - 1)*2);
+    }
+    else
+    #endif
+    {
+        DPMI_CopyLinear(VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 0)*2, VGA_VIDEO_ADDRESS + VGA_GetOffset(0, 1)*2, VGA_MAX_COLS * (VGA_MAX_ROWS - 1)*2);
+    }
 
     for(uint32_t i = 0; i < VGA_MAX_COLS; ++i)
         VGA_SetChar(' ', VGA_MAX_COLS * (VGA_MAX_ROWS - 1) + i);
@@ -59,7 +83,8 @@ static uint32_t VGA_Scroll(uint32_t offset) {
     return offset - VGA_MAX_COLS;
 }
 
-static void VGA_Print(const char *string) {
+static void VGA_Print(const char *string)
+{
     uint32_t offset = VGA_GetCursor();
     int i = 0;
     while (string[i] != 0)
@@ -76,8 +101,18 @@ static void VGA_Print(const char *string) {
     VGA_SetCursor(offset);
     //update cursor in BIOS data area (40:50)
     //https://stanislavs.org/helppc/bios_data_area.html
-    DPMI_StoreB((0x40UL<<4)+0x50, (uint8_t)(offset % VGA_MAX_COLS));
-    DPMI_StoreB((0x40UL<<4)+0x50+1, (uint8_t)(offset / VGA_MAX_COLS));
+    #if defined(__BC__)
+    if(!DPMI_IsInProtectedMode())
+    {
+        *(char far*)MK_FP(0x40, 0x50) = (uint8_t)(offset % VGA_MAX_COLS);
+        *(char far*)MK_FP(0x40, 0x51) = (uint8_t)(offset % VGA_MAX_COLS);
+    }
+    else
+    #endif
+    {
+        DPMI_StoreB((0x40UL<<4)+0x50, (uint8_t)(offset % VGA_MAX_COLS));
+        DPMI_StoreB((0x40UL<<4)+0x50+1, (uint8_t)(offset / VGA_MAX_COLS));
+    }
 }
 
 //needs to work in interrupt handler. now use IN/OUT controls VGA directly.

@@ -849,7 +849,7 @@ void USB_ISR(void)
     }
     //default handler is empty (IRQ 9~11) and do nothing, not even EOI
     //assume 3rd party driver handler exist if previous irq mask bit is clear
-    if(PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
+    if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
         PIC_SendEOI();
         //_LOG("USB_ISR: EOI\n");
     else
