@@ -452,7 +452,7 @@ static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
     //we don't need to do special fix Numlock for [HOME,UP ARROW] etc.
 
     //method 1 from https://bretjohnson.us/
-#if 1
+#if !defined(__BC__)
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xD2);   //write to out buffer (fake input)
     WAIT_KEYBOARD_IN_EMPTY();

@@ -170,6 +170,7 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 #define DPMI_PTUnmap(pt, laddr) (DPMI_V86 ? PTE_ADDR((pt)[(laddr)>>12L]) : laddr);
 
 //wiki.osdev.org/8259_PIC
+#define PIC_WAIT inp(0xA1)
 //only remap master pic. will informs the VCPI server in v86 mode.
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
@@ -179,11 +180,11 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
     int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
     int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
     int oldmask = inp(0x21); \
-    outp(0x20, 0x11); \
-    outp(0x21, master); \
-    outp(0x21, 4); \
-    outp(0x21, 1); \
-    outp(0x21, oldmask); \
+    outp(0x20, 0x11); PIC_WAIT;\
+    outp(0x21, master); PIC_WAIT;\
+    outp(0x21, 4); PIC_WAIT;\
+    outp(0x21, 1); PIC_WAIT;\
+    outp(0x21, oldmask); PIC_WAIT;\
     if(!v86) \
         break; \
     _ASM_BEGIN \
@@ -720,6 +721,7 @@ static void DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM(pop bp)
         _ASM(pop bx)
     _ASM_END
+    //note: only changing settings in LinearDS, himemDS not changed (as DPMI_PM=true)
     DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(segment, 0);
     DPMI_PM = PM_NONE;
     DPMI_Addressing.selector = 0;
@@ -738,16 +740,13 @@ static void DPMI_NullINTHandler()
 }
 #pragma option -k
 
-static void DPMI_HWIRQHandler()
+static void DPMI_HWIRQHandlerInternal()
 {
-    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
-    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
-
     uint8_t irq = PIC_GetIRQ();
-    if(irq < 16)
+    //if(irq < 16)
     {
         uint8_t vec = PIC_IRQ2VEC(irq);
-        assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
+        //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
         if(DPMI_UserINTHandler[vec])
             DPMI_UserINTHandler[vec]();
         else
@@ -756,11 +755,22 @@ static void DPMI_HWIRQHandler()
             DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
         }
     }
-
-    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(leave) _ASM(iret) _ASM_END
 }
 
-#define DPMI_EXCEPT(n) static void DPMI_ExpetionHandler##n()\
+#pragma option -k-
+static void DPMI_HWIRQHandler()
+{
+    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
+    _ASM_BEGIN _ASM2(mov bp, sp) _ASM2(and word ptr [bp+40], 0xBFFF) _ASM_END //remove NT flag for flags or iret will do a task return
+    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
+
+    DPMI_HWIRQHandlerInternal();
+
+    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(iret) _ASM_END
+}
+#pragma option -k
+
+#define DPMI_EXCEPT(n) static void DPMI_ExceptionHandler##n()\
 {\
     _ASM_BEGIN _ASM(push ds) _ASM(pushad) _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov ss, ax) _ASM2(mov sp, 0xFFF8) _ASM_END \
     printf("Exception: %02x\n", n);\
@@ -786,24 +796,34 @@ DPMI_EXCEPT(0x0D)
 DPMI_EXCEPT(0x0E)
 #pragma option -k
 
-#define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExpetionHandler##n)
+#define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExceptionHandler##n)
 
 //////////////////////////////////////////////////////////////////////////////
 //RMCB
 //////////////////////////////////////////////////////////////////////////////
+#define DPMI_RMCB_TEST 0
 static const int RMCB_TableSize = sizeof(DPMI_RMCBTable); //use C to get stable size.
 static const int DPMI_REG_Size = sizeof(DPMI_REG);
 #pragma option -k-
+#if DPMI_RMCB_TEST
+static void DPMI_RmcbLog()
+{
+    _LOG("RMCB TEST");
+    _ASM_BEGIN _ASM(retf) _ASM_END
+}
+#endif
 static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
 {
     _ASM_BEGIN
+        _ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di
         //save IRET frame to register
         _ASM(pop ax)
         _ASM(pop dx)
         _ASM(pop bx)
 
-        _ASM(pop cx) _ASM(pop si) _ASM(pop ds) _ASM(pop di) _ASM(pop es) //copy back reverse ds:si with es:di
-        _ASM(rep movsb)
+        _ASM(pop cx) _ASM(pop esi) _ASM(pop ds) _ASM(pop edi) _ASM(pop es) //copy back reverse ds:si with es:di
+        _ASM(cld)
+        _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
 
         _ASM(push bx)
         _ASM(push dx)
@@ -814,6 +834,8 @@ static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses no
 static void DPMI_RMCBCommonEntry() //commen entry for call back
 {
     _ASM_BEGIN
+        _ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di
+
         //save context and make a DPMI_REG struct
         _ASM(push ss) _ASM(push sp) //ss: sp
         _ASM(push cs) _ASM(push ax) //cs : (fake) ip
@@ -821,35 +843,32 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(pushf)
         _ASM(pushad)
 
-        _ASM2(mov bp, sp);
-        _ASM2(mov bp, ss:[bp+DPMI_REG_Size]); //caller IP (RMCB entry)
-
-        _ASM(cli) //RMCB stack are temporary so disable interrup on RMCB stack
-        //switch to RMCB stack
-        _ASM2(mov di, ss);
-        _ASM2(mov si, sp);
-        _ASM2(mov ax, cs)
-        _ASM2(mov ds, ax)
-        _ASM2(mov ss, ax)
-        _ASM2(mov sp, cs:[.RM_SP]);
-    _ASM_END
-
-    _ASM_BEGIN
         //get caller IP and calc target. target addr = TableOffset + (IP-TableOffset)/TableSize*TableSize + 0 (offsetof(DPMI_RMCBTable, Target))
         //note: this should be done before swtich stack
-        _ASM2(mov ax, bp)
+        _ASM2(mov bp, sp);
+        _ASM2(mov ax, ss:[bp+DPMI_REG_Size]); //caller IP (RMCB entry)
         _ASM2(mov cx, RMCB_TableSize) //optmized as imm
         _ASM2(sub ax, .Table) //.Table == offsetof(DPMI_RMCB, Table)
         _ASM2(xor dx, dx)
         _ASM(div cx)
+        _ASM2(mov bx, ax) //save index to bx
         _ASM(mul cx)
-        _ASM2(mov cx, ax) //save index
         _ASM2(add ax, .Table) //calc offset done
         _ASM2(mov bp, ax)
-        _ASM2(mov bp, ds:[bp]); //load from memory & save to BP
+        _ASM2(mov bp, cs:[bp]); //load from memory & save to BP
+    _ASM_END
 
+    _ASM_BEGIN
+        _ASM(cli) //RMCB stack are temporary so disable interrup on RMCB stack
+        //switch to RMCB stack
+        _ASM2(mov di, ss);
+        _ASM2(mov si, sp);
+        _ASM2(lss sp, cs:[.RM_SP]);
+
+        _ASM(push cs)
+        _ASM(pop ds)  
         _ASM(push SEL_RMCB_CS*8) //far return from switch
-        _ASM(call word ptr ds:[.SwitchPM]); //far call with pushed cs
+        _ASM(call word ptr cs:[.SwitchPM]); //far call with pushed cs
         //now in pm, fs=gs=es=ss=ds=SEL_RMCB_DS*8
 
         //switch himem stack
@@ -859,35 +878,36 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(push si)
 
         //restore interrupt flag here
-        _ASM(push ds)
-        _ASM2(mov ds, di)
-        _ASM2(mov ax, ds:[si+32]);
+        _ASM2(mov ax, SEL_4G*8)
+        _ASM2(mov ds, ax)
+        _ASM2(movzx edi, di)
+        _ASM2(movzx esi, si)
+        _ASM2(shl edi, 4) //ss:sp to linear
+        _ASM2(add esi, edi)
+        _ASM2(mov ax, ds:[esi+32]);
         _ASM(push ax)
         _ASM(popf)
-        //copy DPMI_REG to UserReg if it is not null
-        _ASM2(les di, ss:[DPMI_Rmcb]);
-        _ASM2(movzx edi ,di)
-        _ASM2(movzx ecx, cx)
-        _ASM2(lea edi, [edi.UserRegs + 2*ecx]);
+
+        _ASM2(movzx ebx, bx)
+        _ASM2(lea edi, [.UserRegs + 2*ebx]);
         _ASM2(mov bx, es:[di]);
+        //copy DPMI_REG to UserReg if it is not null
         _ASM2(test bx, bx);
         _ASM(jz SkipCopyREG)
-        _ASM2(mov di, ss:[bx]);
+        _ASM2(movzx edi, bx)
         _ASM2(mov ax, ss)
         _ASM2(mov es, ax)
         _ASM2(mov cx, DPMI_REG_Size)
-        _ASM(push ds) _ASM(push si) _ASM(push es) _ASM(push di) _ASM(push cx) //popped by DPMI_RMCbIRet
-        _ASM(rep movsb)
-
+        _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push cx) //popped by DPMI_RMCbIRet
+        _ASM(cld)
+        _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
     _ASMLBL(SkipCopyREG:)
-        _ASM(pop ds)
-
         //call target pm function
         _ASM(pushf) //push return address. assume target is IRET
         _ASM(push cs)
         _ASM2(mov ax, offset RMCB_PmReturn)
         _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
-        _ASM2(add ax, ds:[.CommonEntry]);
+        _ASM2(add ax, fs:[.CommonEntry]);
         _ASM(push ax)
 
         _ASM2(test bx, bx)
@@ -902,12 +922,30 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov es, ax)
         _ASM(retf)
     _ASMLBL(RMCB_PmReturn:)
+        
+    /*    _ASM(push SEL_RMCB_DS*8)
+        _ASM(pop ds)
+        _ASM(push cs)
+        _ASM2(mov ax, offset RMCB_PmReturn2)
+        _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
+        _ASM2(add ax, ds:[.CommonEntry]);
+        _ASM(push ax)
+        _ASM(push SEL_HIMEM_CS*8)
+        _ASM(push offset DPMI_RmcbLog)
+        _ASM2(mov ax, ss)
+        _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
+        _ASM(retf)
+        _ASMLBL(RMCB_PmReturn2:)
+    */
+
         _ASM(pop si) //ss:sp
         _ASM(pop di)
         _ASM2(mov ax, SEL_RMCB_DS*8) //restore RMCB ds,ss
         _ASM2(mov ds, ax)
         _ASM(cli)
-        _ASM2(lss sp, ds:[.RM_SP]);
+        _ASM2(mov ss, ax)
+        _ASM2(mov sp, ds:[.RM_SP]);
         _ASM(push word ptr ds:[.RM_SEG]);
         _ASM(call word ptr ds:[.SwitchRM]);
         //now in rm. fs=gs=es=ss=ds=RMCB segement
@@ -921,6 +959,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(popf)
         _ASM(pop es) _ASM(pop ds) _ASM(pop fs) _ASM(pop gs)
         _ASM2(add sp, 8) //cs, ip, sp, ss
+        _ASM(ret)
     _ASM_END
 }
 static void DPMI_RMCBCommonEntryEnd() {}
