@@ -52,6 +52,7 @@ typedef void (near* DPMI_RMCB_ENTRY)(void);
 typedef struct
 {
     DPMI_RMCB_ENTRY Target; //asm optimization based the layout, do not change
+    uintptr_t UserReg;//for user call backs. pm mode DS's offset
     char Code[DPMI_RMCB_ENTRYCODE_SIZE]; //call common entry, iret
 }DPMI_RMCBTable;
 
@@ -91,7 +92,6 @@ typedef struct //real mode callback
     uint8_t Unused : 6;
     DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
     DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
-    uint16_t UserRegs[DPMI_RMCB_COUNT];  //for user call backs. pm mode DS's offset
 }DPMI_RMCB;
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
@@ -235,7 +235,7 @@ static void far DPMI_DirectProtectedMode()
         _ASM(cli)
 
         _ASM(sidt fword ptr ds:[.RMCB_OldIDTR+2]);//';' is added to work around vscode highlight problem
-        _ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //extra padding
+        _ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //2: extra padding
         _ASM(lidt fword ptr ds:[.RMCB_Idtr+2]);
         _ASM(push SEL_RMCB_CS*8)
         _ASM2(mov ax, offset reload_cs)
@@ -815,13 +815,12 @@ static void DPMI_RmcbLog()
 static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
 {
     _ASM_BEGIN
-        _ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di
         //save IRET frame to register
         _ASM(pop ax)
         _ASM(pop dx)
         _ASM(pop bx)
 
-        _ASM(pop cx) _ASM(pop esi) _ASM(pop ds) _ASM(pop edi) _ASM(pop es) //copy back reverse ds:si with es:di
+        _ASM(pop ecx) _ASM(pop esi) _ASM(pop ds) _ASM(pop edi) _ASM(pop es) //copy back reverse ds:si with es:di
         _ASM(cld)
         _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
 
@@ -834,7 +833,7 @@ static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses no
 static void DPMI_RMCBCommonEntry() //commen entry for call back
 {
     _ASM_BEGIN
-        _ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di
+        //_ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di - use EDI,ESI to avoid the problem
 
         //save context and make a DPMI_REG struct
         _ASM(push ss) _ASM(push sp) //ss: sp
@@ -851,18 +850,19 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(sub ax, .Table) //.Table == offsetof(DPMI_RMCB, Table)
         _ASM2(xor dx, dx)
         _ASM(div cx)
-        _ASM2(mov bx, ax) //save index to bx
         _ASM(mul cx)
         _ASM2(add ax, .Table) //calc offset done
         _ASM2(mov bp, ax)
+        _ASM2(mov bx, cs:[bp+2]) //reg ptr
         _ASM2(mov bp, cs:[bp]); //load from memory & save to BP
     _ASM_END
 
     _ASM_BEGIN
         _ASM(cli) //RMCB stack are temporary so disable interrup on RMCB stack
         //switch to RMCB stack
-        _ASM2(mov di, ss);
-        _ASM2(mov si, sp);
+        _ASM2(movzx esi, sp)
+        _ASM2(mov ax, ss);
+        _ASM2(movzx edi, ax)
         _ASM2(lss sp, cs:[.RM_SP]);
 
         _ASM(push cs)
@@ -871,34 +871,31 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(call word ptr cs:[.SwitchPM]); //far call with pushed cs
         //now in pm, fs=gs=es=ss=ds=SEL_RMCB_DS*8
 
-        //switch himem stack
+        //switch himem stack. ss=SEL_HIMEM_DS*8
         _ASM2(lss sp, ds:[.PM_SP]);
         //save original ss,sp to himem stack. rmcb stack are temporary and should not use after mode switch
-        _ASM(push di)
-        _ASM(push si)
+        _ASM(push edi)
+        _ASM(push esi)
 
         //restore interrupt flag here
         _ASM2(mov ax, SEL_4G*8)
         _ASM2(mov ds, ax)
-        _ASM2(movzx edi, di)
-        _ASM2(movzx esi, si)
         _ASM2(shl edi, 4) //ss:sp to linear
         _ASM2(add esi, edi)
         _ASM2(mov ax, ds:[esi+32]);
         _ASM(push ax)
         _ASM(popf)
 
-        _ASM2(movzx ebx, bx)
-        _ASM2(lea edi, [.UserRegs + 2*ebx]);
-        _ASM2(mov bx, es:[di]);
         //copy DPMI_REG to UserReg if it is not null
-        _ASM2(test bx, bx);
+        _ASM2(test bx, bx)
         _ASM(jz SkipCopyREG)
         _ASM2(movzx edi, bx)
-        _ASM2(mov ax, ss)
+        _ASM2(mov eax, dword ptr ss:[DPMI_HimemDS]);
+        _ASM2(add edi, eax)
+        _ASM2(mov ax, ds)
         _ASM2(mov es, ax)
-        _ASM2(mov cx, DPMI_REG_Size)
-        _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push cx) //popped by DPMI_RMCbIRet
+        _ASM2(mov ecx, DPMI_REG_Size)
+        _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push ecx) //popped by DPMI_RMCbIRet
         _ASM(cld)
         _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
     _ASMLBL(SkipCopyREG:)
@@ -920,10 +917,12 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
+        //_ASM2(mov fs, ax)
+        //_ASM2(mov gs, ax)
         _ASM(retf)
     _ASMLBL(RMCB_PmReturn:)
         
-    /*    _ASM(push SEL_RMCB_DS*8)
+    /*   _ASM(push SEL_RMCB_DS*8)
         _ASM(pop ds)
         _ASM(push cs)
         _ASM2(mov ax, offset RMCB_PmReturn2)
@@ -939,8 +938,8 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASMLBL(RMCB_PmReturn2:)
     */
 
-        _ASM(pop si) //ss:sp
-        _ASM(pop di)
+        _ASM(pop esi) //ss:sp
+        _ASM(pop edi)
         _ASM2(mov ax, SEL_RMCB_DS*8) //restore RMCB ds,ss
         _ASM2(mov ds, ax)
         _ASM(cli)
@@ -952,14 +951,14 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
     _ASM_END
 
     _ASM_BEGIN
-        _ASM2(mov ss, di) //ss:sp
-        _ASM2(mov sp, si)
+        _ASM2(mov eax, edi)
+        _ASM2(mov ss, ax) //ss:sp
+        _ASM2(mov esp, esi)
 
         _ASM(popad)
         _ASM(popf)
         _ASM(pop es) _ASM(pop ds) _ASM(pop fs) _ASM(pop gs)
         _ASM2(add sp, 8) //cs, ip, sp, ss
-        _ASM(ret)
     _ASM_END
 }
 static void DPMI_RMCBCommonEntryEnd() {}

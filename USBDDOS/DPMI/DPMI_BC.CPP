@@ -249,7 +249,7 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and should not enabled interrupt)
         _ASM(jne TranslationSkipSaveSP)
         _ASM2(mov bp, es:[bx.PM_SP]);
-        _ASM2(mov es:[bx.PM_SP], ax);
+        _ASM2(mov es:[bx.PM_SP], ax); //if real mode interrupt reflect to pm, it will use this sp pointer
     _ASMLBL(TranslationSkipSaveSP:)
         _ASM(push dx)
         _ASM(push ax)
@@ -591,7 +591,7 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
 
     DPMI_UserINTHandler[i] = ISR;
     DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandler; //resue PM handler. temporary implementation for IRQs
-    DPMI_Rmcb->UserRegs[RmcbIndex] = 0;
+    DPMI_Rmcb->Table[RmcbIndex].UserReg = 0;
     
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCF;
@@ -642,11 +642,12 @@ uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
         assert(FALSE);
         return 0;
     }
-    DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
-
+    CLIS();
+    DPMI_Rmcb->Table[RmcbIndex].UserReg = (uintptr_t)reg;
+    DPMI_Rmcb->Table[RmcbIndex].Target = Fn;
     //patch return code to RETF (default is IRET)
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCB;
-
+    STIL();
     return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
@@ -660,11 +661,12 @@ uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
         assert(FALSE);
         return 0;
     }
-
+    CLIS();
+    DPMI_Rmcb->Table[RmcbIndex].UserReg = (uintptr_t)reg;
+    DPMI_Rmcb->Table[RmcbIndex].Target = Fn;
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCF;
-
-    DPMI_Rmcb->UserRegs[RmcbIndex] = (uintptr_t)reg;
+    STIL();
     return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
