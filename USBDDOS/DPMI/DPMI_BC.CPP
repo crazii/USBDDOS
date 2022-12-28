@@ -697,11 +697,10 @@ BOOL DPMI_TSR(void)
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
     //printf("CR3: %08lx\n", DPMI_Rmcb->CR3);
-
-    int residence = 0; //all stay in himem, RMCB uses INT 21h 48h that won't be released.
+    
     _ASM_BEGIN
         _ASM2(mov ax, 0x3100)
-        _ASM2(mov dx, residence)
+        _ASM2(mov dx, 0)//all stay in himem, RMCB uses INT 21h 48h that won't be released.
         _ASM(int 0x21)
     _ASM_END
     DPMI_TSRed = FALSE;
@@ -744,14 +743,6 @@ int _Cdecl _FARFUNC printf(const char* fmt, ...)
         va_start(aptr, fmt);
         int len = vsprintf(buff, fmt, aptr);
         va_end(aptr);
-        #if 0
-        if(!DPMI_PM)
-        {
-            fprintf(stdout, buff);
-            recursion_gard = 0;
-            return 0;
-        }
-        #endif
         DPMI_REG r = {0};
         for(int i = 0; i < len; ++i)
         {
@@ -790,11 +781,10 @@ void _Cdecl _FARFUNC __assertfail(char _FAR* __msg,
     if(DPMI_PM)
     {
         printf("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
-        printf(__msg, __cond, __file, __line);
     }
     else
     {
-        fprintf(stdout, __msg, __cond, __file, __line);
+        printf(__msg, __cond, __file, __line);
         fflush(stdout);
     }
     if(!DPMI_TSRed)

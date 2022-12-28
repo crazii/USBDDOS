@@ -276,7 +276,7 @@ _ASMLBL(done:)
     _ASM(pop ecx)
     _ASM(pop ebx)
     _ASM(popf)
-    _ASM_RETF
+    _ASM(retf)
 
     //the tricky part: inline assembly generate label in the exe's code space
     //but this piece of code will run in another allocated memory at runtime,
@@ -300,7 +300,7 @@ void __NAKED EMM_IOPortTrap_Install_V86()//this is a real(/v86) mode call
     _ASM_BEGIN16
     _ASM2(mov ax, 0x4A15)
     _ASM(int 0x2F)
-    _ASM_RETF
+    _ASM(retf)
     _ASM_END16
 }
 void __NAKED EMM_IOPortTrap_Install_V86End() {} //dummy function
@@ -334,7 +334,7 @@ static /*uint32_t*/ void __NAKED EMM_IOPortTrap_Wrapper()
     _ASM2(mov eax, edx)
 #endif
     _ASM2(add esp, 16)
-    _ASM_RETF
+    _ASM(retf)
     _ASM_END
 }
 

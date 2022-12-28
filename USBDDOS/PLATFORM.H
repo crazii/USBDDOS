@@ -45,7 +45,7 @@ typedef uint16_t uintptr_t;
 #define _ASMLBL(x) }x __asm { x //the first label makes compiler happy and the second used by TASM when offset used
 #define _ASM2(x,y) x,y;
 #define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
-#define _ASM_RETF _ASM(leave) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump
+//#define _ASM_RETF _ASM(leave) _ASM(retf) //hack to naked function. use on function return, DO NOT use on indirect jump //now disable stack frame by default. any function without parameters&localvars will have no ebp stup.
 #define _ASM_LIDT(x) _ASM(lidt fword ptr x)
 #define _ASM_LGDT(x) _ASM(lgdt fword ptr x)
 #define _ASM_SIDT(x) _ASM(sidt fword ptr x)
@@ -86,7 +86,6 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, ea
 #define _ASMLBL _ASM
 #define _ASM2 _ASM
 #define _ASM_OPERAND_SIZE _ASM(.byte 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
-#define _ASM_RETF _ASM(retf)
 #define _ASM_LIDT(x) _ASM(lidt x)
 #define _ASM_LGDT(x) _ASM(lgdt x)
 #define _ASM_SIDT(x) _ASM(sidt x)
@@ -121,7 +120,6 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define _ASMLBL _ASM
 #define _ASM2 _ASM
 #define _ASM_OPERAND_SIZE _ASM(db 0x66)  //switch oprand size, 32bit to 16bit or 16 to 32
-#define _ASM_RETF _ASM(retf)
 #define _ASM_LIDT(x) _ASM(lidt fword ptr x)
 #define _ASM_LGDT(x) _ASM(lgdt fword ptr x)
 #define _ASM_SIDT(x) _ASM(sidt fword ptr x)
@@ -166,7 +164,6 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define _ASM_BEGIN32 _ASM_BEGIN
 #define _ASM_END32 _ASM_END
 #define _ASM_OPERAND_SIZE
-#define _ASM_RETF
 #define _ASM_LIDT(x) 
 #define _ASM_LGDT(x) 
 #define _ASM_SIDT(x) 
