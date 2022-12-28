@@ -831,12 +831,12 @@ static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses no
 
         _ASM(pop ecx) _ASM(pop esi) _ASM(pop ds) _ASM(pop edi) _ASM(pop es) //copy back reverse ds:si with es:di
         _ASM(cld)
-        _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
+        _ASM2(rep movs byte ptr es:[edi], byte ptr ds:[esi]);
 
-        _ASM(push bx)
+        //_ASM(push bx)
         _ASM(push dx)
         _ASM(push ax)
-        _ASM(iret)
+        _ASM(retf)
     _ASM_END
 }
 static void DPMI_RMCBCommonEntry() //commen entry for call back
@@ -904,7 +904,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov ecx, DPMI_REG_Size)
         _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push ecx) //popped by DPMI_RMCbIRet
         _ASM(cld)
-        _ASM(rep) _ASM_OPERAND_SIZE _ASM(movsb)
+        _ASM2(rep movs byte ptr es:[edi], byte ptr ds:[esi]);
     _ASMLBL(SkipCopyREG:)
         //call target pm function
         _ASM(pushf) //push return address. assume target is IRET
@@ -1161,6 +1161,8 @@ static void DPMI_SetupRMCB()
         //_LOG("%d\n", CodeSize);
         assert(CodeSize <= DPMI_RMCB_ENTRYCODE_SIZE);
         memcpy_c2d(rmcb.Table[i].Code, Code, CodeSize);
+        rmcb.Table[i].Target = 0;
+        rmcb.Table[i].UserReg = 0;
         rmcb.Table[i].Code[CodeSize-1] = 0xCF; //patch IRET (opcode=0xCF)
     }
     memcpy(buff, &rmcb, sizeof(rmcb));

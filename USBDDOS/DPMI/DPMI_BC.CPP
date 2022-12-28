@@ -648,9 +648,9 @@ uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
     //patch return code to RETF (default is IRET)
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCB;
 
-    _LOG("RMCB Index:%d, addr: %lx\n", RmcbIndex, (((uint32_t)DPMI_Rmcb->RM_SEG)<<4) + (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex));
+    _LOG("RMCB Index:%d, addr: %lx\n", RmcbIndex, (((uint32_t)DPMI_Rmcb->RM_SEG)<<4) + offsetof(DPMI_RMCB, Table) +  (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex));
     STIL();
-    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
+    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCB, Table) + offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
@@ -669,7 +669,7 @@ uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCF;
     STIL();
-    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
+    return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCB, Table) + offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
