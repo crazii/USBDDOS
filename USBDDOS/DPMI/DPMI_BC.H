@@ -90,6 +90,7 @@ typedef struct //real mode callback
     uint8_t NeedRemapPIC : 1;
     uint8_t Ready : 1;
     uint8_t Unused : 6;
+    uint8_t Unused2;
     DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
     DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
 }DPMI_RMCB;
@@ -228,12 +229,16 @@ static BOOL DPMI_IsV86() //should call before init pm
 
 static void far DPMI_DirectProtectedMode()
 {
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-    DPMI_EnableA20(rmcb); //no function calls for simplification
     _ASM_BEGIN
+        _ASM(push ebx) //the C code uses bx but never restore it
         _ASM(pushf)
         _ASM(cli)
+    _ASM_END
 
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
+    DPMI_EnableA20(rmcb); //no function calls for simplification
+
+    _ASM_BEGIN
         _ASM(sidt fword ptr ds:[.RMCB_OldIDTR+2]);//';' is added to work around vscode highlight problem
         _ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //2: extra padding
         _ASM(lidt fword ptr ds:[.RMCB_Idtr+2]);
@@ -263,6 +268,7 @@ static void far DPMI_DirectProtectedMode()
 
     _ASM_BEGIN
         _ASM(popf)
+        _ASM(pop ebx)
     _ASM_END
 }
 #pragma option -k-
@@ -271,13 +277,15 @@ static void DPMI_DirectProtectedModeEnd() {}
 
 static void far DPMI_DirectRealMode()
 {
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-    GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
-    nullgdt.offset = 0; nullgdt.size = 0;
     _ASM_BEGIN
+        _ASM(push ebx) //the C code uses bx but never restore it
         _ASM(pushf)
         _ASM(cli)
     _ASM_END
+
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
+    GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
+    nullgdt.offset = 0; nullgdt.size = 0;
 
     #pragma warn -rch
     #pragma warn -ccc
@@ -306,6 +314,7 @@ static void far DPMI_DirectRealMode()
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
         _ASM(popf)
+        _ASM(pop ebx)
     _ASM_END
 }
 #pragma option -k-
@@ -853,7 +862,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(mul cx)
         _ASM2(add ax, .Table) //calc offset done
         _ASM2(mov bp, ax)
-        _ASM2(mov bx, cs:[bp+2]) //reg ptr
+        _ASM2(mov bx, cs:[bp+2]); //reg ptr
         _ASM2(mov bp, cs:[bp]); //load from memory & save to BP
     _ASM_END
 
@@ -861,7 +870,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(cli) //RMCB stack are temporary so disable interrup on RMCB stack
         //switch to RMCB stack
         _ASM2(movzx esi, sp)
-        _ASM2(mov ax, ss);
+        _ASM2(mov ax, ss)
         _ASM2(movzx edi, ax)
         _ASM2(lss sp, cs:[.RM_SP]);
 
@@ -880,6 +889,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         //restore interrupt flag here
         _ASM2(mov ax, SEL_4G*8)
         _ASM2(mov ds, ax)
+        _ASM2(mov es, ax)
         _ASM2(shl edi, 4) //ss:sp to linear
         _ASM2(add esi, edi)
         _ASM2(mov ax, ds:[esi+32]);
@@ -890,10 +900,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(test bx, bx)
         _ASM(jz SkipCopyREG)
         _ASM2(movzx edi, bx)
-        _ASM2(mov eax, dword ptr ss:[DPMI_HimemDS]);
-        _ASM2(add edi, eax)
-        _ASM2(mov ax, ds)
-        _ASM2(mov es, ax)
+        _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);
         _ASM2(mov ecx, DPMI_REG_Size)
         _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push ecx) //popped by DPMI_RMCbIRet
         _ASM(cld)
@@ -917,8 +924,8 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
-        //_ASM2(mov fs, ax)
-        //_ASM2(mov gs, ax)
+        _ASM2(mov fs, ax)
+        _ASM2(mov gs, ax)
         _ASM(retf)
     _ASMLBL(RMCB_PmReturn:)
         
@@ -938,12 +945,12 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASMLBL(RMCB_PmReturn2:)
     */
 
-        _ASM(pop esi) //ss:sp
-        _ASM(pop edi)
+        _ASM(pop ebp) //ss:sp
+        _ASM(pop ebx)
         _ASM2(mov ax, SEL_RMCB_DS*8) //restore RMCB ds,ss
         _ASM2(mov ds, ax)
         _ASM(cli)
-        _ASM2(mov ss, ax)
+        _ASM2(mov ss, ax) //pm selector for ss
         _ASM2(mov sp, ds:[.RM_SP]);
         _ASM(push word ptr ds:[.RM_SEG]);
         _ASM(call word ptr ds:[.SwitchRM]);
@@ -951,9 +958,8 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
     _ASM_END
 
     _ASM_BEGIN
-        _ASM2(mov eax, edi)
-        _ASM2(mov ss, ax) //ss:sp
-        _ASM2(mov esp, esi)
+        _ASM2(mov ss, bx) //ss:sp
+        _ASM2(mov sp, bp)
 
         _ASM(popad)
         _ASM(popf)

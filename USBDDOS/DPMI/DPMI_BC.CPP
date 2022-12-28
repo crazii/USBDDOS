@@ -338,7 +338,7 @@ void DPMI_Init(void)
 
     uint32_t TempMemory = DPMI_DOSMalloc((sizeof(DPMI_TempData)+15)>>4);
     DPMI_Temp = (DPMI_TempData far*)MK_FP(TempMemory, 0);
-    uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<4096 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
+    uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=4096 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     if(TempMemory == 0 || DPMI_RmcbMemory == 0)
     {
@@ -371,7 +371,7 @@ void DPMI_Init(void)
     _fmemset(DPMI_Temp, 0, sizeof(DPMI_TempData));
     uint32_t RMCBMemroyLAddr = (DPMI_RmcbMemory&0xFFFFL)<<4;
     uint32_t PageTable0LAddr = align(RMCBMemroyLAddr, 4096);
-    DPMI_Temp->RMCBLAddr = (!DPMI_V86 || PageTable0LAddr - RMCBMemroyLAddr >= DPMI_RMCB_SIZE) ? RMCBMemroyLAddr : PageTable0LAddr + 4096;
+    DPMI_Temp->RMCBLAddr = (!DPMI_V86 || PageTable0LAddr - RMCBMemroyLAddr >= DPMI_RMCB_SIZE) ? RMCBMemroyLAddr : PageTable0LAddr + 4096; //real mode direct to pm with no paging, only v86 uses page table.
     DPMI_Temp->PageTable0LAddr = PageTable0LAddr;
 
     DPMI_Temp->LinearCS = ((uint32_t)_CS)<<4L;
@@ -647,6 +647,8 @@ uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
     DPMI_Rmcb->Table[RmcbIndex].Target = Fn;
     //patch return code to RETF (default is IRET)
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCB;
+
+    _LOG("RMCB Index:%d, addr: %lx\n", RmcbIndex, (((uint32_t)DPMI_Rmcb->RM_SEG)<<4) + (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex));
     STIL();
     return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
