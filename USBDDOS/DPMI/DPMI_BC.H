@@ -41,7 +41,7 @@ static const uint32_t DPMI_CodeDesc[2] = {0x0000FFFF, 0x000F9A00};
 static const uint32_t DPMI_DataDesc[2] = {0x0000FFFF, 0x000F9200};
 static const uint32_t DPMI_Data4GDesc[2] = {0x0000FFFF, 0x00CF9200}; //4G ds, Granularity, 32 bit
 
-#define DPMI_RMCB_STACK_SIZE 64 //for switching mode
+#define DPMI_RMCB_STACK_SIZE 128 //for switching mode
 #define DPMI_RMCB_TRASNLATION_STACK_SIZE 512 //need more of them to support reentrance (translation to RM, RMCB to PM, translation to RM ...)
 #define DPMI_RMCB_COUNT 16
 #define DPMI_RMCB_ENTRYCODE_SIZE 6
@@ -1151,7 +1151,7 @@ static void DPMI_SetupRMCB()
     memcpy_c2d(buff + offset, Code, CodeSize);
     offset += CodeSize;
 
-    _LOG("%d %d %d\n", offset, DPMI_RMCB_STACK_SIZE, DPMI_RMCB_SIZE);
+    //_LOG("%d %d %d\n", offset, DPMI_RMCB_STACK_SIZE, DPMI_RMCB_SIZE);
     assert(offset + sizeof(sizeof(DPMI_REG))*2 + DPMI_RMCB_TRASNLATION_STACK_SIZE*4 + DPMI_RMCB_STACK_SIZE < DPMI_RMCB_SIZE);
     for(int i = 0; i < DPMI_RMCB_COUNT; ++i)
     {

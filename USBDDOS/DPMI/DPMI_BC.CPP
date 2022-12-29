@@ -45,22 +45,12 @@ static BOOL DPMI_InitProtectedMode()
     DPMI_CopyLinear(DPMI_HimemCS, LinearCS, 64L*1024L); //copy code
     STIL();
 
-    //we're 1:1 mapped, linear address of gdt/idt is the same physical address
-    //_LOG("Copy GDT.\n");
     uint32_t offset = 0;
-    DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
-    DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
-    offset += GDTSize;
-
-    //_LOG("Copy IDT.\n");
-    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
-    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
-    offset += IDTSize;
 
     if(DPMI_V86)
     {
         //_LOG("Copy page tables.\n");
-        offset = align(offset, 4096);
+        //offset = align(offset, 4096);
         DPMI_CopyLinear(DPMI_SystemDS + offset, PageDirLAddr, VCPI_PAGING_MEM_SIZE);
         DPMI_Rmcb->CR3 = DPMI_SystemDS + offset; //physical addr
         DPMI_4MPageTableLAddr = Page4MLAddr;
@@ -75,6 +65,17 @@ static BOOL DPMI_InitProtectedMode()
         PDE_INITA(pagedir[pdi+1], XMS2LAddr);
         offset += VCPI_PAGING_MEM_SIZE;
     }
+
+    //we're 1:1 mapped, linear address of gdt/idt is the same physical address
+    //_LOG("Copy GDT.\n");
+    DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
+    DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
+    offset += GDTSize;
+
+    //_LOG("Copy IDT.\n");
+    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
+    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
+    offset += IDTSize;
 
     DPMI_SwitchRealMode(LinearDS);
     _LOG("Himem data setup ready.\n");
@@ -338,7 +339,7 @@ void DPMI_Init(void)
 
     uint32_t TempMemory = DPMI_DOSMalloc((sizeof(DPMI_TempData)+15)>>4);
     DPMI_Temp = (DPMI_TempData far*)MK_FP(TempMemory, 0);
-    uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=4096 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
+    uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     if(TempMemory == 0 || DPMI_RmcbMemory == 0)
     {
