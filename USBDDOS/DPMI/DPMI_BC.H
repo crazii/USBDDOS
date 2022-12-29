@@ -171,7 +171,6 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 #define DPMI_PTUnmap(pt, laddr) (DPMI_V86 ? PTE_ADDR((pt)[(laddr)>>12L]) : laddr);
 
 //wiki.osdev.org/8259_PIC
-#define PIC_WAIT inp(0xA1)
 //only remap master pic. will informs the VCPI server in v86 mode.
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
@@ -181,11 +180,11 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
     int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
     int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
     int oldmask = inp(0x21); \
-    outp(0x20, 0x11); PIC_WAIT;\
-    outp(0x21, master); PIC_WAIT;\
-    outp(0x21, 4); PIC_WAIT;\
-    outp(0x21, 1); PIC_WAIT;\
-    outp(0x21, oldmask); PIC_WAIT;\
+    outp(0x20, 0x11); \
+    outp(0x21, master); \
+    outp(0x21, 4); \
+    outp(0x21, 1); \
+    outp(0x21, oldmask); \
     if(!v86) \
         break; \
     _ASM_BEGIN \
@@ -886,20 +885,22 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(push edi)
         _ASM(push esi)
 
-        //restore interrupt flag here
-        _ASM2(mov ax, SEL_4G*8)
+        //copy DPMI_REG to UserReg if it is not null
+        _ASM2(test bx, bx)
+        _ASM(jz SkipCopyREG)
+
+        _ASM2(mov ax, SEL_4G*8) //setup flat mode to copy reg [oldss:oldsp] => ss:[bx]
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
-        _ASM2(shl edi, 4) //ss:sp to linear
+
+        _ASM2(shl edi, 4) //originial realtime ss:sp to linear
         _ASM2(add esi, edi)
+        //restore interrupt flag here. if bx is null, then it is a interrupt, don't restore flags.
         _ASM2(mov ax, ds:[esi+32]);
         _ASM(push ax)
         _ASM(popf)
 
-        //copy DPMI_REG to UserReg if it is not null
-        _ASM2(test bx, bx)
-        _ASM(jz SkipCopyREG)
-        _ASM2(movzx edi, bx)
+        _ASM2(movzx edi, bx) //pm ss:[bx] to linear
         _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);
         _ASM2(mov ecx, DPMI_REG_Size)
         _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push ecx) //popped by DPMI_RMCbIRet

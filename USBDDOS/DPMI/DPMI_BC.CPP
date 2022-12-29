@@ -693,7 +693,7 @@ BOOL DPMI_TSR(void)
     DPMI_Rmcb->PM_SP = 0xFFF8;
     DPMI_TSRed = TRUE;
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
-    DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
+    //DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
