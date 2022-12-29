@@ -22,6 +22,7 @@ enum
     SEL_SYS_DS, //gdt/idt/paging
     SEL_CS, //real time initial cs
     SEL_DS,
+    SEL_0x28,   //avoid for FLAGS
     SEL_HIMEM_CS,
     SEL_HIMEM_DS,
     SEL_RMCB_CS,
@@ -46,6 +47,7 @@ static const uint32_t DPMI_Data4GDesc[2] = {0x0000FFFF, 0x00CF9200}; //4G ds, Gr
 #define DPMI_RMCB_COUNT 16
 #define DPMI_RMCB_ENTRYCODE_SIZE 6
 #define DPMI_RMCB_SIZE 4096 //total size including stack
+#define DPMI_REMAP_PIC 0 //not working properly for some drivers (which need handle rm interrupt in pm mode.)
 
 typedef void (near* DPMI_RMCB_ENTRY)(void);
 
@@ -174,8 +176,9 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //only remap master pic. will informs the VCPI server in v86 mode.
 //use macro because the switch function need have no function calls (for simplification)
 //assume outp() is optimized to out dx,al, or better use asm.
+#if DPMI_REMAP_PIC
 #define DPMI_RemapPIC(rmcb, pm, v86) do {\
-    if(/*rmcb->Interrupt || */!rmcb->NeedRemapPIC) \
+    if(!rmcb->NeedRemapPIC) \
         break;\
     int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
     int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
@@ -200,9 +203,9 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
         _ASM(pop ax)\
     _ASM_END \
 } while(0)
+#endif
 
-#define DPMI_EnableA20(rmcb) do { \
-    /*if(rmcb->Interrupt) break;*/\
+#define DPMI_EnableA20() do { \
     while(inp(0x64) & 2)\
     outp(0x64, 0xd1);\
     while(inp(0x64) & 2)\
@@ -234,8 +237,7 @@ static void far DPMI_DirectProtectedMode()
         _ASM(cli)
     _ASM_END
 
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-    DPMI_EnableA20(rmcb); //no function calls for simplification
+    DPMI_EnableA20(); //no function calls for simplification
 
     _ASM_BEGIN
         _ASM(sidt fword ptr ds:[.RMCB_OldIDTR+2]);//';' is added to work around vscode highlight problem
@@ -259,11 +261,14 @@ static void far DPMI_DirectProtectedMode()
         _ASM2(mov gs, ax)
     _ASM_END
 
+#if DPMI_REMAP_PIC
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
     #pragma warn -rch //unreachable code
     #pragma warn -ccc //condition is always true/false
     DPMI_RemapPIC(rmcb, TRUE, FALSE);
     #pragma warn .rch
     #pragma warn .ccc
+#endif
 
     _ASM_BEGIN
         _ASM(popf)
@@ -282,15 +287,17 @@ static void far DPMI_DirectRealMode()
         _ASM(cli)
     _ASM_END
 
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
     GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
     nullgdt.offset = 0; nullgdt.size = 0;
 
+#if DPMI_REMAP_PIC
+    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
     #pragma warn -rch
     #pragma warn -ccc
     DPMI_RemapPIC(rmcb, FALSE, FALSE);
     #pragma warn .rch
     #pragma warn .ccc
+#endif
 
     _ASM_BEGIN
         _ASM(lgdt fword ptr nullgdt+2)
@@ -512,6 +519,8 @@ static BOOL DPMI_InitVCPI()
 
 static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
 {
+    _ASM_BEGIN _ASM(push ebx) _ASM_END
+
     DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be FP_SEG(rmcb) or rmcb->RM_SEG.
     DPMI_VCPIClientStruct ClientStruct; //= {0}; will call BC helper function but we cannot do that
     ClientStruct.CR3 = rmcb->CR3;
@@ -549,22 +558,25 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
         _ASM(push cx)
     _ASM_END
 
+#if DPMI_REMAP_PIC
     #pragma warn -rch
     #pragma warn -ccc
     DPMI_RemapPIC(rmcb, TRUE, TRUE); //note: remap PIC after switch to PM & before popf
     #pragma warn .rch
     #pragma warn .ccc
+#endif
 
     _ASM_BEGIN
-        _ASM(pop si)
+        _ASM(pop bx)
 
         _ASM(pop ax)  //note: V86 mode change involves flags change. don't popf directly, only keep IF. or VCPI will crash on return v86
         _ASM2(and ax, CPU_IFLAG)//IF
         _ASM(pushf)
-        _ASM2(or word ptr ss:[si], ax); //SI==SP
+        _ASM2(or word ptr ss:[bx], ax); //SI==SP
         _ASM(popf)
 
         _ASM(pop esi)
+        _ASM(pop ebx)
     _ASM_END
 }
 #pragma option -k-
@@ -573,26 +585,25 @@ static void DPMI_VCPIProtectedModeEnd() {}
 
 static void far DPMI_VCPIRealMode() //VCPI PM to RM
 {
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be SEL_RMCB_DS*8
-    int RmcbSeg = rmcb->RM_SEG;
     //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
-    _ASM_BEGIN
-        _ASM(push ebx)
-        _ASM(pushf)
-        _ASM(cli)
-    _ASM_END
 
+#if DPMI_REMAP_PIC
     #pragma warn -rch
     #pragma warn -ccc
     DPMI_RemapPIC(rmcb, FALSE, TRUE); //note: remap PIC before switch to RM
     #pragma warn .rch
     #pragma warn .ccc
+#endif
 
     _ASM_BEGIN
+        _ASM(push ebx)
+        _ASM(pushf)
+        _ASM(cli)
+
         _ASM2(movzx ebx, sp)
         _ASM(clts) //clear TS bits. we have no task.
         _ASM2(xor eax, eax)
-        _ASM2(mov ax, RmcbSeg) //RmcbSeg store on ss:bp[xx]
+        _ASM2(mov ax, ds:[.RM_SEG]); //ds:[RM_SEG], ds should be SEL_RMCB_DS*8
 
         _ASM(push eax)    //GS
         _ASM(push eax)    //FS
@@ -748,36 +759,6 @@ static void DPMI_NullINTHandler()
 }
 #pragma option -k
 
-static void DPMI_HWIRQHandlerInternal()
-{
-    uint8_t irq = PIC_GetIRQ();
-    //if(irq < 16)
-    {
-        uint8_t vec = PIC_IRQ2VEC(irq);
-        //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
-        if(DPMI_UserINTHandler[vec])
-            DPMI_UserINTHandler[vec]();
-        else
-        {
-            static DPMI_REG r = {0};
-            DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
-        }
-    }
-}
-
-#pragma option -k-
-static void DPMI_HWIRQHandler()
-{
-    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
-    _ASM_BEGIN _ASM2(mov bp, sp) _ASM2(and word ptr [bp+40], 0xBFFF) _ASM_END //remove NT flag for flags or iret will do a task return
-    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
-
-    DPMI_HWIRQHandlerInternal();
-
-    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(iret) _ASM_END
-}
-#pragma option -k
-
 #define DPMI_EXCEPT(n) static void DPMI_ExceptionHandler##n()\
 {\
     _ASM_BEGIN _ASM(push ds) _ASM(pushad) _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov ss, ax) _ASM2(mov sp, 0xFFF8) _ASM_END \
@@ -805,6 +786,53 @@ DPMI_EXCEPT(0x0E)
 #pragma option -k
 
 #define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExceptionHandler##n)
+
+static void DPMI_HWIRQHandlerInternal()
+{
+    uint8_t irq = PIC_GetIRQ();
+    //if(irq < 16)
+    {
+        uint8_t vec = PIC_IRQ2VEC(irq);
+        //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
+        if(DPMI_UserINTHandler[vec])
+            DPMI_UserINTHandler[vec]();
+        else
+        {
+            static DPMI_REG r = {0};
+            DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
+        }
+    }
+}
+
+#pragma option -k-
+static void DPMI_HWIRQHandler()
+{
+    //test if it is a normal INT or exception.
+    _ASM_BEGIN
+        _ASM(push bp)
+        _ASM2(mov bp, sp)
+        _ASM2(cmp word ptr [bp+6], SEL_HIMEM_CS*8) //normal int: [bp,] ip,cs,flags, exception: [bp,] errorcode,ip,cs,flags (0x08~0x0F). not handling ring3 excptions.
+        _ASM(jne NormalINT)
+        //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 avoid conflict
+        _ASM2(cmp word ptr [bp+4], SEL_HIMEM_CS*8)
+        _ASM(je NormalINT)
+        _ASM2(cmp word ptr [bp+4], SEL_RMCB_CS*8)
+        _ASM(je NormalINT)
+    _ASMLBL(Except:)
+        _ASM(call DPMI_ExceptionHandler0x09)
+    _ASMLBL(NormalINT:)
+        _ASM(pop bp)
+    _ASM_END
+
+    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
+    _ASM_BEGIN _ASM2(mov bp, sp) _ASM2(and word ptr [bp+40], 0xBFFF) _ASM_END //remove NT flag for flags or iret will do a task return
+    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
+
+    DPMI_HWIRQHandlerInternal();
+
+    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(iret) _ASM_END
+}
+#pragma option -k
 
 //////////////////////////////////////////////////////////////////////////////
 //RMCB
@@ -930,7 +958,8 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(retf)
     _ASMLBL(RMCB_PmReturn:)
         
-    /*   _ASM(push SEL_RMCB_DS*8)
+    /*#if DPMI_RMCB_TEST //BC doesn't handle macro with asm well
+        _ASM(push SEL_RMCB_DS*8)
         _ASM(pop ds)
         _ASM(push cs)
         _ASM2(mov ax, offset RMCB_PmReturn2)
@@ -944,7 +973,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov es, ax)
         _ASM(retf)
         _ASMLBL(RMCB_PmReturn2:)
-    */
+    #endif*/
 
         _ASM(pop ebp) //ss:sp
         _ASM(pop ebx)

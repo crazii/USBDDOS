@@ -108,9 +108,11 @@ static void DPMI_SetupIDT()
         DPMI_Temp->idt[i].present = 1;
     }
 
-    DPMI_Temp->NeedRemapPIC = TRUE;
+    DPMI_Temp->NeedRemapPIC = FALSE;    //don't do remap, incompatible with TSR's interupt handling: pm interrupt handler need enter pm, if
+                                        //do remapping, the interrupt in PIC status are cleared. but we also need handling interrupt in pm after in pm, so the best
+                                        //way is to leave the interrupt and detect IRQ/EXC in the handler.
     DPMI_Temp->RealModeIRQ0Vec = 0x08;
-    DPMI_Temp->ProtectedModeIRQ0Vec = 0x28;
+    DPMI_Temp->ProtectedModeIRQ0Vec = 0x08;
     DPMI_Temp->RealModeIRQ8Vec = 0x70;
     DPMI_Temp->ProtectedModeIRQ8Vec = 0x70;
 
@@ -140,14 +142,15 @@ static void DPMI_SetupIDT()
             DPMI_Temp->RealModeIRQ8Vec = SlaveVec;
     }
 
+    uint16_t size = DPMI_EXCEPT_ADDR(0x01) - DPMI_EXCEPT_ADDR(0x00);
+    for(int e = 0x00; e < 0x0E; ++e)
+        DPMI_Temp->idt[e].offset_low = DPMI_EXCEPT_ADDR(0x00) + size * (e-0x00);
+
+    //now irq 0~7 & exceptions 0x8~0xF share the same handler. set HWIRQHandler setup will overwrite part of the exception.
     for(int j = DPMI_Temp->ProtectedModeIRQ0Vec; j <= DPMI_Temp->ProtectedModeIRQ0Vec+7; ++j)
         DPMI_Temp->idt[j].offset_low = (uintptr_t)(void near*)&DPMI_HWIRQHandler;
     for(int k = DPMI_Temp->ProtectedModeIRQ8Vec; k <= DPMI_Temp->ProtectedModeIRQ8Vec+7; ++k)
         DPMI_Temp->idt[k].offset_low = (uintptr_t)(void near*)&DPMI_HWIRQHandler;
-
-    uint16_t size = DPMI_EXCEPT_ADDR(0x01) - DPMI_EXCEPT_ADDR(0x00);
-    for(int e = 0x00; e < 0x0E; ++e)
-        DPMI_Temp->idt[e].offset_low = DPMI_EXCEPT_ADDR(0x00) + size * (e-0x00);
 
     DPMI_Temp->idtr.size = sizeof(IDT)*256 - 1;
     DPMI_Temp->idtr.offset = DPMI_Ptr16ToLinear(DPMI_Temp->idt);
@@ -591,7 +594,7 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     handle->extra = RmcbIndex;
 
     DPMI_UserINTHandler[i] = ISR;
-    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandler; //resue PM handler. temporary implementation for IRQs
+    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandlerInternal; //resue PM handler. temporary implementation for IRQs
     DPMI_Rmcb->Table[RmcbIndex].UserReg = 0;
     
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
@@ -693,7 +696,7 @@ BOOL DPMI_TSR(void)
     DPMI_Rmcb->PM_SP = 0xFFF8;
     DPMI_TSRed = TRUE;
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
-    //DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
+    DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
