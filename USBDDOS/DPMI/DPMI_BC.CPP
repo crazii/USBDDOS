@@ -594,7 +594,7 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     handle->extra = RmcbIndex;
 
     DPMI_UserINTHandler[i] = ISR;
-    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandlerInternal; //resue PM handler. temporary implementation for IRQs
+    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandler; //resue PM handler. temporary implementation for IRQs
     DPMI_Rmcb->Table[RmcbIndex].UserReg = 0;
     
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation

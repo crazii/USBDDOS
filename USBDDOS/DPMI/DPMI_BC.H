@@ -757,11 +757,15 @@ static void DPMI_NullINTHandler()
 {
     _ASM_BEGIN _ASM(iret) _ASM_END
 }
+static void DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
+{
+    _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x", error, cs, ip, flags);
+}
 #pragma option -k
 
 #define DPMI_EXCEPT(n) static void DPMI_ExceptionHandler##n()\
 {\
-    _ASM_BEGIN _ASM(push ds) _ASM(pushad) _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov ss, ax) _ASM2(mov sp, 0xFFF8) _ASM_END \
+    _ASM_BEGIN _ASM(cli) _ASM(call DPMI_DumpExcept) _ASM_END \
     printf("Exception: %02x\n", n);\
     if(!DPMI_TSRed) exit(1);\
     else while(1);\
@@ -816,9 +820,8 @@ static void DPMI_HWIRQHandler()
         //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 avoid conflict
         _ASM2(cmp word ptr [bp+4], SEL_HIMEM_CS*8)
         _ASM(je NormalINT)
-        _ASM2(cmp word ptr [bp+4], SEL_RMCB_CS*8)
-        _ASM(je NormalINT)
     _ASMLBL(Except:)
+        _ASM(pop bp)
         _ASM(call DPMI_ExceptionHandler0x09)
     _ASMLBL(NormalINT:)
         _ASM(pop bp)
@@ -924,9 +927,9 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(shl edi, 4) //originial realtime ss:sp to linear
         _ASM2(add esi, edi)
         //restore interrupt flag here. if bx is null, then it is a interrupt, don't restore flags.
-        _ASM2(mov ax, ds:[esi+32]);
-        _ASM(push ax)
-        _ASM(popf)
+        //_ASM2(mov ax, ds:[esi+32]); //TODO: something is wrong on VCPI mode, find out why
+        //_ASM(push ax)
+        //_ASM(popf)
 
         _ASM2(movzx edi, bx) //pm ss:[bx] to linear
         _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);
