@@ -583,7 +583,7 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
 static void DPMI_VCPIProtectedModeEnd() {}
 #pragma option -k
 
-static void far DPMI_VCPIRealMode() //VCPI PM to RM
+static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,cs=SEL_RMCB_CS*8
 {
     //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
 
@@ -759,7 +759,7 @@ static void DPMI_NullINTHandler()
 }
 static void DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
 {
-    _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x", error, cs, ip, flags);
+    _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
 }
 #pragma option -k
 
@@ -802,7 +802,7 @@ static void DPMI_HWIRQHandlerInternal()
             DPMI_UserINTHandler[vec]();
         else
         {
-            static DPMI_REG r = {0};
+            DPMI_REG r = {0};
             DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
         }
     }
@@ -820,9 +820,11 @@ static void DPMI_HWIRQHandler()
         //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 avoid conflict
         _ASM2(cmp word ptr [bp+4], SEL_HIMEM_CS*8)
         _ASM(je NormalINT)
+        _ASM2(cmp word ptr [bp+4], SEL_RMCB_CS*8) //DPMI_CallRealMode
+        _ASM(je NormalINT)
     _ASMLBL(Except:)
         _ASM(pop bp)
-        _ASM(call DPMI_ExceptionHandler0x09)
+        _ASM(call DPMI_ExceptionHandler0x09) //TOD: call the right handler
     _ASMLBL(NormalINT:)
         _ASM(pop bp)
     _ASM_END
@@ -840,10 +842,10 @@ static void DPMI_HWIRQHandler()
 //////////////////////////////////////////////////////////////////////////////
 //RMCB
 //////////////////////////////////////////////////////////////////////////////
-#define DPMI_RMCB_TEST 0
 static const int RMCB_TableSize = sizeof(DPMI_RMCBTable); //use C to get stable size.
 static const int DPMI_REG_Size = sizeof(DPMI_REG);
 #pragma option -k-
+#define DPMI_RMCB_TEST 0
 #if DPMI_RMCB_TEST
 static void DPMI_RmcbLog()
 {

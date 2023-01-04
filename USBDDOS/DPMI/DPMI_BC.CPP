@@ -27,8 +27,8 @@ static BOOL DPMI_InitProtectedMode()
     //no PM seg for DPMI_Temp, once in PM, DPMI_Temp is inaccessible. save on stack
     uint32_t GDTLAddr = DPMI_Temp->gdtr.offset;
     uint32_t IDTLAddr = DPMI_Temp->idtr.offset;
-    uint16_t GDTSize = DPMI_Temp->gdtr.size;
-    uint16_t IDTSize = DPMI_Temp->idtr.size;
+    uint16_t GDTSize = DPMI_Temp->gdtr.size + 1;
+    uint16_t IDTSize = DPMI_Temp->idtr.size + 1;
     uint32_t PageDirLAddr = DPMI_Ptr16ToLinear(DPMI_Temp->PageDir);
     //uint16_t Page4MOffset = DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0) - PageDirLAddr; //VCPI spec don't allow copy 1st 4M page
     uint32_t Page4MLAddr = DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0);
@@ -50,7 +50,7 @@ static BOOL DPMI_InitProtectedMode()
     if(DPMI_V86)
     {
         //_LOG("Copy page tables.\n");
-        //offset = align(offset, 4096);
+        offset = align(DPMI_SystemDS + offset, 4096) - DPMI_SystemDS; //BUGFIX DPMI_Rmcb->CR3 need align to 4K not offset or initial memory
         DPMI_CopyLinear(DPMI_SystemDS + offset, PageDirLAddr, VCPI_PAGING_MEM_SIZE);
         DPMI_Rmcb->CR3 = DPMI_SystemDS + offset; //physical addr
         DPMI_4MPageTableLAddr = Page4MLAddr;
@@ -63,19 +63,19 @@ static BOOL DPMI_InitProtectedMode()
         int pdi = (DPMI_SystemDS>>22) ? (DPMI_SystemDS>>22) : 1;
         PDE_INITA(pagedir[pdi], XMSLAddr);
         PDE_INITA(pagedir[pdi+1], XMS2LAddr);
-        offset += VCPI_PAGING_MEM_SIZE;
+        offset = VCPI_PAGING_MEM_SIZE;
     }
+
+    //_LOG("Copy IDT.\n");
+    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
+    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
+    offset += IDTSize;
 
     //we're 1:1 mapped, linear address of gdt/idt is the same physical address
     //_LOG("Copy GDT.\n");
     DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
     DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
     offset += GDTSize;
-
-    //_LOG("Copy IDT.\n");
-    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
-    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
-    offset += IDTSize;
 
     DPMI_SwitchRealMode(LinearDS);
     _LOG("Himem data setup ready.\n");
@@ -199,7 +199,7 @@ static void DPMI_SetupGDT()
     gdt[SEL_RMCB_DS].base_middle = DPMI_Temp->RMCBLAddr>>16L;
     gdt[SEL_RMCB_DS].limit_low = DPMI_RMCB_SIZE - 1;
 
-    #if DEBUG
+    #if DEBUG && 0
     for(int i = 0; i < SEL_TOTAL; ++i)
     {
         uint32_t far* entry = (uint32_t far*)&gdt[i];
@@ -216,8 +216,7 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
     reg->w.flags &= 0x3ED7;
     reg->w.flags |= 0x3002;
     {//keep original IF
-        uint16_t flags = CPU_FLAGS();
-        reg->w.flags &= ~((~flags)&CPU_IFLAG);
+        reg->w.flags &= CPU_FLAGS()&(~CPU_IFLAG);
     }
     if(!DPMI_PM)
     {
@@ -234,8 +233,6 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
     DPMI_Rmcb->TranslationSP -= sizeof(DPMI_REG);
     uint8_t far* stackREG = (uint8_t far*)MK_FP(SEL_RMCB_DS*8, DPMI_Rmcb->TranslationSP);
     _fmemcpy(stackREG, reg, sizeof(DPMI_REG));
-    uint16_t RegOffset = DPMI_Rmcb->TranslationSP;
-    void far* stackptr = MK_FP(FP_SEG(DPMI_Rmcb), DPMI_Rmcb->TranslationSP);
     DPMI_Rmcb->TranslationSP -= DPMI_RMCB_TRASNLATION_STACK_SIZE; //reserve spece for re-entrant
 
     _ASM_BEGIN
@@ -244,13 +241,13 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(push bp)
         _ASM2(mov dx, ss)
 
-        _ASM2(mov cx, INTn)    //ss:bp[xx] save parameters to register before swtiching stack
+        _ASM2(mov cx, INTn)    //INTn stored at ss:bp[xx]. save parameters to register before switching stack
         _ASM2(shl ecx, 16)
-        _ASM2(mov cx, RegOffset) //ss:bp[xx] DPMI_REG near* for translation call
         _ASM2(mov ax, sp) //save SP before switching stack
-        _ASM2(lss sp, stackptr) //stackptr stored at ss:bp[xx]. load ss:sp in one shot, or interrutp will be on wrong stack
+        _ASM2(lss sp, stackREG) //stackREG stored at ss:bp[xx]. load ss:sp in one shot, or interrutp will be on wrong stack
+        _ASM2(mov cx, sp) //DPMI_REG near* for translation call
         _ASM2(les bx, DPMI_Rmcb)
-        _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and should not enabled interrupt)
+        _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and interrupt should not be enabled on it)
         _ASM(jne TranslationSkipSaveSP)
         _ASM2(mov bp, es:[bx.PM_SP]);
         _ASM2(mov es:[bx.PM_SP], ax); //if real mode interrupt reflect to pm, it will use this sp pointer
@@ -370,13 +367,16 @@ void DPMI_Init(void)
 
     _LOG("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
     _LOG("Temp: %08lx\n", (uint32_t)TempMemory<<4);
-    _LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
+    //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
 
     _fmemset(DPMI_Temp, 0, sizeof(DPMI_TempData));
     uint32_t RMCBMemroyLAddr = (DPMI_RmcbMemory&0xFFFFL)<<4;
     uint32_t PageTable0LAddr = align(RMCBMemroyLAddr, 4096);
     DPMI_Temp->RMCBLAddr = (!DPMI_V86 || PageTable0LAddr - RMCBMemroyLAddr >= DPMI_RMCB_SIZE) ? RMCBMemroyLAddr : PageTable0LAddr + 4096; //real mode direct to pm with no paging, only v86 uses page table.
     DPMI_Temp->PageTable0LAddr = PageTable0LAddr;
+
+    _LOG("RMCB: %08lx\n", DPMI_Temp->RMCBLAddr);
+    _LOG("PageTable0: %08lx\n", PageTable0LAddr);
 
     DPMI_Temp->LinearCS = ((uint32_t)_CS)<<4L;
     DPMI_Temp->LinearDS = ((uint32_t)_DS)<<4L;
@@ -696,7 +696,7 @@ BOOL DPMI_TSR(void)
     DPMI_Rmcb->PM_SP = 0xFFF8;
     DPMI_TSRed = TRUE;
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
-    DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
+    //DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
