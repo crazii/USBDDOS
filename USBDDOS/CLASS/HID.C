@@ -267,7 +267,7 @@ BOOL USB_HID_DOS_Install()
                 {
                     if(pDriverData->Interface[i].Descirptors && pDriverData->Interface[i].pDataEP[HCD_TXR])
                     {
-                        printf("Found USB %s: %s\n", i == 0 ? "keyboard" : "mouse", pDevice->sProduct);
+                        printf("Found USB %s: %s\n", i == USB_HID_KEYBOARD ? "keyboard" : "mouse", pDevice->sProduct);
                         USB_Transfer(pDevice, pDriverData->Interface[i].pDataEP[HCD_TXR], pDriverData->Interface[i].Data[0].Buffer, sizeof(USB_HID_Data), &USB_HID_InputCallback, (void*)i);
                     }
                 }
@@ -513,8 +513,8 @@ void USB_HID_Mouse_GenerateSample(uint8_t byte)
 void USB_HID_Mouse_Finalizer(void* data)
 {
     USB_HID_Data* hiddata = (USB_HID_Data*)data;
+    
     //https://wiki.osdev.org/Mouse_Input
-
     int status = (hiddata->Mouse.Button&0x7) | 0x08;
     status |= hiddata->Mouse.DX < 0 ? 0x10 : 0;
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
