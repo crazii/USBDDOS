@@ -572,7 +572,7 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
         _ASM(pop ax)  //note: V86 mode change involves flags change. don't popf directly, only keep IF. or VCPI will crash on return v86
         _ASM2(and ax, CPU_IFLAG)//IF
         _ASM(pushf)
-        _ASM2(or word ptr ss:[bx], ax); //SI==SP
+        _ASM2(or word ptr ss:[bx], ax); //BX==SP
         _ASM(popf)
 
         _ASM(pop esi)
@@ -623,7 +623,7 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
         _ASM2(mov ax, SEL_4G*8)
         _ASM2(mov ds, ax)
         _ASM2(mov ax, 0xDE0C)
-        _ASM(call fword ptr es:[.RMCB_VCPIInterface]); //EAX modified (and segments push on stack)
+        _ASM(call fword ptr es:[.RMCB_VCPIInterface]); //EAX modified (and segments pushed on stack)
     _ASMLBL(VCPI_to_real:)
         _ASM(pop ax)
         _ASM2(and ax, CPU_IFLAG) //IF
@@ -929,9 +929,10 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(shl edi, 4) //originial realtime ss:sp to linear
         _ASM2(add esi, edi)
         //restore interrupt flag here. if bx is null, then it is a interrupt, don't restore flags.
-        //_ASM2(mov ax, ds:[esi+32]); //TODO: something is wrong on VCPI mode, find out why
-        //_ASM(push ax)
-        //_ASM(popf)
+        _ASM2(mov ax, ds:[esi+32]); //TODO: something is wrong on VCPI mode, find out why
+        _ASM2(and ax, 0xBFFF) //mode switching needs clear NT flag 
+        _ASM(push ax)
+        _ASM(popf)
 
         _ASM2(movzx edi, bx) //pm ss:[bx] to linear
         _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);

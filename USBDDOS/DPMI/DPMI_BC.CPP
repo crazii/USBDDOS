@@ -47,6 +47,17 @@ static BOOL DPMI_InitProtectedMode()
 
     uint32_t offset = 0;
 
+    //_LOG("Copy IDT.\n");
+    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
+    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
+    offset += IDTSize;
+
+    //we're 1:1 mapped, linear address of gdt/idt is the same physical address
+    //_LOG("Copy GDT.\n");
+    DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
+    DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
+    offset += GDTSize;
+
     if(DPMI_V86)
     {
         //_LOG("Copy page tables.\n");
@@ -63,19 +74,8 @@ static BOOL DPMI_InitProtectedMode()
         int pdi = (DPMI_SystemDS>>22) ? (DPMI_SystemDS>>22) : 1;
         PDE_INITA(pagedir[pdi], XMSLAddr);
         PDE_INITA(pagedir[pdi+1], XMS2LAddr);
-        offset = VCPI_PAGING_MEM_SIZE;
+        offset += VCPI_PAGING_MEM_SIZE;
     }
-
-    //_LOG("Copy IDT.\n");
-    DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
-    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
-    offset += IDTSize;
-
-    //we're 1:1 mapped, linear address of gdt/idt is the same physical address
-    //_LOG("Copy GDT.\n");
-    DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
-    DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
-    offset += GDTSize;
 
     DPMI_SwitchRealMode(LinearDS);
     _LOG("Himem data setup ready.\n");
@@ -109,7 +109,7 @@ static void DPMI_SetupIDT()
     }
 
     DPMI_Temp->NeedRemapPIC = FALSE;    //don't do remap, incompatible with TSR's interupt handling: pm interrupt handler need enter pm, if
-                                        //do remapping, the interrupt in PIC status are cleared. but we also need handling interrupt in pm after in pm, so the best
+                                        //do remapping, the PIC are re-inited and status (IMR/ISR) are cleared. but we also need handling interrupt in pm after in pm, so the best
                                         //way is to leave the interrupt and detect IRQ/EXC in the handler.
     DPMI_Temp->RealModeIRQ0Vec = 0x08;
     DPMI_Temp->ProtectedModeIRQ0Vec = 0x08;
