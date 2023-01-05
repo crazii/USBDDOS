@@ -58,16 +58,16 @@ LOCAL_OPT=$(subst ___~~~___, ,$(subst $(notdir $<)___,,$(filter $(notdir\
 
 OBJFILES=Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
 	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
-	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
-	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
-	Output/xms.o
+	Output/hdpmipt.o Output/hid.o Output/main.o Output/msc.o\
+	Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
+	Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
+	Output/usballoc.o Output/usbtable.o Output/xms.o
 ALL_OBJFILES=Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
 	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
-	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
-	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
-	Output/xms.o
+	Output/hdpmipt.o Output/hid.o Output/main.o Output/msc.o\
+	Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
+	Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
+	Output/usballoc.o Output/usbtable.o Output/xms.o
 LIBRARIES=
 SOURCE_NAME=$<
 OUTFILE=$@
@@ -79,10 +79,10 @@ SRC_DIRS=../ ../usbddos ../usbddos/class ../usbddos/dpmi ../usbddos/hcd\
 	../RetroWav/Board
 WUC=
 EDITORS=
-MAIN_TARGET=output/rwddospm.exe
+MAIN_TARGET=output/usbddosp.exe
 PROJECT_ITEMS=cdc.c dbgutil.c dos_cdc.c dpmi.c dpmi_dj2.c dpmi_tsr.c emm.c\
-	hcd.c hdpmipt.c main.c ohci.c OPL3.c pci.c pic.c RetroWav.c\
-	Serial.c uhci.c usb.c usballoc.c usbtable.c xms.c
+	hcd.c hdpmipt.c hid.c main.c msc.c ohci.c OPL3.c pci.c pic.c\
+	RetroWav.c Serial.c uhci.c usb.c usballoc.c usbtable.c xms.c
 DEFAULT_MASK=*.[acfghimnops]*
 RHIDE_BIN_DIR=c:/djgpp/bin
 PASCAL_TYPE=GPC
@@ -378,13 +378,13 @@ clean::
 	rm -f $(CLEAN_FILES)
 DEPS_0= Output/cdc.o Output/dbgutil.o Output/dos_cdc.o Output/dpmi.o\
 	Output/dpmi_dj2.o Output/dpmi_tsr.o Output/emm.o Output/hcd.o\
-	Output/hdpmipt.o Output/main.o Output/ohci.o Output/OPL3.o\
-	Output/pci.o Output/pic.o Output/RetroWav.o Output/Serial.o\
-	Output/uhci.o Output/usb.o Output/usballoc.o Output/usbtable.o\
-	Output/xms.o 
+	Output/hdpmipt.o Output/hid.o Output/main.o Output/msc.o\
+	Output/ohci.o Output/OPL3.o Output/pci.o Output/pic.o\
+	Output/RetroWav.o Output/Serial.o Output/uhci.o Output/usb.o\
+	Output/usballoc.o Output/usbtable.o Output/xms.o 
 NO_LINK=
 LINK_FILES=$(filter-out $(NO_LINK),$(DEPS_0))
-output/rwddospm.exe:: $(DEPS_0)
+output/usbddosp.exe:: $(DEPS_0)
 	$(RHIDE_COMPILE_LINK)
 DEPS_1=cdc.c
 make/Output/cdc.o:: $(DEPS_1)
@@ -413,40 +413,46 @@ make/Output/hcd.o:: $(DEPS_8)
 DEPS_9=hdpmipt.c
 make/Output/hdpmipt.o:: $(DEPS_9)
 	$(RHIDE_COMPILE.c.o)
-DEPS_10=main.c
-make/Output/main.o:: $(DEPS_10)
+DEPS_10=hid.c
+make/Output/hid.o:: $(DEPS_10)
 	$(RHIDE_COMPILE.c.o)
-DEPS_11=ohci.c
-make/Output/ohci.o:: $(DEPS_11)
+DEPS_11=main.c
+make/Output/main.o:: $(DEPS_11)
 	$(RHIDE_COMPILE.c.o)
-DEPS_12=OPL3.c
-make/Output/OPL3.o:: $(DEPS_12)
+DEPS_12=msc.c
+make/Output/msc.o:: $(DEPS_12)
 	$(RHIDE_COMPILE.c.o)
-DEPS_13=pci.c
-make/Output/pci.o:: $(DEPS_13)
+DEPS_13=ohci.c
+make/Output/ohci.o:: $(DEPS_13)
 	$(RHIDE_COMPILE.c.o)
-DEPS_14=pic.c
-make/Output/pic.o:: $(DEPS_14)
+DEPS_14=OPL3.c
+make/Output/OPL3.o:: $(DEPS_14)
 	$(RHIDE_COMPILE.c.o)
-DEPS_15=RetroWav.c
-make/Output/RetroWav.o:: $(DEPS_15)
+DEPS_15=pci.c
+make/Output/pci.o:: $(DEPS_15)
 	$(RHIDE_COMPILE.c.o)
-DEPS_16=Serial.c
-make/Output/Serial.o:: $(DEPS_16)
+DEPS_16=pic.c
+make/Output/pic.o:: $(DEPS_16)
 	$(RHIDE_COMPILE.c.o)
-DEPS_17=uhci.c
-make/Output/uhci.o:: $(DEPS_17)
+DEPS_17=RetroWav.c
+make/Output/RetroWav.o:: $(DEPS_17)
 	$(RHIDE_COMPILE.c.o)
-DEPS_18=usb.c
-make/Output/usb.o:: $(DEPS_18)
+DEPS_18=Serial.c
+make/Output/Serial.o:: $(DEPS_18)
 	$(RHIDE_COMPILE.c.o)
-DEPS_19=usballoc.c
-make/Output/usballoc.o:: $(DEPS_19)
+DEPS_19=uhci.c
+make/Output/uhci.o:: $(DEPS_19)
 	$(RHIDE_COMPILE.c.o)
-DEPS_20=usbtable.c
-make/Output/usbtable.o:: $(DEPS_20)
+DEPS_20=usb.c
+make/Output/usb.o:: $(DEPS_20)
 	$(RHIDE_COMPILE.c.o)
-DEPS_21=xms.c
-make/Output/xms.o:: $(DEPS_21)
+DEPS_21=usballoc.c
+make/Output/usballoc.o:: $(DEPS_21)
 	$(RHIDE_COMPILE.c.o)
-all:: output/rwddospm.exe
+DEPS_22=usbtable.c
+make/Output/usbtable.o:: $(DEPS_22)
+	$(RHIDE_COMPILE.c.o)
+DEPS_23=xms.c
+make/Output/xms.o:: $(DEPS_23)
+	$(RHIDE_COMPILE.c.o)
+all:: output/usbddosp.exe

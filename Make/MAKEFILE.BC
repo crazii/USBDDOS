@@ -2,23 +2,23 @@
 
 .PATH.obj = .\OUTPUT
 
-#        *Translator Definitions*
-CC = bcc +RWDDOS.CFG
+#		*Translator Definitions*
+CC = bcc +USBDDOS.CFG
 TASM = TASM
 TLIB = tlib
 TLINK = tlink
-LIBPATH = C:\BORLANDC\LIB
-INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
+LIBPATH = C:\BC31\LIB
+INCLUDEPATH = C:\BC31\INCLUDE;..;
 
 
-#        *Implicit Rules*
+#		*Implicit Rules*
 .c.obj:
   $(CC) -c {$< }
 
 .cpp.obj:
   $(CC) -c {$< }
 
-#        *List Macros*
+#		*List Macros*
 
 
 EXE_dependencies =  \
@@ -40,10 +40,12 @@ EXE_dependencies =  \
  uhci.obj \
  dos_cdc.obj \
  main.obj \
- emm.obj
+ emm.obj \
+ msc.obj \
+ hid.obj
 
-#        *Explicit Rules*
-.\output\rwddos.exe: rwddos.cfg $(EXE_dependencies)
+#		*Explicit Rules*
+.\output\usbddos.exe: usbddos.cfg $(EXE_dependencies)
   $(TLINK) /v/x/c/P-/L$(LIBPATH) @&&|
 c0s.obj+
 .\output\dpmi_bc.obj+
@@ -64,75 +66,83 @@ c0s.obj+
 .\output\uhci.obj+
 .\output\dos_cdc.obj+
 .\output\main.obj+
-.\output\emm.obj
-.\output\rwddos
-        # no map file
+.\output\emm.obj+
+.\output\msc.obj+
+.\output\hid.obj
+.\output\usbddos
+		# no map file
 fp87.lib+
 maths.lib+
 cs.lib
 |
 
 
-#        *Individual File Dependencies*
-dpmi_bc.obj: rwddos.cfg ..\usbddos\dpmi\dpmi_bc.cpp 
-    $(CC) -B -c ..\usbddos\dpmi\dpmi_bc.cpp
+#		*Individual File Dependencies*
+dpmi_bc.obj: usbddos.cfg ..\usbddos\dpmi\dpmi_bc.cpp 
+	$(CC) -B -c ..\usbddos\dpmi\dpmi_bc.cpp
 
-dpmi.obj: rwddos.cfg ..\usbddos\dpmi\dpmi.c 
-    $(CC) -B -c ..\usbddos\dpmi\dpmi.c
+dpmi.obj: usbddos.cfg ..\usbddos\dpmi\dpmi.c 
+	$(CC) -B -c ..\usbddos\dpmi\dpmi.c
 
-xms.obj: rwddos.cfg ..\usbddos\dpmi\xms.c 
-    $(CC) -c ..\usbddos\dpmi\xms.c
+xms.obj: usbddos.cfg ..\usbddos\dpmi\xms.c 
+	$(CC) -c ..\usbddos\dpmi\xms.c
 
-pci.obj: rwddos.cfg ..\usbddos\pci.c 
-    $(CC) -B -c ..\usbddos\pci.c
+pci.obj: usbddos.cfg ..\usbddos\pci.c 
+	$(CC) -B -c ..\usbddos\pci.c
 
-retrowav.obj: rwddos.cfg ..\retrowav\retrowav.c 
-    $(CC) -c ..\retrowav\retrowav.c
+retrowav.obj: usbddos.cfg ..\retrowav\retrowav.c 
+	$(CC) -c ..\retrowav\retrowav.c
 
-opl3.obj: rwddos.cfg ..\retrowav\board\opl3.c 
-    $(CC) -c ..\retrowav\board\opl3.c
+opl3.obj: usbddos.cfg ..\retrowav\board\opl3.c 
+	$(CC) -c ..\retrowav\board\opl3.c
 
-serial.obj: rwddos.cfg ..\retrowav\protocol\serial.c 
-    $(CC) -c ..\retrowav\protocol\serial.c
+serial.obj: usbddos.cfg ..\retrowav\protocol\serial.c 
+	$(CC) -c ..\retrowav\protocol\serial.c
 
-pic.obj: rwddos.cfg ..\usbddos\pic.c 
-    $(CC) -c ..\usbddos\pic.c
+pic.obj: usbddos.cfg ..\usbddos\pic.c 
+	$(CC) -c ..\usbddos\pic.c
 
-usb.obj: rwddos.cfg ..\usbddos\usb.c 
-    $(CC) -B -c ..\usbddos\usb.c
+usb.obj: usbddos.cfg ..\usbddos\usb.c 
+	$(CC) -B -c ..\usbddos\usb.c
 
-usballoc.obj: rwddos.cfg ..\usbddos\usballoc.c 
-    $(CC) -c ..\usbddos\usballoc.c
+usballoc.obj: usbddos.cfg ..\usbddos\usballoc.c 
+	$(CC) -c ..\usbddos\usballoc.c
 
-usbtable.obj: rwddos.cfg ..\usbddos\usbtable.c 
-    $(CC) -c ..\usbddos\usbtable.c
+usbtable.obj: usbddos.cfg ..\usbddos\usbtable.c 
+	$(CC) -c ..\usbddos\usbtable.c
 
-dbgutil.obj: rwddos.cfg ..\usbddos\dbgutil.c 
-    $(CC) -c ..\usbddos\dbgutil.c
+dbgutil.obj: usbddos.cfg ..\usbddos\dbgutil.c 
+	$(CC) -c ..\usbddos\dbgutil.c
 
-cdc.obj: rwddos.cfg ..\usbddos\class\cdc.c 
-    $(CC) -c ..\usbddos\class\cdc.c
+cdc.obj: usbddos.cfg ..\usbddos\class\cdc.c 
+	$(CC) -c ..\usbddos\class\cdc.c
 
-hcd.obj: rwddos.cfg ..\usbddos\hcd\hcd.c 
-    $(CC) -c ..\usbddos\hcd\hcd.c
+hcd.obj: usbddos.cfg ..\usbddos\hcd\hcd.c 
+	$(CC) -c ..\usbddos\hcd\hcd.c
 
-ohci.obj: rwddos.cfg ..\usbddos\hcd\ohci.c 
-    $(CC) -c ..\usbddos\hcd\ohci.c
+ohci.obj: usbddos.cfg ..\usbddos\hcd\ohci.c 
+	$(CC) -c ..\usbddos\hcd\ohci.c
 
-uhci.obj: rwddos.cfg ..\usbddos\hcd\uhci.c 
-    $(CC) -c ..\usbddos\hcd\uhci.c
+uhci.obj: usbddos.cfg ..\usbddos\hcd\uhci.c 
+	$(CC) -c ..\usbddos\hcd\uhci.c
 
-dos_cdc.obj: rwddos.cfg ..\retrowav\platform\dos_cdc.c 
-    $(CC) -c ..\retrowav\platform\dos_cdc.c
+dos_cdc.obj: usbddos.cfg ..\retrowav\platform\dos_cdc.c 
+	$(CC) -c ..\retrowav\platform\dos_cdc.c
 
-main.obj: rwddos.cfg ..\main.c 
-    $(CC) -c ..\main.c
+main.obj: usbddos.cfg ..\main.c 
+	$(CC) -c ..\main.c
 
-emm.obj: rwddos.cfg ..\emm.c 
-    $(CC) -B -c ..\emm.c
+emm.obj: usbddos.cfg ..\emm.c 
+	$(CC) -B -c ..\emm.c
 
-#        *Compiler Configuration File*
-rwddos.cfg: makefile.bc
+msc.obj: usbddos.cfg ..\usbddos\class\msc.c 
+	$(CC) -c ..\usbddos\class\msc.c
+
+hid.obj: usbddos.cfg ..\usbddos\class\hid.c 
+	$(CC) -c ..\usbddos\class\hid.c
+
+#		*Compiler Configuration File*
+usbddos.cfg: makefile.bc
   copy &&|
 -3
 -f287
@@ -140,9 +150,9 @@ rwddos.cfg: makefile.bc
 -Oe
 -Ob
 -Z
+-k-
 -rd
 -d
--S
 -B
 -vi-
 -wpro
@@ -151,8 +161,8 @@ rwddos.cfg: makefile.bc
 -n.\OUTPUT
 -I$(INCLUDEPATH)
 -L$(LIBPATH)
--DDEBUG=1;NDEBUG=0
+-DDEBUG=0
 -P
-| rwddos.cfg
+| usbddos.cfg
 
 
