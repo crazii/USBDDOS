@@ -132,7 +132,7 @@ static uint8_t USB_HID_KEYBOARD_USAGE2SCANCODES[256*2] =
 #define USB_HID_BIOS_MMASK      0x0070
 
 #define WAIT_KEYBOARD_IN_EMPTY() while((inp(0x64)&2))
-#define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) {STI();NOP();CLI();}//USB_IdleWait()
+#define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) {STI();NOP();NOP();NOP();CLI();}//USB_IdleWait()
 
 //keyboard device input processing
 static BOOL USB_HID_Keyboard_IsInputEmpty(const USB_HID_Data* data);
@@ -237,7 +237,10 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
     if(valid > 0)
         pDevice->pDriverData = pDriverData;
     else
+    {
+        _LOG("HID: InitDevice failed\n");
         free(pDriverData);
+    }
     return valid > 0;
 }
 

@@ -164,6 +164,7 @@ int main(int argc, char* argv[])
             printf(" %-8s: %s\n", MAIN_Options[i].option, MAIN_Options[i].desc);
             ++i;
         }
+        return 0;
     }
     else
     {

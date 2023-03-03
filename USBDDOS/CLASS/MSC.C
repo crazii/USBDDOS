@@ -303,9 +303,9 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
 _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 #endif
 
-#define DOS_CDS_FLAGS_USED      0xC0
+//#define DOS_CDS_FLAGS_USED      0xC0
 #define DOS_CDS_FLAGS_PHYSICAL  0x4000
-#define DOS_CDS_REMOTE_MSCDEX   0x80 //Remote drive hidden from redirector's assign-list and exempt from network connection make/break commands. set for CD-ROM drives by MSCDEX
+#define DOS_CDS_FLAGS_REMOTE_MSCDEX 0x80  //Remote drive hidden from redirector's assign-list and exempt from network connection make/break commands. set for CD-ROM drives by MSCDEX
 
 //http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm#Table1643
 typedef struct DOS_CurrentDirectoryStructure
@@ -726,7 +726,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         memset(&cds[CDSIndex], 0, sizeof(DOS_CDS));
         memcpy(cds[CDSIndex].path, "A:\\", 4);
         cds[CDSIndex].path[0] = (char)(cds[CDSIndex].path[0] + CDSIndex);
-        cds[CDSIndex].Flags |= DOS_CDS_FLAGS_USED | DOS_CDS_FLAGS_PHYSICAL;
+        cds[CDSIndex].Flags |= /*DOS_CDS_FLAGS_USED | */DOS_CDS_FLAGS_PHYSICAL;
         cds[CDSIndex].FFFFFFFFh = 0xFFFFFFFF;
         cds[CDSIndex].SlashPos = 2;        
     }
@@ -889,7 +889,7 @@ void USB_MSC_PreInit()
     memset(&reg, 0, sizeof(reg));
     reg.h.ah = 0x52;
     DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
-    MSC_BPBs = (DOS_BPB*)malloc(sizeof(DOS_BPB)*26);
+    MSC_BPBs = (DOS_BPB*)malloc(sizeof(DOS_BPB)*26); //buffers for all letters 'A' to 'Z'
 
     uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
     DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
@@ -901,7 +901,7 @@ void USB_MSC_PreInit()
     uint32_t DRSMem = DPMI_HighMalloc((sizeof(DOS_DRS)+15)>>4, FALSE);
     for(int CDSIndex = 2; CDSIndex < DriveCount; ++CDSIndex) //start from C:
     {
-        if((cds[CDSIndex].Flags&DOS_CDS_FLAGS_PHYSICAL))
+        if((cds[CDSIndex].Flags&DOS_CDS_FLAGS_PHYSICAL) && !(cds[CDSIndex].Flags&DOS_CDS_FLAGS_REMOTE_MSCDEX))
         {
             //get the BPB of this disk to see if it is the same as our USB disk (probaby setup by BIOS), if it is, override it.
             uint32_t dpb = DPMI_LoadD(DPMI_PTR2L(&cds[CDSIndex])+offsetof(DOS_CDS, DPBptr));

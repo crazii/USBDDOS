@@ -17,7 +17,6 @@
 #if defined(__BC__)
 
 #define USB_IDLE_WAIT() do {\
-_LOG("");\
 _ASM_BEGIN \
 _ASM(pushf) \
 _ASM(sti) \
@@ -202,7 +201,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
                 USB_ISRHandle[index] = *handle;
                 USB_IRQShared[index] = TRUE;
             }
-            else if( DPMI_InstallISR(iv, USB_ISR_Wraper, &USB_ISRHandle[index]) != 0)
+            else if(DPMI_InstallISR(iv, USB_ISR_Wraper, &USB_ISRHandle[index]) != 0)
             {
                 PIC_SetIRQMask(irqmask);
                 printf("Error: Install ISR failed.\n");
@@ -829,6 +828,8 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 void USB_ISR(void)
 {
     const uint8_t irq = PIC_GetIRQ();
+    if(irq == 0xFF)
+        return;
     BOOL handled = FALSE;
     //_LOG("USB_ISR: irq: %d\n",irq);
     USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
@@ -862,7 +863,7 @@ void USB_ISR(void)
         DPMI_CallRealModeIRET(&r);
     }
 
-    PIC_MaskIRQ(irq);
+    PIC_MaskIRQ(irq); //prevent re-entrance
 
     USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
     while(USB_ISR_FinalizerPtr)
