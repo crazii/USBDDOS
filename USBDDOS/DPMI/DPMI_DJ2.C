@@ -316,6 +316,26 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
     return 0;
 }
 
+uint32_t DPMI_UnmapMemory(uint32_t linearaddr)
+{
+    for(int i = 0; i < AddressMapCount; ++i)
+    {
+        AddressMap* map = &AddresMapTable[i];
+        if(map->Handle == ~0UL)//XMS mapped
+            continue;
+        if(map->LinearAddr != linearaddr)
+            continue;
+        __dpmi_meminfo info;
+        info.handle = map->Handle;
+        info.address = map->LinearAddr;
+        info.size = map->Size;
+        __dpmi_free_physical_address_mapping(&info);
+        map->Handle = ~0UL; //hack for prevent release again
+        return 0;
+    }
+    return -1;
+}
+
 void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
 {
     #if DEBUG
@@ -387,7 +407,7 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     _go32_dpmi_seginfo go32pa;
     go32pa.pm_selector = (uint16_t)_my_cs();
     go32pa.pm_offset = (uintptr_t)ISR;
-    _go32_interrupt_stack_size = 2048; //512 minimal
+    //_go32_interrupt_stack_size = 2048; //512 minimal, default 16K
     if( _go32_dpmi_allocate_iret_wrapper(&go32pa) != 0)
         return -1;
 
@@ -413,11 +433,10 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
      go32pa.pm_offset = handle->offset;
      int result = _go32_dpmi_set_protected_mode_interrupt_vector(handle->n, &go32pa);
 
-    //don't need restore real mode. dpmi server will do it.
-    __dpmi_raddr ra;
-    ra.segment = handle->rm_cs;
-    ra.offset16 = handle->rm_offset;
-    result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;
+    //__dpmi_raddr ra;
+    //ra.segment = handle->rm_cs;
+    //ra.offset16 = handle->rm_offset;
+    //result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;
 
     go32pa.pm_offset = handle->extra;
     return (uint16_t)(_go32_dpmi_free_iret_wrapper(&go32pa) | result);

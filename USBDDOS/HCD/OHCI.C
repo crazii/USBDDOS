@@ -171,7 +171,16 @@ BOOL OHCI_DeinitController(HCD_Interface* pHCI)
         DPMI_MaskD(dwBase + HcControl, ~ControlListEnable, 0);
         DPMI_MaskD(dwBase + HcControl, ~PeriodicListEnable, 0);
         DPMI_MaskD(dwBase + HcControl, ~IsochronousEnable, 0);
-        DPMI_MaskD(dwBase + HcControl, ~BulkListEnable, 0);        
+        DPMI_MaskD(dwBase + HcControl, ~BulkListEnable, 0);
+
+        PCI_CMD cmd;
+        cmd.reg16 = 0;
+        cmd.bits.BusMaster = 0;
+        cmd.bits.IOSpace = 0;
+        cmd.bits.MemorySpace = 0;
+        cmd.bits.InterruptDisable = 1;
+        PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
+        DPMI_UnmapMemory(dwBase);
     }
     if(pHCI->pHCDData)
         DPMI_DMAFree(pHCI->pHCDData);

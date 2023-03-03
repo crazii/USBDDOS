@@ -237,6 +237,8 @@ int main(int argc, char* argv[])
         if(!DPMI_TSR())
             puts("TSR Installation failed.\n");
     }
+    else
+        puts("No USB device found, exit.\n");
     
     //TSR failure
     if(MAIN_Options[OPT_RetroWave].enable)

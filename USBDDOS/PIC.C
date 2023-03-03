@@ -14,7 +14,7 @@
 
 void PIC_SendEOI(void)
 {
-    CLIS();
+    //CLIS();
     //get irq mask
     outp(PIC_PORT1, PIC_READISR);
     uint16_t mask = inp(PIC_PORT1);
@@ -22,12 +22,12 @@ void PIC_SendEOI(void)
         outp(PIC_PORT2, 0x20);
     //_LOG("EOI: %04x ", mask);
     outp(PIC_PORT1, 0x20);
-    STIL();
+    //STIL();
 }
 
 uint8_t PIC_GetIRQ(void)
 {
-    CLIS();
+    //CLIS();
     //get irq mask
     outp(PIC_PORT1, PIC_READISR);
     uint16_t mask = inp(PIC_PORT1);
@@ -36,7 +36,7 @@ uint8_t PIC_GetIRQ(void)
         outp(PIC_PORT2, PIC_READISR);
         mask = (uint16_t)(inp(PIC_PORT2)<<8);
     }
-    STIL();
+    //STIL();
     if(mask == 0)
         return 0xFF;
     return (uint8_t)BSF(mask);
@@ -94,16 +94,16 @@ void PIC_UnmaskIRQ(uint8_t irq)
 
 uint16_t PIC_GetIRQMask(void)
 {
-    CLIS();
+    //CLIS();
     uint16_t mask = (uint16_t)((inp(PIC_DATA2)<<8) | inp(PIC_DATA1));
-    STIL();
+    //STIL();
     return mask;
 }
 
 void PIC_SetIRQMask(uint16_t mask)
 {
-    CLIS();
+    //CLIS();
     outp(PIC_DATA1, (uint8_t)mask);
     outp(PIC_DATA2, (uint8_t)(mask>>8));
-    STIL();
+    //STIL();
 }
