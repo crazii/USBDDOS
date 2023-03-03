@@ -305,6 +305,7 @@ _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 
 #define DOS_CDS_FLAGS_USED      0xC0
 #define DOS_CDS_FLAGS_PHYSICAL  0x4000
+#define DOS_CDS_REMOTE_MSCDEX   0x80 //Remote drive hidden from redirector's assign-list and exempt from network connection make/break commands. set for CD-ROM drives by MSCDEX
 
 //http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm#Table1643
 typedef struct DOS_CurrentDirectoryStructure
