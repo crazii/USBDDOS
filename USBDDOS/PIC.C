@@ -11,6 +11,7 @@
 #define PIC_DATA2 0xA1
 
 #define PIC_READISR 0x0B    //read interrupte service register (current interrupting IRQ)
+#define PIC_READIRR 0x0A
 
 void PIC_SendEOI(void)
 {
@@ -40,6 +41,14 @@ uint8_t PIC_GetIRQ(void)
     if(mask == 0)
         return 0xFF;
     return (uint8_t)BSF(mask);
+}
+
+uint16_t PIC_GetPendingInterrupts(void)
+{
+    outp(PIC_PORT1, PIC_READIRR);
+    outp(PIC_PORT2, PIC_READIRR);
+    uint16_t mask = (uint16_t)(inp(PIC_PORT1) | (inp(PIC_PORT2)<<8));
+    return mask;
 }
 
 void PIC_RemapMaster(uint8_t vector)

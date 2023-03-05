@@ -24,6 +24,8 @@ void PIC_SendEOI(void);
 //get interrupting IRQ. MUST be called in interrupt handler
 uint8_t PIC_GetIRQ(void);
 
+uint16_t PIC_GetPendingInterrupts(void);
+
 //remap PIC, not used
 void PIC_RemapMaster(uint8_t vector);
 

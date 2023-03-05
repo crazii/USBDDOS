@@ -522,6 +522,13 @@ void USB_HID_Mouse_Finalizer(void* data)
     status |= hiddata->Mouse.DX < 0 ? 0x10 : 0;
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
 
+    #if 1
+    //PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,1));
+    while(PIC_GetPendingInterrupts()&0x2)
+        WAIT_KEYBOARD_OUT_EMPTY();
+    #endif
+    outp(0x64, 0xAD);
+
     //PIC_MaskIRQ(1); //disable keyboard interrupt
     //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
     //keyboard irq need be disabled for sure because kbd & mouse use the same port
@@ -533,6 +540,7 @@ void USB_HID_Mouse_Finalizer(void* data)
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
+    outp(0x64, 0xAE);
     //PIC_UnmaskIRQ(1);
     PIC_SetIRQMask(mask);
 }
@@ -670,8 +678,8 @@ static void USB_HID_InputMouse(USB_Device* pDevice)
     USB_HID_Data* data = &mouse->Data[mouse->Index];
 
     //already set indefinite idle, but idle is optional for boot mouse
-    if((data->Mouse.Button&0x7) == 0 && data->Mouse.DX == 0 && data->Mouse.DY == 0)
-        return;
+    //if((data->Mouse.Button&0x7) == 0 && data->Mouse.DX == 0 && data->Mouse.DY == 0) //this will skip a button up event
+    //    return;
 
     USB_ISR_Finalizer* finalizer = (USB_ISR_Finalizer*)malloc(sizeof(USB_ISR_Finalizer));
     finalizer->FinalizeISR = USB_HID_Mouse_Finalizer;

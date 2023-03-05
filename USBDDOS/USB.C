@@ -87,8 +87,9 @@ void USB_Init(void)
 
     USBT.HC_Count = 0;
     memset(USBT.Devices, 0, sizeof(USBT.Devices));
-
+    CLIS();
     USB_IRQMask = PIC_GetIRQMask();
+    STIL();
     _LOG("IRQ mask: %04x\n", USB_IRQMask);
 
     //enumerate host controllers
@@ -205,6 +206,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
             {
                 PIC_SetIRQMask(irqmask);
                 printf("Error: Install ISR failed.\n");
+                STIL();
                 exit(-1);
             }
             PIC_UnmaskIRQ(header->DevHeader.Device.IRQ);
@@ -856,11 +858,19 @@ void USB_ISR(void)
     else
     {
         //call old handler
-        DPMI_ISR_HANDLE* handle = USB_FindISRHandle(irq);
+        DPMI_ISR_HANDLE handle = *USB_FindISRHandle(irq); //need a copy for lcall
+        #if defined(DJGPP) && 0
+        asm(
+        "pushfl \n\t"
+        "lcall *%0 \n\t"
+        ::"m"(handle.offset)
+        );
+        #else
         DPMI_REG r = {0};
-        r.w.cs = handle->rm_cs;
-        r.w.ip = handle->rm_offset;
+        r.w.cs = handle.rm_cs;
+        r.w.ip = handle.rm_offset;
         DPMI_CallRealModeIRET(&r);
+        #endif
     }
 
     PIC_MaskIRQ(irq); //prevent re-entrance
@@ -892,14 +902,9 @@ DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)
 
 void USB_ISR_Wraper(void)
 {
-    //some DPMI helper save only low word part of the GPRs (pusha).
-    _ASM_BEGIN _ASM(pushad) _ASM_END//just make it safe
     USB_InISR = TRUE;
-
     USB_ISR();
-
     USB_InISR = FALSE;
-    _ASM_BEGIN _ASM(popad) _ASM_END
 }
 
 void USB_Completion_SyncCallback(HCD_Request* pRequest)
