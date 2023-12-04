@@ -870,6 +870,7 @@ void USB_ISR(void)
         r.w.cs = handle.rm_cs;
         r.w.ip = handle.rm_offset;
         DPMI_CallRealModeIRET(&r);
+        CLI(); //TODO: do we need this?
         #endif
     }
 

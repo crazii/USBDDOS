@@ -456,6 +456,7 @@ static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
 
     //method 1 from https://bretjohnson.us/
 #if 1 //!defined(__BC__)
+    WAIT_KEYBOARD_OUT_EMPTY();
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xD2);   //write to out buffer (fake input)
     WAIT_KEYBOARD_IN_EMPTY();
@@ -503,7 +504,7 @@ static void USB_HID_Keyboard_Finalizer(void* data)
     PIC_SetIRQMask(mask);
 }
 
-void USB_HID_Mouse_GenerateSample(uint8_t byte)
+inline void USB_HID_Mouse_GenerateSample(uint8_t byte)
 {
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xD3);   //write to out buffer (fake input)
@@ -522,27 +523,20 @@ void USB_HID_Mouse_Finalizer(void* data)
     status |= hiddata->Mouse.DX < 0 ? 0x10 : 0;
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
 
+    //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
+    
+    //we're putting mouse data to the data port and user may press keyboard at the same time
+    //disable keyboard port so that the data are not messed up
+    outp(0x64, 0xAD);
     #if 1
-    //PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,1));
     while(PIC_GetPendingInterrupts()&0x2)
         WAIT_KEYBOARD_OUT_EMPTY();
     #endif
-    outp(0x64, 0xAD);
 
-    //PIC_MaskIRQ(1); //disable keyboard interrupt
-    //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
-    //keyboard irq need be disabled for sure because kbd & mouse use the same port
-    //but any hooked irq handler may read the port (timer?), i.e. mouse become random when play Warcraft2
-    //so disable them all
-    uint16_t mask = PIC_GetIRQMask();
-    //PIC_SetIRQMask(PIC_IRQ_UNMASK(PIC_IRQ_UNMASK(0xFFFF,12),2));
-    PIC_SetIRQMask((uint16_t)(~0x1004U)); //only enable IRQ12 & PIC slave
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
-    outp(0x64, 0xAE);
-    //PIC_UnmaskIRQ(1);
-    PIC_SetIRQMask(mask);
+    outp(0x64, 0xAE); //enable keyboard port
 }
 
 static void USB_HID_InputCallback(HCD_Request* pRequest)
