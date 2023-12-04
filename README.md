@@ -1,11 +1,11 @@
 # USBDDOS
 USB driver stack for DOS
 
-USBDDOS was originally named RWDDOS before released to public, which is only a driver for RetroWave OPL3, and later more drviers added (mouse, keyboard, disk) and renamed to USBDDOS.
-USBDDOS is tested working on following PCs/VMs:
-OCHI: VirtualBox, NEC versa s260
-UHCI: QEMU, Toshiba portege M200
-This might be bugs for other PCs, test & feedback is appreiated. 
+USBDDOS was originally named RWDDOS before released to public, which is only a driver for RetroWave OPL3, and later more drviers added (mouse, keyboard, disk) and renamed to USBDDOS.  
+USBDDOS is tested working on following PCs/VMs:  
+OCHI: VirtualBox, NEC versa s260  
+UHCI: QEMU, Toshiba portege M200  
+This might be bugs for other PCs, test & feedback is appreiated.   
 
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
