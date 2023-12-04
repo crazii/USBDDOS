@@ -505,6 +505,12 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
     return physicaladdr;
 }
 
+
+uint32_t DPMI_UnmapMemory(uint32_t addr)
+{
+    return 0;
+}
+
 void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
 {
     alignment = max(alignment,4);

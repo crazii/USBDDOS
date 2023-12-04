@@ -504,7 +504,10 @@ static void USB_HID_Keyboard_Finalizer(void* data)
     PIC_SetIRQMask(mask);
 }
 
-inline void USB_HID_Mouse_GenerateSample(uint8_t byte)
+#if defined(__DJ2__)
+inline
+#endif
+void USB_HID_Mouse_GenerateSample(uint8_t byte)
 {
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xD3);   //write to out buffer (fake input)
