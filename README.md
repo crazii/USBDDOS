@@ -2,10 +2,15 @@
 USB driver stack for DOS
 
 USBDDOS was originally named RWDDOS before released to public, which is only a driver for RetroWave OPL3, and later more drviers added (mouse, keyboard, disk) and renamed to USBDDOS.  
+
 USBDDOS is tested working on following PCs/VMs:  
 OCHI: VirtualBox, NEC versa s260  
-UHCI: QEMU, Toshiba portege M200  
+UHCI: QEMU, Toshiba portege M200, Compaq Evo N600c  
+
 This might be bugs for other PCs, test & feedback is appreiated.   
+
+The Borland++3.1 build (USBDDOS.EXE) can run without a DPMI host, it will enter protected mode directly or with a EMM manager. It's not compatible with many games.  
+To play games with a USB mouse, USBDDOSP.EXE is recommended, which also need a DIMI host (i.e. HDPMI.exe).  USBDDOSP/USBDDOS need CuteMouse to work.
 
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
