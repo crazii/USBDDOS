@@ -13,7 +13,7 @@
 // reference spec: Universal Host Controller Interface (UHCI)
 // Universal Serial Bus Specification 2.0
 
-#define UHCI_USE_INTERRUPT 1 //debug use
+#define UHCI_USE_INTERRUPT 1 //debug use, do not change to 0
 
 #define UHCI_ED_GETQH(p) (UHCI_QH*)(((uintptr_t)p)&~0xFU)
 #define UHCI_ED_GETADDR(p) (((uintptr_t)p)&0xFU)
@@ -80,11 +80,13 @@ BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     _LOG("UHCI base IO address: %04x\n", pHCI->dwBaseAddress);
     pHCI->pHCDMethod = &UHCIAccessMethod;
     UHCI_ResetHC(pHCI);
-    UHCI_StopHC(pHCI);
 
     uint16_t handle = 0;
     uint32_t DataArea = inpd((uint16_t)(pHCI->dwBaseAddress + FLBASEADD)) & 0xFFFFF000L;
-    if(DataArea == 0) //if not 0, probably previous inited by SMM.
+
+    //the DataArea is used by BIOS, there's error we directly use it
+    //allocate new one
+    //if(DataArea == 0) //if not 0, probably previous inited by BIOS
     {
         handle = XMS_Alloc(4, &DataArea); //4k data + 4k alignement. use xms directly instead of DPMI_DMAMalloc to save memory for driver, especially BC (64K data only).
         if(handle == 0 || DataArea == 0)
@@ -111,7 +113,9 @@ BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->dwFrameListBase = DataArea;
     pHCData->wFrameListHandle = handle;
 
+#if UHCI_USE_INTERRUPT
     UHCI_EnableInterrupt(pHCI, TRUE);
+#endif
     UHCI_QHTDSchedule(pHCI); // setup framelist
     outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), MAXP|CF);
     outpw((uint16_t)(pHCI->dwBaseAddress + FRNUM), 0);
@@ -283,6 +287,7 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
         error = 0x80;
     }
     uint16_t len = 0;
+    _LOG("UHCI control transfer done.\n");
     while(pDataTD != NULL && pDataTD != pStatusTD)
     {
         len = (uint16_t)(len + pDataTD->ControlStatusBits.ActualLen + 1); //actual len is transferred len-1
@@ -589,7 +594,7 @@ void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     }
     assert(EPAddr <= 0xF);
     assert(bTransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR || bInterval >= 1);
-    UHCI_StopHC(pDevice->pHCI);
+    //UHCI_StopHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, FALSE);
 
     UHCI_QH* pQH = (UHCI_QH*)DPMI_DMAMalloc(sizeof(UHCI_QH), 16);
@@ -624,7 +629,7 @@ void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     memset(pTD, 0, sizeof(UHCI_TD));
     //pTD->LinkPointer = TerminateFlag;
     UHCI_InsertTDintoQH(pQH, pTD);
-    UHCI_StartHC(pDevice->pHCI);
+    //UHCI_StartHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
     return (void*)(((uintptr_t)pQH) | EPAddr);
 }
@@ -639,7 +644,7 @@ BOOL UHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         return FALSE;
     if(&pDeviceData->ControlQH == pEndpoint) //default control pipe
         return TRUE;
-    UHCI_StopHC(pDevice->pHCI);
+    //UHCI_StopHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, FALSE);
 
     BOOL result = FALSE;
@@ -668,7 +673,7 @@ BOOL UHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         USB_TFree32(pTail);
         pTail = pPrev;
     }
-    UHCI_StartHC(pDevice->pHCI);
+    //UHCI_StartHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
     return result;
 }
@@ -792,13 +797,14 @@ BOOL UHCI_RemoveQHfromQH(UHCI_QH* pFromQH, UHCI_QH** pEndQH, UHCI_QH* pQH)
 #if !UHCI_USE_INTERRUPT
 int UHCI_WaitTDDone(UHCI_TD* pTD)
 {
-    int  i = 0;
-    int  WaitTime = 500;
+    int i = 0;
+    int WaitTime = 500;
     for(;i < WaitTime; i++)
     {
         if(pTD->ControlStatusBits.Active) delay(1);
         else break;
     }
+    _LOG("UHCI_WaitTDDone: %d\n",i);
     if(i >= WaitTime) return 0;  //error.
     else return 1;
 }
@@ -824,11 +830,12 @@ void UHCI_StopHC(HCD_Interface* pHCI)
 void UHCI_StartHC(HCD_Interface* pHCI)
 {
     uint16_t cmd = inpw((uint16_t)(pHCI->dwBaseAddress + USBCMD));
-    //_LOG("UHCI start HC cmd: %x\n", cmd);
-    outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), cmd | RS);
+    _LOG("UHCI start HC cmd: %x\n", cmd);
+    outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), (uint16_t)(cmd&~(EGSM|GRESET)));
     delay(10);
+    outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), RS); //run
     uint16_t status = inpw((uint16_t)(pHCI->dwBaseAddress + USBSTS));
-    //_LOG("UHCI start HC status: %x\n", status);
+    _LOG("UHCI start HC status: %x\n", status);
     assert(!(status & USBHCHALTED));
     return;
 }

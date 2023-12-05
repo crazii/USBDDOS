@@ -125,7 +125,7 @@ void DBG_Logv(const char* fmt, va_list aptr)
     len = min(len, SIZE-1);
     buf[len] = '\0';
 
-    #if 1
+    #if 0
     outp(0x3F8+3, 0x03);
     for(int i = 0; i < len; ++i)
     {

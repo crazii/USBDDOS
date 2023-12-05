@@ -371,7 +371,10 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
     result.Finished = FALSE;
     uint8_t error = USB_SendRequest(pDevice, pRequest, pBuffer, USB_Completion_SyncCallback, &result);
     if(error != 0)
+    {
+        _LOG("USB_SendRequest error: %d\n", error);
         return error;
+    }
         
     while(!result.Finished)
         USB_IDLE_WAIT();
@@ -458,10 +461,21 @@ USB_EndpointDesc* USB_GetEndpointDesc(USB_Device* pDevice, void* pEndpoint)
 
 uint8_t USB_GetConfigDescriptor(USB_Device* pDevice, uint8_t* buffer, uint16_t length)
 {
-    if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice) || buffer == NULL || length == 0)
+    if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice) || buffer == NULL || length < 9)
         return 0xFF;
-    USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length)}; //get TotalLength first
+
+    _LOG("get config desc length: %d\n", length);
+    #if 0
+    USB_Request Request1 = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, 9}; //get TotalLength first
+    uint8_t result = USB_SyncSendRequest(pDevice, &Request1, buffer);
+    assert(result == 0);
+    uint16_t TotalLength = ((USB_ConfigDesc*)buffer)->wTotalLength;
+    assert(length >= TotalLength);
+    #endif
+
+    USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length)};
     uint8_t result = USB_SyncSendRequest(pDevice, &Request, buffer);
+    _LOG("USB_GetConfigDescritpor: %d\n", result);
     assert(result == 0);
     return result;
 }
@@ -702,6 +716,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     // before set address, nothing can be done except get desc.
     // the device will be adressed state
     _LOG("USB: set device address\n");
+    assert(pDevice->HCDDevice.bAddress == 0);
     USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, address, 0, 0};
     result = USB_SyncSendRequest(pDevice, &Request2, NULL);
     delay(2); // spec required.
@@ -757,6 +772,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
         return FALSE;
     }
     uint16_t TotalLength = ((USB_ConfigDesc*)Buffer)->wTotalLength;
+    _LOG("USB: config descirptor total length: %d\n", TotalLength);
     uint8_t* DescBuffer = Buffer;
     if(TotalLength > USB_DEVBUFFER_SIZE)
         DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 8);
@@ -775,10 +791,11 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
 
     // set device config. only available in addressed state
     // the device will be configured state (enabled)
-    _LOG("USB: set config\n");
+    _LOG("USB: set config %d\n",pDevice->pConfigList[pDevice->bCurrentConfig].bConfigValue);
     USB_Request Request6 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_CONFIGURATION, 0, 0, 0};
     Request6.wValue = pDevice->pConfigList[pDevice->bCurrentConfig].bConfigValue;
     result = USB_SyncSendRequest(pDevice, &Request6, NULL);
+    //assert(result == 0);
     if(result == 0)
         pDevice->bStatus = DS_Configured;
     return result == 0;

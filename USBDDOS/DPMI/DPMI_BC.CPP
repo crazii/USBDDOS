@@ -791,6 +791,8 @@ void _Cdecl _FARFUNC __assertfail(char _FAR* __msg,
     if(DPMI_PM)
     {
         printf("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
+        printf(__msg, __cond, __file, __line);
+        fflush(stdout);
     }
     else
     {
