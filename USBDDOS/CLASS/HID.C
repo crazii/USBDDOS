@@ -133,6 +133,7 @@ static uint8_t USB_HID_KEYBOARD_USAGE2SCANCODES[256*2] =
 
 #define WAIT_KEYBOARD_IN_EMPTY() while((inp(0x64)&2))
 #define WAIT_KEYBOARD_OUT_EMPTY() while((inp(0x64)&1)) {STI();NOP();NOP();NOP();CLI();}//USB_IdleWait()
+#define WAIT_EKYBOARD_OUT_FULL() while(!(inp(0x64)&1))
 
 //keyboard device input processing
 static BOOL USB_HID_Keyboard_IsInputEmpty(const USB_HID_Data* data);
@@ -462,6 +463,7 @@ static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x60, scancode);
     WAIT_KEYBOARD_IN_EMPTY();
+    WAIT_EKYBOARD_OUT_FULL();
     WAIT_KEYBOARD_OUT_EMPTY();
 #else
     //method 2. worked if put in finalizer
@@ -477,7 +479,7 @@ static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x60, 0x45);   //return normal mode
     DPMI_REG r = {0};
-    DPMI_CallRealModeINT(0x09, &r); //call kbd irq
+    DPMI_CallRealModeINT(PIC_IRQ2VEC(1), &r); //call kbd irq
     PIC_UnmaskIRQ(1);
 #endif
 }
@@ -507,14 +509,17 @@ static void USB_HID_Keyboard_Finalizer(void* data)
 #if defined(__DJ2__)
 inline
 #endif
-void USB_HID_Mouse_GenerateSample(uint8_t byte)
+static void USB_HID_Mouse_GenerateSample(uint8_t byte)
 {
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xD3);   //write to out buffer (fake input)
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x60, byte);
     WAIT_KEYBOARD_IN_EMPTY();
-    WAIT_KEYBOARD_OUT_EMPTY();
+
+    WAIT_EKYBOARD_OUT_FULL(); //!important: wait until data is available, especially for fast CPUs.
+
+    WAIT_KEYBOARD_OUT_EMPTY(); //idle wait mouse irq handler
 }
 
 void USB_HID_Mouse_Finalizer(void* data)
@@ -526,20 +531,65 @@ void USB_HID_Mouse_Finalizer(void* data)
     status |= hiddata->Mouse.DX < 0 ? 0x10 : 0;
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
 
+    uint16_t mask = PIC_GetIRQMask();
+    #define MANUALLY_SEND 0 //experimental
+
     //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
     
     //we're putting mouse data to the data port and user may press keyboard at the same time
     //disable keyboard port so that the data are not messed up
-    outp(0x64, 0xAD);
-    #if 1
-    while(PIC_GetPendingInterrupts()&0x2)
-        WAIT_KEYBOARD_OUT_EMPTY();
-    #endif
+    #if !MANUALLY_SEND
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0xAD); //disable keyboard port
+    WAIT_KEYBOARD_IN_EMPTY();
 
+    WAIT_KEYBOARD_OUT_EMPTY(); //flush output. let kbd irq handle it
+    outp(0x64, 0xAD); //in case kbd irq re-enable it?
+    WAIT_KEYBOARD_IN_EMPTY();
+
+    //PIC_SetIRQMask((uint16_t)PIC_IRQ_MASK(0,12));
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
     outp(0x64, 0xAE); //enable keyboard port
+    WAIT_KEYBOARD_IN_EMPTY();
+
+    #else //MANUALLY_SEND
+
+    WAIT_KEYBOARD_IN_EMPTY();
+    outp(0x64, 0xAD); //disable keyboard port
+    WAIT_KEYBOARD_IN_EMPTY();
+
+    //flush ps/2 output buffer
+    uint8_t scancode[16];
+    int c = 0;
+    while((inp(0x64)&1))
+        scancode[c++] = inp(0x60);
+
+    int i = 0;
+    for(; i < c; ++i)
+    {
+        PIC_MaskIRQ(1);
+        outp(0x64, 0xD2);   //write to out buffer (fake input)
+        WAIT_KEYBOARD_IN_EMPTY();
+        outp(0x60, scancode[i]);
+        WAIT_KEYBOARD_IN_EMPTY();
+        WAIT_EKYBOARD_OUT_FULL();
+        DPMI_REG r = {0};
+        DPMI_CallRealModeINT(PIC_IRQ2VEC(1), &r); //call kbd irq
+    }
+
+    PIC_SetIRQMask(0);
+    USB_HID_Mouse_GenerateSample((uint8_t)status);
+    USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
+    USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
+
+    outp(0x64, 0xAE); //enable keyboard port
+    WAIT_KEYBOARD_IN_EMPTY();
+
+    #endif//MANUALLY_SEND
+
+    PIC_SetIRQMask(mask);
 }
 
 static void USB_HID_InputCallback(HCD_Request* pRequest)
