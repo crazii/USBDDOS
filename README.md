@@ -4,8 +4,8 @@ USB driver stack for DOS
 USBDDOS was originally named RWDDOS before released to public, which is only a driver for RetroWave OPL3, and later more drviers added (mouse, keyboard, disk) and renamed to USBDDOS.  
 
 USBDDOS is tested working on following PCs/VMs:  
-OCHI: VirtualBox, NEC versa s260  
-UHCI: QEMU, Toshiba portege M200, Compaq Evo N600c  
+OCHI: VirtualBox, NEC versa s260(p3)  
+UHCI: QEMU, Toshiba portege M200(p4), Compaq Evo N600c(p3), Toshiba Satellite 2410(p4)  
 
 There might be bugs for other PCs, test & feedback is appreiated.   
 
