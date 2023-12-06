@@ -7,10 +7,17 @@ USBDDOS is tested working on following PCs/VMs:
 OCHI: VirtualBox, NEC versa s260  
 UHCI: QEMU, Toshiba portege M200, Compaq Evo N600c  
 
-This might be bugs for other PCs, test & feedback is appreiated.   
+There might be bugs for other PCs, test & feedback is appreiated.   
 
 The Borland++3.1 build (USBDDOS.EXE) can run without a DPMI host, it will enter protected mode directly or with a EMM manager. It's not compatible with many games.  
 To play games with a USB mouse, USBDDOSP.EXE is recommended, which also need a DIMI host (i.e. HDPMI.exe).  USBDDOSP/USBDDOS need CuteMouse to work.
+
+# Tips
+USBDDOS uses DPMI to save conventional memory for other DOS programs, it uses almost 0 conventional memory (USBDDOS uses ~8K, USBDDOSP uses almost 0). USBDDOSP doesn't need HDPMI32i unless you want Retrowave support, normal HDPMI32 is recommended, unless you want it cope with SBEMU.
+
+If you get problems with the mouse/keyboard driver, make sure those settings in your BIOS settings:
+* Disable USB Legacy Support (USB Keyboard/Mouse Support). (some p4 laptop have buggy mouse support in BIOS)
+* Disable OnBoard LAN
 
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
