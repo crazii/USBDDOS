@@ -532,13 +532,11 @@ void USB_HID_Mouse_Finalizer(void* data)
     status |= hiddata->Mouse.DY > 0 ? 0x20 : 0;
 
     uint16_t mask = PIC_GetIRQMask();
-    #define MANUALLY_SEND 0 //experimental
 
     //note: the 3 bytes must be all sent to mouse irq or all the successive mouse data will be corrupted
     
     //we're putting mouse data to the data port and user may press keyboard at the same time
     //disable keyboard port so that the data are not messed up
-    #if !MANUALLY_SEND
     WAIT_KEYBOARD_IN_EMPTY();
     outp(0x64, 0xAD); //disable keyboard port
     WAIT_KEYBOARD_IN_EMPTY();
@@ -547,47 +545,12 @@ void USB_HID_Mouse_Finalizer(void* data)
     outp(0x64, 0xAD); //in case kbd irq re-enable it?
     WAIT_KEYBOARD_IN_EMPTY();
 
-    //PIC_SetIRQMask((uint16_t)PIC_IRQ_MASK(0,12));
+    //PIC_SetIRQMask((uint16_t)PIC_IRQ_MASK(0,12)); //only enable mouse IRQ (12)
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
     outp(0x64, 0xAE); //enable keyboard port
     WAIT_KEYBOARD_IN_EMPTY();
-
-    #else //MANUALLY_SEND
-
-    WAIT_KEYBOARD_IN_EMPTY();
-    outp(0x64, 0xAD); //disable keyboard port
-    WAIT_KEYBOARD_IN_EMPTY();
-
-    //flush ps/2 output buffer
-    uint8_t scancode[16];
-    int c = 0;
-    while((inp(0x64)&1))
-        scancode[c++] = inp(0x60);
-
-    int i = 0;
-    for(; i < c; ++i)
-    {
-        PIC_MaskIRQ(1);
-        outp(0x64, 0xD2);   //write to out buffer (fake input)
-        WAIT_KEYBOARD_IN_EMPTY();
-        outp(0x60, scancode[i]);
-        WAIT_KEYBOARD_IN_EMPTY();
-        WAIT_EKYBOARD_OUT_FULL();
-        DPMI_REG r = {0};
-        DPMI_CallRealModeINT(PIC_IRQ2VEC(1), &r); //call kbd irq
-    }
-
-    PIC_SetIRQMask(0);
-    USB_HID_Mouse_GenerateSample((uint8_t)status);
-    USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
-    USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));
-
-    outp(0x64, 0xAE); //enable keyboard port
-    WAIT_KEYBOARD_IN_EMPTY();
-
-    #endif//MANUALLY_SEND
 
     PIC_SetIRQMask(mask);
 }

@@ -878,19 +878,11 @@ void USB_ISR(void)
     {
         //call old handler
         DPMI_ISR_HANDLE handle = *USB_FindISRHandle(irq); //need a copy for lcall
-        #if defined(DJGPP) && 0
-        asm(
-        "pushfl \n\t"
-        "lcall *%0 \n\t"
-        ::"m"(handle.offset)
-        );
-        #else
         DPMI_REG r = {0};
         r.w.cs = handle.rm_cs;
         r.w.ip = handle.rm_offset;
         DPMI_CallRealModeIRET(&r);
         CLI(); //TODO: do we need this?
-        #endif
     }
 #endif
 
