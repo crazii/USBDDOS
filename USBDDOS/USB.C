@@ -871,7 +871,9 @@ void USB_ISR(void)
     //assume 3rd party driver handler exist if previous irq mask bit is clear
     if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
         PIC_SendEOI();
-        //_LOG("USB_ISR: EOI\n");
+#if !defined(__DJ2__)   //now use chained handler for DJGPP, for better compatibility
+                        //with other PM mode TSRs. directly return will work.
+                        //see DPMI_ISR_CHAINED
     else
     {
         //call old handler
@@ -890,6 +892,7 @@ void USB_ISR(void)
         CLI(); //TODO: do we need this?
         #endif
     }
+#endif
 
     PIC_MaskIRQ(irq); //prevent re-entrance
 

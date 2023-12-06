@@ -399,17 +399,21 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return (uint16_t)__dpmi_simulate_real_mode_procedure_iret((__dpmi_regs*)reg);
 }
 
+#define DPMI_ISR_CHAINED 1
+
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
 {
     if(i < 0 || i > 255 || handle == NULL)
         return -1;
         
-    _go32_dpmi_seginfo go32pa;
+    _go32_dpmi_seginfo go32pa = {0};
     go32pa.pm_selector = (uint16_t)_my_cs();
     go32pa.pm_offset = (uintptr_t)ISR;
+    #if !DPMI_ISR_CHAINED
     //_go32_interrupt_stack_size = 2048; //512 minimal, default 16K
     if( _go32_dpmi_allocate_iret_wrapper(&go32pa) != 0)
         return -1;
+    #endif
 
     __dpmi_raddr ra;
     __dpmi_get_real_mode_interrupt_vector(i, &ra);
@@ -423,7 +427,11 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     handle->extra = go32pa.pm_offset;
     handle->n = i;
 
+#if DPMI_ISR_CHAINED
+    return (uint16_t)_go32_dpmi_chain_protected_mode_interrupt_vector(i, &go32pa);
+#else
     return (uint16_t)_go32_dpmi_set_protected_mode_interrupt_vector(i, &go32pa);
+#endif
 }
 
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
@@ -439,7 +447,11 @@ uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
     //result = __dpmi_set_real_mode_interrupt_vector(handle->n, &ra) | result;
 
     go32pa.pm_offset = handle->extra;
+#if DPMI_ISR_CHAINED
+    return (uint16_t)result;
+#else
     return (uint16_t)(_go32_dpmi_free_iret_wrapper(&go32pa) | result);
+#endif
 }
 
 uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
