@@ -11,6 +11,7 @@ BOOL HCD_InitController(HCD_Interface* pHCI, uint8_t bus, uint8_t dev, uint8_t f
     pHCI->PCIAddr.Bus = bus;
     pHCI->PCIAddr.Device = dev;
     pHCI->PCIAddr.Function = func;
+    pHCI->PCI = *pPCIDev;
     pHCI->pType = type; //set prematurely
     return (type != NULL && type->dwPI == pPCIDev->Header.PInterface && type->InitController != NULL) ? type->InitController(pHCI, pPCIDev) : FALSE;
 }

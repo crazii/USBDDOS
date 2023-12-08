@@ -375,9 +375,12 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
         _LOG("USB_SendRequest error: %d\n", error);
         return error;
     }
-        
+
+    uint16_t mask = PIC_GetIRQMask();
+    PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controlelr IRQ
     while(!result.Finished)
         USB_IDLE_WAIT();
+    PIC_SetIRQMask(mask);
     return result.ErrorCode;
 }
 
@@ -429,10 +432,13 @@ uint8_t USB_SyncTransfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer,
         assert(FALSE);
         return error;
     }
-        
+
+    uint16_t mask = PIC_GetIRQMask();
+    PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controlelr IRQ
     //idle wait for interrupt (HW notifying finish event and hcd driver call USB_Completion_Callback)
     while(!result.Finished)
         USB_IDLE_WAIT();
+    PIC_SetIRQMask(mask);
     *txlen = result.Length;
     return result.ErrorCode;
 }
@@ -862,6 +868,8 @@ void USB_ISR(void)
         {
             HCD_Interface* pHCI = &USBT.HC_List[i];
             if(!HCD_IS_CONTROLLER_VALID(pHCI))
+                continue;
+            if(pHCI->PCI.Header.DevHeader.Device.IRQ != irq)
                 continue;
             if((handled=pHCI->pType->ISR(pHCI)) != 0)
                 break; //exit. level triggered event will still exist for next device

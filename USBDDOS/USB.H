@@ -1,3 +1,4 @@
+
 #ifndef _USBD_H_
 #define _USBD_H_
 #include "USBDDOS/HCD/HCD.H"
@@ -282,7 +283,7 @@ void USB_IdleWait();
 
 //ISR related
 //the finalizer is a routine called after EOI, so that other IRQ can be handled.
-//currently used by HID to simulate scancodes with multiple bytes (E0 prefix) 
+//currently used by HID to simulate scancodes with multiple bytes (E0 prefix), and simulate mouse through PS/2 port
 typedef struct _USB_ISR_Finalizer
 {
     void* data;

@@ -95,10 +95,11 @@ typedef struct HCD_HostControllerType
 
 typedef struct HCD_HostControllerInterface
 {
+    PCI_Addr        PCIAddr;    //BDF,set by outside routine
+    PCI_DEVICE      PCI;
     HCD_Type*       pType;
     HCD_Method*     pHCDMethod; //host controller driver methods
     void*           pHCDData;   //host controller driver data
-    PCI_Addr        PCIAddr;    //BDF,set by outside routine
     uint32_t        dwPhysicalAddress;   //physical memory address (not directly accessible)
     uint32_t        dwBaseAddress;       //IO port address or MMIO linear address
     HCD_Device*     DeviceList[HCD_MAX_DEVICE_COUNT];

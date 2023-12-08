@@ -43,8 +43,8 @@ uint16_t PIC_GetIRQMask(void);
 void PIC_SetIRQMask(uint16_t mask);
 
 #define PIC_IS_IRQ_MASKED(mask, irq) (((mask)&(1<<(irq))))
-#define PIC_IRQ_MASK(mask, irq) (((mask)|(1<<(irq))))
-#define PIC_IRQ_UNMASK(mask, irq) (((mask)&(~(1<<(irq)))))
+#define PIC_IRQ_MASK(mask, irq) ((uint16_t)((mask)|(1<<(irq))))
+#define PIC_IRQ_UNMASK(mask, irq) ((uint16_t)((mask)&(~(1<<(irq)))))
 
 #ifdef __cplusplus
 }

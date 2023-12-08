@@ -545,7 +545,7 @@ void USB_HID_Mouse_Finalizer(void* data)
     outp(0x64, 0xAD); //in case kbd irq re-enable it?
     WAIT_KEYBOARD_IN_EMPTY();
 
-    //PIC_SetIRQMask((uint16_t)PIC_IRQ_MASK(0,12)); //only enable mouse IRQ (12)
+    PIC_SetIRQMask((uint16_t)PIC_IRQ_UNMASK(0xFFFF,12)); //only enable mouse IRQ (12)
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));

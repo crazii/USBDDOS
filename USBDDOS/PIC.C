@@ -13,13 +13,15 @@
 #define PIC_READISR 0x0B    //read interrupte service register (current interrupting IRQ)
 #define PIC_READIRR 0x0A
 
+#define PIC_SLAVE_IRQ 2
+
 void PIC_SendEOI(void)
 {
     //CLIS();
     //get irq mask
     outp(PIC_PORT1, PIC_READISR);
     uint16_t mask = inp(PIC_PORT1);
-    if(mask&0x4)
+    if(mask&(1<<PIC_SLAVE_IRQ))
         outp(PIC_PORT2, 0x20);
     //_LOG("EOI: %04x ", mask);
     outp(PIC_PORT1, 0x20);
@@ -32,7 +34,7 @@ uint8_t PIC_GetIRQ(void)
     //get irq mask
     outp(PIC_PORT1, PIC_READISR);
     uint16_t mask = inp(PIC_PORT1);
-    if(mask&0x4)
+    if(mask&(1<<PIC_SLAVE_IRQ))
     {
         outp(PIC_PORT2, PIC_READISR);
         mask = (uint16_t)(inp(PIC_PORT2)<<8);
@@ -93,6 +95,7 @@ void PIC_UnmaskIRQ(uint8_t irq)
     uint16_t port = PIC_DATA1;
     if(irq >= 8)
     {
+        outp(port, (uint8_t)(inp(port)&~(1<<PIC_SLAVE_IRQ))); //make sure slave enabled
         port = PIC_DATA2;
         irq = (uint8_t)(irq - 8);
     }
@@ -112,7 +115,7 @@ uint16_t PIC_GetIRQMask(void)
 void PIC_SetIRQMask(uint16_t mask)
 {
     //CLIS();
-    outp(PIC_DATA1, (uint8_t)mask);
+    outp(PIC_DATA1, (uint8_t)(mask & ~(1<<PIC_SLAVE_IRQ))); //make sure savle enabled
     outp(PIC_DATA2, (uint8_t)(mask>>8));
     //STIL();
 }
