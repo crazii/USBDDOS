@@ -9,8 +9,8 @@ UHCI: QEMU, Toshiba portege M200(p4), Compaq Evo N600c(p3), Toshiba Satellite 24
 
 There might be bugs for other PCs, test & feedback is appreiated.   
 
-The Borland++3.1 build (USBDDOS.EXE) can run without a DPMI host, it will enter protected mode directly or with a EMM manager. It's not compatible with many games.  
-To play games with a USB mouse, USBDDOSP.EXE is recommended, which also need a DIMI host (i.e. HDPMI.exe).  USBDDOSP/USBDDOS need CuteMouse to work.
+The Borland++3.1 build (USBDDOS.EXE) can run without a DPMI host, it will enter protected mode directly or with a EMM manager. ~~It's not compatible with many games.  
+To play games with a USB mouse, USBDDOSP.EXE is recommended, which also need a DIMI host (i.e. HDPMI.exe).~~ Latest tests with 1.0fix2 shows that USBDDOS is more stable than USBDDOSP.  Like [Bret Johnson's driver](https://bretjohnson.us/), USBDDOSP/USBDDOS need CuteMouse to work for USB mouse. 
 
 # Tips
 USBDDOS uses DPMI to save conventional memory for other DOS programs, it uses almost 0 conventional memory (USBDDOS uses ~8K, USBDDOSP uses almost 0). USBDDOSP doesn't need HDPMI32i unless you want Retrowave support, normal HDPMI32 is recommended, unless you want it cope with SBEMU.
@@ -36,7 +36,7 @@ Borland C++3.1 (native DOS or emu):
 * The BC build uses a custom (pseudo) DPMI that limit memmory to: 64K code + 64K data.
 
 DJGPP (native DOS or emu i.e.VirtualBox, cross toolchain on linux not tested):
-* ~~Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html~~
+* ~~Install LFN support, gcc headers are not 8.3 restricted. More info can be found here: https://sta.c64.org/lfnemu.html~~ LFN is not needed anymore because is was needed by C++ headers, and C++ code is changed to C only.
 * `make -f usbddos.mak`. the makefile is generated from RHIDE so it make have problem on dependencies.
 * Or use RHIDE to perform build
   > cd usbddos\make\
@@ -45,18 +45,20 @@ DJGPP (native DOS or emu i.e.VirtualBox, cross toolchain on linux not tested):
 
 OpenWatcom:  
 Experimental and not supported anymore due to its inline assembly limits. There's an out-dated makefile.wc if you want to make any debugging/improvements.  
+If without RetroWave OPL support, OpenWatcom can still work.
 
 # How to Debug
 Modify the makefile, or changes compiler arguments in the IDE, add `-DDEBUG=1` and remove `-DNDEBUG`, then rebuild. There will be more debug message shown. The protected mode debugging utilities are not used.
 
 # Requirements
-HIMEM.SYS; EMM386 4.46+(for RetroWave driver); 80386 CPU or later; 
+HIMEM.SYS or other XMS manager; EMM386 4.46+(optional, for RetroWave driver); 80386 CPU or later; 
 
 # Features
 The code is orginally written as DOS driver for RetroWave OPL3, currently only a simple CDC driver, UHCI tested on a real hardware and OHCI tested on VirtualBox & real harware. But it could be more. the following can be supported:
 * - [x] OHCI driver
 * - [x] UHCI driver
 * - [ ] EHCI driver
+* - [ ] xHCI driver
 * - [x] Keyborad & mouse driver (HID). use `USBDDOSP /hid` to enable
 * - [x] Mass storage deivce driver (MSD). use `USBDDOSP /disk` to enable
 * - [x] Simple CDC(ACM) driver and RetroWave OPL3. use `USBDDOSP /RW` to enable
@@ -69,5 +71,5 @@ The code is orginally written as DOS driver for RetroWave OPL3, currently only a
 * Chinese Paladin (Xian Jian Qi Xia Zhuan)
 * Theme Hospital, Miles Sound
 * DOOM (DJGPP build only, need a modified HDPMI with port trapping feature, see https://github.com/crazii/HX)
-* The Jungle Book
-* Warcraft II
+* The Jungle Book (DJGPP build only)
+* Warcraft II (DJGPP build only)
