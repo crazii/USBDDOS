@@ -450,7 +450,7 @@ static void USB_HID_Keyboard_GenerateKey(uint8_t scancode)
     //other refs:
     //https://wiki.osdev.org/%228042%22_PS/2_Controller
 
-    //note: USb_IdleWait() will temporarily enable interrupt and let IRQ1 handled
+    //note: WAIT_KEYBOARD_OUT_EMPTY() will temporarily enable interrupt and let IRQ1 handled
     //so that the 2nd scancode after prefix can write to the port
     //the code of https://bretjohnson.us/ didn't do that so it cannot send 2 bytes with prefix
     //we don't need to do special fix Numlock for [HOME,UP ARROW] etc.
@@ -545,7 +545,7 @@ void USB_HID_Mouse_Finalizer(void* data)
     outp(0x64, 0xAD); //in case kbd irq re-enable it?
     WAIT_KEYBOARD_IN_EMPTY();
 
-    PIC_SetIRQMask((uint16_t)PIC_IRQ_UNMASK(0xFFFF,12)); //only enable mouse IRQ (12)
+    PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,12)); //only enable mouse IRQ (12)
     USB_HID_Mouse_GenerateSample((uint8_t)status);
     USB_HID_Mouse_GenerateSample((uint8_t)hiddata->Mouse.DX);
     USB_HID_Mouse_GenerateSample((uint8_t)(-hiddata->Mouse.DY));

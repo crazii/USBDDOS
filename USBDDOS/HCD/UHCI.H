@@ -2,9 +2,10 @@
 #define _UHCI_H_
 #include "USBDDOS/HCD/HCD.H"
 
+//PCI configuration sapce
 #define USBBASE     0x20    //0x20~0x23, IO Space Base Address register (PCI BAR4)
-#define LEGSUP         0xC0    //0xC0~0xC1, legacy support register
-#define USBSMIEN     BIT4    //usb smi enable
+#define LEGSUP      0xC0    //0xC0~0xC1, legacy support register
+#define USBSMIEN    BIT4    //usb smi enable
 #define USBPIRQDEN  BIT13
 
 ///PID
@@ -76,7 +77,7 @@
 #define EGSM                BIT3    //enter global suspend
 #define FGR                    BIT4    //force global resume
 #define SWDBG                BIT5    //software debug
-#define CF                    BIT6    //configure flag(HCD only)
+#define CF                    BIT6    //configure flag(HCD only, last action)
 #define MAXP                BIT7    //max packet 0:32bytes, 1:64bytes
 
 //USBSTS

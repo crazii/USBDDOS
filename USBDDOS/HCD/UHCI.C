@@ -117,10 +117,10 @@ BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     UHCI_EnableInterrupt(pHCI, TRUE);
 #endif
     UHCI_QHTDSchedule(pHCI); // setup framelist
-    outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), MAXP|CF);
     outpw((uint16_t)(pHCI->dwBaseAddress + FRNUM), 0);
     outpw((uint16_t)(pHCI->dwBaseAddress + USBSTS), 0x1F); //clear status bits
     outp((uint16_t)(pHCI->dwBaseAddress + SOF), 0x40);
+    outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), MAXP|CF); //CF as last action
     UHCI_StartHC(pHCI);
     return TRUE;
 }
@@ -150,7 +150,7 @@ BOOL UHCI_ISR(HCD_Interface* pHCI)
 {
 #if !UHCI_USE_INTERRUPT
     unused(pHCI);
-    return TRUE;
+    return FALSE;
 #endif
     //_LOG("ISR ");
     uint32_t iobase = pHCI->dwBaseAddress;
