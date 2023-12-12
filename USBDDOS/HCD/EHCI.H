@@ -6,8 +6,8 @@
 
 //PIC configuration space
 #define USBBASE 0x10    //RW, 4, (MM) IO base
-#define USBBASE_MM32 0x0 //bit1~2 of USBBASE,RO, 00
-#define USBBASE_MM64 0x4 //bit1~2 of USBBASE,RO, 10
+# define USBBASE_MM32 0x0 //bit1~2 of USBBASE,RO, 00
+# define USBBASE_MM64 0x4 //bit1~2 of USBBASE,RO, 10
 #define SBRN    0x60    //RO, 1, Serial bus release number
 #define FLADJ   0x61    //RW, 1, Frame length adjustment
 #define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
@@ -24,8 +24,8 @@
 #define HCSP_PORTROUTE 0x0C //8, companion port route description
 typedef struct _ECHI_CAPS //helper structs
 {
-    uint8_t size; //sizeof ECHI cap (USBBASE+size)=operational regs
-    uint8_t reserved;
+    uint8_t Size; //sizeof ECHI cap (USBBASE+size)=operational regs
+    uint8_t Reserved;
     uint16_t hciVersion; //2 byte BCD
     union
     {
@@ -79,12 +79,12 @@ typedef struct _ECHI_CAPS //helper structs
 #define CAPID_LEGSUP 0x01
 typedef union _LEGSUP
 {
-    uint32_t val;
+    uint32_t Val;
     struct
     {
-        uint8_t reserved1 : 7;
+        uint8_t Reserved1 : 7;
         uint8_t OS_Owned : 1;
-        uint8_t reserved2 : 7;
+        uint8_t Reserved2 : 7;
         uint8_t BIOS_Owned : 1;
         uint8_t Next; //next EECP
         uint8_t CapabilityID;
@@ -141,7 +141,7 @@ typedef union _LEGSUP
 
 typedef union _ECHI_USBCMD
 {
-    uint32_t val;
+    uint32_t Val;
     struct
     {
         uint8_t Reserved1;
@@ -159,6 +159,9 @@ typedef union _ECHI_USBCMD
         uint8_t RunStop : 1;
     };
 }ECHI_USBCMD;
+#if defined(__DJ2__)
+_Static_assert(sizeof(ECHI_USBCMD)==4);
+#endif
 
 
 //USBSTS
@@ -211,6 +214,280 @@ typedef union _ECHI_USBCMD
 #define ConnectStatusChange BIT1 //RWC
 #define ConnectStatus BIT0 //RO
 
+//Periodic frame list
+#define Tbit 0x1 //terminate
+#define Typ_iTD 0x0
+#define Typ_QH 0x1
+#define Typ_siTD 0x2
+#define Typ_FSTN 0x3
+typedef union FLElementPointer //frame list element pointer
+{
+    uint32_t Ptr;
+    struct
+    {
+        uint16_t Hw : 16; //use uint16_t for Borland C 3.1
+        uint16_t Lw : 11; //28 bit ptr by spec (but spec require it reference 32bytes aligned object, so we use 27bit)
+        uint16_t Zero : 2;
+        uint16_t Typ : 2;
+        uint16_t T : 1;
+    };
+}FLEP;
 
+//iTD
+typedef struct IsoTransferDescriptor
+{
+    FLEP Next;
+
+    struct StatusList
+    {
+        //uint16_t Status : 4;
+        uint16_t Active : 1;
+        uint16_t DataBufferErr : 1;
+        uint16_t BabbleDetected : 1;
+        uint16_t TransactionErr : 1;
+
+        uint16_t Length : 12; //bytes to transfer. (updated if IO=in)
+        uint16_t IOC : 1; //interrupt on compelete
+        uint16_t PG : 3;
+        uint16_t Offset : 12;
+    }Status[8];
+
+    union BufferPagePointerList
+    {
+        uint32_t Val;
+        struct BufferPage0
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4; //4k aligned
+            uint16_t Endpt : 4; //endpoint
+            uint16_t Reserved0 : 1;
+            uint16_t DeviceAddr : 7;
+        }BP0;
+        struct BufferPage1
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;
+            uint16_t IO : 1; //direction. Out=0,In=1
+            uint16_t MaxPacketSize : 11;
+        }BP1;
+        struct BufferPage2
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;
+            uint16_t Reserved2 : 10;
+            uint16_t Multi : 2;
+        }BP2;
+        /*struct
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;
+            uint16_t Reserved3 : 12;
+        }BP3to6;*/
+    }BufferPages[7];
+
+}iTD;
+#if defined(__DJ2__)
+_Static_assert(sizeof(iTD)==64);
+#endif
+
+typedef struct SplitIsoTransferDescriptor
+{
+    FLEP Next;
+
+    //Endpoint Capabilities/Characteristics
+    struct EPCC
+    {
+        uint16_t IO : 1; //direction. out=0,in=1
+        uint16_t PortNum : 7;
+        uint16_t Reserved1 : 1;
+        uint16_t HudAddr : 7;
+        uint16_t Reserved2 : 4;
+        uint16_t Endpoint : 4;
+        uint16_t Reserved3 : 1;
+        uint16_t DeviceAddr : 7;
+    }Caps;
+
+    //Micro frame shcedule control
+    struct uFrameSC
+    {
+        uint16_t Reserved4;
+        uint8_t uFrameCMask;
+        uint8_t uFrameSMask;
+    }SheduleCtl;
+
+    //Transfer status and control
+    struct StatusControl
+    {
+        uint16_t IOC : 1; //interrupt on completion
+        uint16_t P : 1; //page select
+        uint16_t Reserved5 : 4;
+        uint16_t Length : 10; //bytes to transfer (1023/3FF max)
+        uint8_t CProgMask;
+        struct //Status
+        {
+            uint8_t Active : 1;
+            uint8_t ERR : 1;
+            uint8_t DataBufferErr : 1;
+            uint8_t BabbleDetected : 1;
+            uint8_t TransactionErr : 1;
+            uint8_t MisseduFrame : 1;
+            uint8_t SplitXstate : 1;
+            uint8_t Reserved5 : 1;
+        };
+    }StatusCtl;
+
+    struct BufferPage0
+    {
+        uint16_t BufferPointerHw : 16;
+        uint16_t BufferPointerLw : 4;
+        uint16_t CurrentOffset : 12; //written back by HC
+    }BP0;
+
+    struct BufferPage1
+    {
+        uint16_t BufferPointerHw : 16;
+        uint16_t BufferPointerLw : 4;
+        uint16_t ReservedBP1 : 7;
+        uint16_t TP : 2; //transaction position
+        uint16_t TCount : 2; //transaction count
+    }BP1;
+
+    FLEP BackLink; //Typ must be zero. Tbit as invalid bit
+
+    uint32_t Padding;
+}siTD;
+#if defined(__DJ2__)
+_Static_assert(sizeof(siTD)==32);
+#endif
+
+
+
+//qTD
+typedef struct QueueElementTD
+{
+    FLEP Next; //Typ must be zero. Tbit as invalid bit
+    FLEP AltNext; //alternate next
+
+    struct _Token
+    {
+        uint16_t DataToggle : 1;
+        uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max
+        uint16_t IOC : 1;
+        uint16_t C_Page : 3;
+        uint16_t CERR : 2; //err counter
+        uint16_t PID : 2;
+        struct Status
+        {
+            uint8_t Active : 1;
+            uint8_t Halted : 1;
+            uint8_t DataBufferErr : 1;
+            uint8_t BabbleDetected : 1;
+            uint8_t TransactionErr : 1;
+            uint8_t MisseduFrame : 1;
+            uint8_t SplitXstate : 1;
+            uint8_t PingState : 1;
+        };
+    }Token;
+
+    struct BufferPage
+    {
+        uint16_t PtrHw : 16;
+        uint16_t PtrLw : 4;
+        uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
+    }BufferPages[5];
+
+}qTD;
+
+
+//Queue Head
+typedef struct QueueHead
+{
+    FLEP HorizLink; //QHLP queue head horitontal link pointer
+
+    //Endpoint capabilities/characteristics
+    struct EndpointCC
+    {
+        uint16_t NakCounterRL : 4;
+        uint16_t ControlEP : 1;
+        uint16_t MaxPacketSize : 11;
+        uint16_t HeadofReclamation : 1;
+        uint16_t DataToggle : 1; //DTC data oggle control
+        uint16_t EndpointSpd : 2; //EPS
+        uint16_t Endpoint : 4; //ep no.
+        uint16_t InactiveonNext : 1;
+        uint16_t DeviceAddr : 7;
+    }Caps;
+
+    //Endpoint capabilities/characteristics 2
+    struct EndpointCC2
+    {
+        uint16_t Mult : 2; //high bandwith pipe multiplier (valid: 1~3)
+        uint16_t PortNum : 7;
+        uint16_t HubAddr : 7;
+        uint8_t uFrameCMask;
+        uint8_t uFrameSMask;
+    }Caps2;
+
+    uint32_t qTDCurrent;
+    FLEP qTDNext; //Typ must be zero, Tbit as invalid bit
+
+    struct
+    {
+        uint16_t PtrHw : 16;
+        uint16_t PtrLw : 11;
+        uint16_t NakCnt : 4;
+        uint16_t T : 1;
+    }qTDAltNext; //alternate next
+
+    struct StatusControl
+    {
+        uint16_t DataToggle : 1;
+        uint16_t Length : 15; //bytes to transfer
+        uint16_t IOC : 1; //interrupt on completion
+        uint16_t C_Page : 3;
+        uint16_t C_Err : 2;
+        uint16_t Status : 9;
+        uint16_t PingState : 1;
+    }StatusCtl;
+
+    union BufferPointer
+    {
+        struct Page0
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;
+            uint16_t CurrentOffset : 12;
+        };
+        struct Page1
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;
+            uint8_t ReservedP1;
+            uint8_t CProgMask;
+        };
+        struct Page2
+        {
+            uint16_t PtrHw : 16;
+            uint16_t PtrLw : 4;   
+            uint16_t SBytes : 7;
+            uint16_t FrameTag : 5;
+        };
+        //page 3&4 low 12 bits reserved
+    }BufferPointers[5];
+
+    //extra padding, used by driver
+    uint32_t Padding[4];
+    
+}QH;
+#if defined(__DJ2__)
+_Static_assert(sizeof(QH)==64);
+#endif
+
+//FSTN: periodic frame span traversal node
+typedef struct
+{
+    FLEP NormalPathPointer; //normal path link pointer (NPLP)
+    FLEP BackPathPointer; //back path link pointer (BPLP), Typ must be Typ_QH
+}FSTN;
 
 #endif //_EHCI_H_
