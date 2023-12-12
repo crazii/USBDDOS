@@ -64,7 +64,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
         {
             const int TRYC = 500;
             int tryc = 0;
-            while((!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore)) && tryc < TRYC)
+            while((!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore)) && tryc++ < TRYC)
             {
                 legsup |= HC_OS_Owned_Semaphore;
                 legsup &= ~HC_BIOS_Owned_Semaphore;
@@ -221,7 +221,7 @@ void ECHI_ResetHC(HCD_Interface* pHCI)
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) | HCRESET);
     delay(50);
-    DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) & ~HCRESET);
+    DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) & ~HCRESET & ~RS);
 }
 
 void ECHI_RunStop(HCD_Interface* pHCI, BOOL Run)
