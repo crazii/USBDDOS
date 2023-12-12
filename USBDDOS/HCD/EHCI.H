@@ -62,19 +62,19 @@ typedef struct _ECHI_CAPS //helper structs
 }ECHI_CAPS;
 
 //MUST check EECP != 0 before using it
-#define USBLEGSUP(echi_cap /*ECHI_CAPS*/) (echi_cap->EECP+0) //RO/RW
-#define USBLEGCTLSTS(echi_cap /*ECHI_CAPS*/) (echi_cap->EECP+4) //RO/RW/RWC
+#define USBLEGSUP(echi_cap /*ECHI_CAPS*/) (echi_cap->EECP+0) //RO/RW, 4
+#define USBLEGCTLSTS(echi_cap /*ECHI_CAPS*/) (echi_cap->EECP+4) //RO/RW/RWC, 4
 
-#define LOAD_USBLEGSUP(pcidev /*PCI_DEVICE*/, echi_cap /*ECHI_CAPS*/) ((uint32_t)(echi_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(echi_cap)] : 0))
-#define LOAD_USBLEGCTLSTS(pcidev /*PCI_DEVICE*/, echi_cap /*ECHI_CAPS*/) ((uint32_t)(echi_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(echi_cap)] : 0))
-#define STORE_USBLEGSUP(addr /*PCI_Addr*/, echi_cap /*ECHI_CAPS*/, legsup) if(echi_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(echi_cap), legsup)
-#define STORE_USBLEGCTLSTS(addr /*PCI_Addr*/, echi_cap /*ECHI_CAPS*/, legctlsts) if(echi_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(echi_cap), legctlsts)
+#define READ_USBLEGSUP(pcidev /*PCI_DEVICE*/, echi_cap /*ECHI_CAPS*/) ((uint32_t)(echi_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(echi_cap)] : 0))
+#define READ_USBLEGCTLSTS(pcidev /*PCI_DEVICE*/, echi_cap /*ECHI_CAPS*/) ((uint32_t)(echi_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(echi_cap)] : 0))
+#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, echi_cap /*ECHI_CAPS*/, legsup) if(echi_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(echi_cap), legsup)
+#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, echi_cap /*ECHI_CAPS*/, legctlsts) if(echi_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(echi_cap), legctlsts)
 
 //USBLEGSUP: legacy support
 #define HC_OS_Owned_Semaphore BIT24 //RW
 #define HC_BIOS_Owned_Semaphore BIT16 //RW
 #define NextEECP 0xFF00 //mask (RO)
-#define GetNextEECP(legsup) (((legsup)&NextEECP)>>8)
+#define GetNextEECP(legsup_val) (((legsup_val)&NextEECP)>>8)
 #define CAPID 0x00FF //mask (RO)
 #define CAPID_LEGSUP 0x01
 typedef union _LEGSUP
@@ -122,7 +122,7 @@ typedef union _LEGSUP
 #define PORTSC 0x44
 
 //USBCMD
-#define InterruptThreshold 0x00FF0000 //mask, RW
+#define InterruptThreshold 0x00FF0000 //mask, RW, default 8 (1ms)
 #define InterruptThreshold_Shift 16
 #define AsyncScheduleParkEnable BIT11 //RO/RW, optional
 #define AsyncScheduleParkCount 0x00300 //RO/RW, optional
@@ -145,7 +145,7 @@ typedef union _ECHI_USBCMD
     struct
     {
         uint8_t Reserved1;
-        uint8_t IntThreshold;
+        uint8_t IntThreshold; //default: 0x8 (8 micro Frames=1ms)
         uint8_t Reserved2 : 4;
         uint8_t AsyncScheduleParkEN : 1;
         uint8_t Reserved3 : 1;
@@ -174,7 +174,7 @@ _Static_assert(sizeof(ECHI_USBCMD)==4);
 #define FrameListRollover BIT3 //RWC
 #define PortChangeDetect BIT2 //RWC
 #define USBERRINT BIT1 //RWC
-#define USBINT BIT0
+#define USBINT BIT0 //RWC
 
 //USBINTR
 #define INTonAsyncAdvanceEN BIT5
@@ -231,12 +231,12 @@ typedef union FLElementPointer //frame list element pointer
         uint16_t Typ : 2;
         uint16_t T : 1;
     };
-}FLEP;
+}EHCI_FLEP;
 
 //iTD
 typedef struct IsoTransferDescriptor
 {
-    FLEP Next;
+    EHCI_FLEP Next;
 
     struct StatusList
     {
@@ -285,14 +285,14 @@ typedef struct IsoTransferDescriptor
         }BP3to6;*/
     }BufferPages[7];
 
-}iTD;
+}EHCI_iTD;
 #if defined(__DJ2__)
 _Static_assert(sizeof(iTD)==64);
 #endif
 
 typedef struct SplitIsoTransferDescriptor
 {
-    FLEP Next;
+    EHCI_FLEP Next;
 
     //Endpoint Capabilities/Characteristics
     struct EPCC
@@ -352,10 +352,10 @@ typedef struct SplitIsoTransferDescriptor
         uint16_t TCount : 2; //transaction count
     }BP1;
 
-    FLEP BackLink; //Typ must be zero. Tbit as invalid bit
+    EHCI_FLEP BackLink; //Typ must be zero. Tbit as invalid bit
 
     uint32_t Padding;
-}siTD;
+}EHCI_siTD;
 #if defined(__DJ2__)
 _Static_assert(sizeof(siTD)==32);
 #endif
@@ -365,8 +365,8 @@ _Static_assert(sizeof(siTD)==32);
 //qTD
 typedef struct QueueElementTD
 {
-    FLEP Next; //Typ must be zero. Tbit as invalid bit
-    FLEP AltNext; //alternate next
+    EHCI_FLEP Next; //Typ must be zero. Tbit as invalid bit
+    EHCI_FLEP AltNext; //alternate next
 
     struct _Token
     {
@@ -396,13 +396,13 @@ typedef struct QueueElementTD
         uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
     }BufferPages[5];
 
-}qTD;
+}EHCI_qTD;
 
 
 //Queue Head
 typedef struct QueueHead
 {
-    FLEP HorizLink; //QHLP queue head horitontal link pointer
+    EHCI_FLEP HorizLink; //QHLP queue head horitontal link pointer
 
     //Endpoint capabilities/characteristics
     struct EndpointCC
@@ -429,7 +429,7 @@ typedef struct QueueHead
     }Caps2;
 
     uint32_t qTDCurrent;
-    FLEP qTDNext; //Typ must be zero, Tbit as invalid bit
+    EHCI_FLEP qTDNext; //Typ must be zero, Tbit as invalid bit
 
     struct
     {
@@ -478,7 +478,7 @@ typedef struct QueueHead
     //extra padding, used by driver
     uint32_t Padding[4];
     
-}QH;
+}EHCI_QH;
 #if defined(__DJ2__)
 _Static_assert(sizeof(QH)==64);
 #endif
@@ -486,8 +486,42 @@ _Static_assert(sizeof(QH)==64);
 //FSTN: periodic frame span traversal node
 typedef struct
 {
-    FLEP NormalPathPointer; //normal path link pointer (NPLP)
-    FLEP BackPathPointer; //back path link pointer (BPLP), Typ must be Typ_QH
+    EHCI_FLEP NormalPathPointer; //normal path link pointer (NPLP)
+    EHCI_FLEP BackPathPointer; //back path link pointer (BPLP), Typ must be Typ_QH
 }FSTN;
+
+#define ECHI_ALIGN 32
+
+//USBDDOS specific
+
+typedef struct EHCI_HostControllerDriverData
+{
+    const ECHI_CAPS* Caps;
+    uint32_t OPRegBase; //operational regs base
+    EHCI_QH ControlQH;
+    EHCI_QH BulkQH;
+    EHCI_QH* ControlTail;
+    EHCI_QH* BulkTail;
+    uint32_t dwPeroidicListBase;   //memory address.
+    uint16_t wPeroidicListHandle;  //xms handle
+}EHCI_HCData;
+
+typedef struct EHCI_HostControllerDeviceData
+{
+    EHCI_QH ControlQH;
+}EHCI_HCDeviceData;
+
+BOOL EHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);
+BOOL EHCI_DeinitController(HCD_Interface* pHCI);
+BOOL EHCI_ISR(HCD_Interface* pHCI);
+
+uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t inputp setup8[8],
+    void* nullable pSetupData, uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
+
+uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
+    uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
+
+uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
+    uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
 
 #endif //_EHCI_H_

@@ -76,7 +76,7 @@ BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
 
     pHCI->dwPhysicalAddress = (*(uint32_t*)&pPCIDev->Offset[USBBASE]) & 0xFFFFFFE0L;
-    pHCI->dwBaseAddress = pHCI->dwPhysicalAddress;    //IO address
+    pHCI->dwBaseAddress = pHCI->dwPhysicalAddress;    //PIO address
     _LOG("UHCI base IO address: %04x\n", pHCI->dwBaseAddress);
     pHCI->pHCDMethod = &UHCIAccessMethod;
     UHCI_ResetHC(pHCI);
