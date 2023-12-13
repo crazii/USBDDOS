@@ -224,6 +224,7 @@ _Static_assert(sizeof(EHCI_USBCMD)==4);
 #define Typ_QH 0x1
 #define Typ_siTD 0x2
 #define Typ_FSTN 0x3
+#define Typ_Shift 1
 typedef union FLElementPointer //frame list element pointer
 {
     uint32_t Ptr;
@@ -367,8 +368,9 @@ _Static_assert(sizeof(EHCI_siTD)==32);
 #endif
 
 #define PID_OUT 0
-#define PID_INT 1
+#define PID_IN  1
 #define PID_SETUP 2
+#define EHCI_qTD_MaxSize (5*4096) //5 pages=5*4096
 
 //Token (status and control) for qTD and QH overlay
 typedef struct QueueToken
@@ -387,14 +389,12 @@ typedef struct QueueToken
     uint8_t CERR : 2; //err counter
     uint8_t C_Page : 3;
     uint8_t IOC : 1;
-    uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max
+    uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max (EHCI_qTD_MaxSize)
     uint16_t DataToggle : 1;
 }EHCI_QToken;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_QToken)==32);
 #endif
-
-#define EHCI_qTD_MaxSize (4*4096) //5 pages=5*4096, but we use last entry as driver data.
 
 //qTD
 typedef struct QueueElementTD
@@ -404,17 +404,30 @@ typedef struct QueueElementTD
 
     EHCI_QToken Token;
 
-    struct BufferPage
+    union BufferPage
     {
-        uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
-        uint16_t PtrLw : 4;
-        uint16_t PtrHw : 16;
-    }BufferPages[4];
+        uint32_t Ptr;
+        struct 
+        {
+            uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
+            uint16_t PtrLw : 4;
+            uint16_t PtrHw : 16;
+        };
+    }BufferPages[5];
 
-    struct QueueElementTD* EXT_prev;
+    struct
+    {
+        struct QueueElementTD* Prev;
+        HCD_Request* Request;
+#if defined(__BC__)
+        uint16_t Unused[14];
+#else
+        uint32_t Unused[6];
+#endif
+    }EXT;
 }EHCI_qTD;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_qTD)==32);
+_Static_assert(sizeof(EHCI_qTD)==64);
 #endif
 
 #define EPS_LOW  1
@@ -499,10 +512,12 @@ typedef struct QueueHead
         uint8_t TransferType : 2;
         uint8_t Interval : 4;
         uint8_t PaddingBIT : 2;
-
-        uint8_t Padding8[3];
-        uint32_t Padding[2];
-    }EXT;   
+#if defined(__BC__)
+        uint8_t Padding8[13];
+#else
+        uint8_t Padding8[11];
+#endif
+    }EXT;
 }EHCI_QH;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_QH)==64);

@@ -207,7 +207,7 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     uint8_t bEndpoint = UHCI_ED_GETADDR(pEndpoint);
     uint16_t MaxLength = pQH->Flags.wMaxPacketSize;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pSetupData, length, bEndpoint, pCB, pCBData);
-    uint32_t CS = CS_ActiveStatus | CS_C_ERR1 | (pDevice->bSpeed == USB_PORT_Low_Speed_Device ? CS_LowSpeed : 0);
+    uint32_t CS = CS_ActiveStatus | CS_C_ERR3 | (pDevice->bSpeed == USB_PORT_Low_Speed_Device ? CS_LowSpeed : 0);
     uint8_t DataPID = (dir == HCD_TXW) ? OUTPID : INPID;
     uint8_t StatusPID = (dir == HCD_TXW) ? INPID : OUTPID; //usb1.1 spec, status inverts direction of data
     assert(sizeof(UHCI_TD) <= 32);
@@ -610,7 +610,7 @@ void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     memset(pTD, 0, sizeof(UHCI_TD));
     //pTD->LinkPointer = TerminateFlag;
     UHCI_InsertTDintoQH(pQH, pTD);
-    
+
     if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
     {
         UHCI_InsertQHintoQH(pHCData->ControlTail, pQH);
