@@ -30,8 +30,8 @@ HCD_Method EHCI_AccessMethod =
     &EHCI_RemoveEndpoint,
 };
 
-static void ECHI_ResetHC(HCD_Interface* pHCI);
-static void ECHI_RunStop(HCD_Interface* pHCI, BOOL Run);
+static void EHCI_ResetHC(HCD_Interface* pHCI);
+static void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run);
 
 BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 {
@@ -51,7 +51,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     _LOG("EHCI USBBASE: %04x %04x\n", pHCI->dwPhysicalAddress, pHCI->dwBaseAddress);
     pHCI->pHCDMethod = &EHCI_AccessMethod;
 
-    const ECHI_CAPS* caps = (ECHI_CAPS*)pHCI->dwBaseAddress;
+    const EHCI_CAPS* caps = (EHCI_CAPS*)pHCI->dwBaseAddress;
     uint32_t OperationalBase = pHCI->dwBaseAddress + caps->Size;
     pHCI->bNumPorts = caps->N_PORTS;
 
@@ -107,7 +107,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     FrameList = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
     _LOG("EHCI frame list base address: %08lx\n", FrameList);
     //TODO: 1: build frame list entries
-    pHCI->pHCDData = DPMI_DMAMalloc(sizeof(EHCI_HCData), ECHI_ALIGN);
+    pHCI->pHCDData = DPMI_DMAMalloc(sizeof(EHCI_HCData), EHCI_ALIGN);
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     memset(pHCData, 0, sizeof(EHCI_HCData));
 
@@ -121,7 +121,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->wPeroidicListHandle = handle;
 
     //setup cmd
-    ECHI_USBCMD cmd = {0};
+    EHCI_USBCMD cmd = {0};
     cmd.IntThreshold = 0x8;
     cmd.AsyncScheduleParkEN = 0;
     cmd.AsyncScheduleParkCNT = 0;
@@ -133,7 +133,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     cmd.HCReset = 0;
     cmd.RunStop = 0;
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
-    ECHI_ResetHC(pHCI);
+    EHCI_ResetHC(pHCI);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
     //clear all sts
@@ -143,7 +143,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     DPMI_StoreD(OperationalBase+USBINTR, (/*INTonAsyncAdvanceEN|*/INTHostSysErrorEN|INTPortChangeEN|USBERRINTEN|USBINTEN));
 
     DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
-    ECHI_RunStop(pHCI, TRUE);
+    EHCI_RunStop(pHCI, TRUE);
     return TRUE;
 }
 
@@ -216,7 +216,7 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     return FALSE;
 }
 
-void ECHI_ResetHC(HCD_Interface* pHCI)
+void EHCI_ResetHC(HCD_Interface* pHCI)
 {
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) | HCRESET);
@@ -224,7 +224,7 @@ void ECHI_ResetHC(HCD_Interface* pHCI)
     DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) & ~HCRESET & ~RS);
 }
 
-void ECHI_RunStop(HCD_Interface* pHCI, BOOL Run)
+void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run)
 {
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) | (Run ? RS : 0));
