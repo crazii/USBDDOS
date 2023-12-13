@@ -139,6 +139,8 @@ BOOL UHCI_DeinitController(HCD_Interface* pHCI)
         UHCI_HCData* pHCData = (UHCI_HCData*)pHCI->pHCDData;
         if(pHCData->wFrameListHandle)
             XMS_Free(pHCData->wFrameListHandle);
+        if(pHCData->dwFrameListBase >= 0x100000L)
+            DPMI_UnmapMemory(pHCData->dwFrameListBase);
         DPMI_DMAFree(pHCI->pHCDData);
     }
     pHCI->pHCDData = NULL;
@@ -183,7 +185,8 @@ BOOL UHCI_ISR(HCD_Interface* pHCI)
     if(status&(USBHSERROR|USBHCERROR))
     {
         //UHCI_ResetHC(pHCI);
-        outpw((uint16_t)(iobase + USBSTS), status&(USBHSERROR|USBHCERROR));        return TRUE;
+        outpw((uint16_t)(iobase + USBSTS), status&(USBHSERROR|USBHCERROR));
+        return TRUE;
     }
     //if(status&USBHCHALTED)
     //    UHCI_StartHC(pHCI);
@@ -543,7 +546,7 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 
     if((status&USB_PORT_CONNECT_CHANGE))
     {
-        outpw(portbase, portsc | CSC); //clear connect status change
+        outpw(portbase, CSC); //clear connect status change
         do
         {
             delay(10);
@@ -602,6 +605,12 @@ void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Flags.Dir = dir&0x1;
     pQH->Flags.Type = bTransferType&0x3U;
     pQH->Flags.wMaxPacketSize = MaxPacketSize&0x7FFU;
+
+    UHCI_TD* pTD = (UHCI_TD*)USB_TAlloc32(sizeof(UHCI_TD));
+    memset(pTD, 0, sizeof(UHCI_TD));
+    //pTD->LinkPointer = TerminateFlag;
+    UHCI_InsertTDintoQH(pQH, pTD);
+    
     if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
     {
         UHCI_InsertQHintoQH(pHCData->ControlTail, pQH);
@@ -625,10 +634,6 @@ void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
         UHCI_InsertQHintoQH(pHCData->InteruptTail[pQH->Flags.Interval], pQH);
         pHCData->InteruptTail[pQH->Flags.Interval] = pQH;
     }
-    UHCI_TD* pTD = (UHCI_TD*)USB_TAlloc32(sizeof(UHCI_TD));
-    memset(pTD, 0, sizeof(UHCI_TD));
-    //pTD->LinkPointer = TerminateFlag;
-    UHCI_InsertTDintoQH(pQH, pTD);
     //UHCI_StartHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
     return (void*)(((uintptr_t)pQH) | EPAddr);
@@ -757,8 +762,8 @@ void UHCI_InsertTDintoQH(UHCI_QH* pQH, UHCI_TD* pTD)
 {
     //_LOG("%x %x %x %x", pQH, pTD, pQH->pTail, (pQH->ElementLink&~0xFUL));
     assert(pQH && pTD && pQH->pTail == NULL && (pQH->ElementLink&~0xFUL) == 0); //only used by init
-    pQH->ElementLink = pTD ? (DPMI_PTR2P(pTD) | DepthSelect) : TerminateFlag;
     pQH->pTail = pTD;
+    pQH->ElementLink = pTD ? (DPMI_PTR2P(pTD) | DepthSelect) : TerminateFlag;
 }
 
 void UHCI_InsertQHintoQH(UHCI_QH* pToQH, UHCI_QH* pQH)
@@ -767,8 +772,8 @@ void UHCI_InsertQHintoQH(UHCI_QH* pToQH, UHCI_QH* pQH)
     uint32_t paddr = DPMI_PTR2P(pQH);
     uint32_t next = pToQH->HeadLink;
     assert((next&~0xFUL) != paddr);
-    pToQH->HeadLink = paddr | QHFlag;
     pQH->HeadLink = next;
+    pToQH->HeadLink = paddr | QHFlag;
     return;
 }
 

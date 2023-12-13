@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 //note: this code need more test
-#define USBALLOC_ENABLE 1
+#define USBALLOC_ENABLE 0
 
 #if USBALLOC_ENABLE
 

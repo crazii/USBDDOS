@@ -190,6 +190,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
             OK = HCD_InitController(pHCI, bus, dev, func, &USBT.HC_Types[i], pPCIDev);
             if(!OK)
             {
+                memset(pHCI, 0, sizeof(*pHCI));
                 PIC_SetIRQMask(irqmask);
                 continue;
             }

@@ -65,10 +65,13 @@ typedef struct _EHCI_CAPS //helper structs
 #define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (ehci_cap->EECP+0) //RO/RW, 4
 #define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (ehci_cap->EECP+4) //RO/RW/RWC, 4
 
-#define READ_USBLEGSUP(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
-#define READ_USBLEGCTLSTS(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
+#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
+#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
 #define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
 #define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
+
+#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
+#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
 
 //USBLEGSUP: legacy support
 #define HC_OS_Owned_Semaphore BIT24 //RW
@@ -197,10 +200,11 @@ _Static_assert(sizeof(EHCI_USBCMD)==4);
 # define PI_Amber 0x01
 # define PI_Green 0x02
 # define PI_Undefined 0x03
-#define PortOwner BI13 //RW
+#define PortOwner BIT13 //RW, 0=owned by EHCI, 1=owned by companion HC
 #define PortPower BIT12 //RW/RO
 #define LineStatus 0xC00 //mask, RO
-# define LS_SE0 0x00
+#define LineStatusShift 10
+# define LS_SE0 0x00 //
 # define LS_JS 0x01
 # define LS_KS 0x02
 # define LS_Undefined 0x03
@@ -362,6 +366,35 @@ typedef struct SplitIsoTransferDescriptor
 _Static_assert(sizeof(EHCI_siTD)==32);
 #endif
 
+#define PID_OUT 0
+#define PID_INT 1
+#define PID_SETUP 2
+
+//Token (status and control) for qTD and QH overlay
+typedef struct QueueToken
+{
+    //status 8bit
+    uint8_t PingState : 1;
+    uint8_t SplitXstate : 1;
+    uint8_t MisseduFrame : 1;
+    uint8_t TransactionErr : 1;
+    uint8_t BabbleDetected : 1;
+    uint8_t DataBufferErr : 1;
+    uint8_t Halted : 1;
+    uint8_t Active : 1;
+
+    uint8_t PID : 2;
+    uint8_t CERR : 2; //err counter
+    uint8_t C_Page : 3;
+    uint8_t IOC : 1;
+    uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max
+    uint16_t DataToggle : 1;
+}EHCI_QToken;
+#if defined(__DJ2__)
+_Static_assert(sizeof(EHCI_QToken)==32);
+#endif
+
+#define EHCI_qTD_MaxSize (4*4096) //5 pages=5*4096, but we use last entry as driver data.
 
 //qTD
 typedef struct QueueElementTD
@@ -369,39 +402,24 @@ typedef struct QueueElementTD
     EHCI_FLEP Next; //Typ must be zero. Tbit as invalid bit
     EHCI_FLEP AltNext; //alternate next
 
-    struct _Token
-    {
-        struct /*Status*/
-        {
-            uint8_t PingState : 1;
-            uint8_t SplitXstate : 1;
-            uint8_t MisseduFrame : 1;
-            uint8_t TransactionErr : 1;
-            uint8_t BabbleDetected : 1;
-            uint8_t DataBufferErr : 1;
-            uint8_t Halted : 1;
-            uint8_t Active : 1;
-        };
-
-        uint16_t PID : 2;
-        uint16_t CERR : 2; //err counter
-        uint16_t C_Page : 3;
-        uint16_t IOC : 1;
-        uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max
-        uint16_t DataToggle : 1;
-    }Token;
+    EHCI_QToken Token;
 
     struct BufferPage
     {
         uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
         uint16_t PtrLw : 4;
         uint16_t PtrHw : 16;
-    }BufferPages[5];
+    }BufferPages[4];
 
+    struct QueueElementTD* EXT_prev;
 }EHCI_qTD;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_qTD)==32);
 #endif
+
+#define EPS_LOW  1
+#define EPS_FULL 0
+#define EPS_HIGH 2
 
 //Queue Head
 typedef struct QueueHead
@@ -412,13 +430,13 @@ typedef struct QueueHead
     struct EndpointCC
     {
         uint16_t DeviceAddr : 7;
-        uint16_t InactiveonNext : 1;
+        uint16_t InactiveonNext_1x : 1; //only valid in perioidic for full/low endpoint
         uint16_t Endpoint : 4; //ep no.
-        uint16_t EndpointSpd : 2; //EPS
+        uint16_t EndpointSpd : 2; //EPS. 0=FullSpeed, 1=LowSpeed, 2=HighSpeed
         uint16_t DataToggle : 1; //DTC data oggle control
         uint16_t HeadofReclamation : 1;
         uint16_t MaxPacketSize : 11;
-        uint16_t ControlEP : 1;
+        uint16_t ControlEP_1x : 1; //only set when endpoint is full/low speed and a control ep
         uint16_t NakCounterRL : 4;
     }Caps;
 
@@ -426,33 +444,28 @@ typedef struct QueueHead
     struct EndpointCC2
     {
         uint8_t uFrameSMask;
-        uint8_t uFrameCMask;
-        uint16_t HubAddr : 7;
-        uint16_t PortNum : 7;
+        uint8_t uFrameCMask_1x; //periodic only
+        uint16_t HubAddr_1x : 7;
+        uint16_t PortNum_1x : 7;
         uint16_t Mult : 2; //high bandwith pipe multiplier (valid: 1~3)
     }Caps2;
 
     uint32_t qTDCurrent;
     EHCI_FLEP qTDNext; //Typ must be zero, Tbit as invalid bit
 
-    struct
+    union
     {
-        uint16_t T : 1;
-        uint16_t NakCnt : 4;
-        uint16_t PtrLw : 11;
-        uint16_t PtrHw : 16;
+        uint32_t Ptr;
+        struct
+        {
+            uint16_t T : 1;
+            uint16_t NakCnt : 4;
+            uint16_t PtrLw : 11;
+            uint16_t PtrHw : 16;
+        };
     }qTDAltNext; //alternate next
 
-    struct StatusControl
-    {
-        uint16_t PingState : 1;
-        uint16_t Status : 9;
-        uint16_t C_Err : 2;
-        uint16_t C_Page : 3;
-        uint16_t IOC : 1; //interrupt on completion
-        uint16_t Length : 15; //bytes to transfer
-        uint16_t DataToggle : 1;
-    }StatusCtl;
+    EHCI_QToken Token;
 
     union BufferPointer
     {
@@ -479,9 +492,17 @@ typedef struct QueueHead
         //page 3&4 low 12 bits reserved
     }BufferPointers[5];
 
-    //extra padding, used by driver
-    uint32_t Padding[4];
-    
+    //extra data & padding, used by driver
+    struct
+    {
+        EHCI_qTD* pTail;
+        uint8_t TransferType : 2;
+        uint8_t Interval : 4;
+        uint8_t PaddingBIT : 2;
+
+        uint8_t Padding8[3];
+        uint32_t Padding[2];
+    }EXT;   
 }EHCI_QH;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_QH)==64);
@@ -500,19 +521,26 @@ typedef struct
 
 typedef struct EHCI_HostControllerDriverData
 {
-    const EHCI_CAPS* Caps;
-    uint32_t OPRegBase; //operational regs base
+    //aligment
     EHCI_QH ControlQH;
     EHCI_QH BulkQH;
+    EHCI_QH InterruptQH[11]; //2^(0~10), the bInterval of INTR(/ISO) endpoint for USB2.0 ranges from 1~16, in 2^(bInterval-1) micro frames (125us)
+
+    //no aligment
+    uint32_t OPBase; //operational regs base
+    const EHCI_CAPS* Caps;
     EHCI_QH* ControlTail;
     EHCI_QH* BulkTail;
+    EHCI_QH* InterruptTail[11];
     uint32_t dwPeroidicListBase;   //memory address.
     uint16_t wPeroidicListHandle;  //xms handle
 }EHCI_HCData;
 
 typedef struct EHCI_HostControllerDeviceData
 {
-    EHCI_QH ControlQH;
+    //TODO: no special handling of default control pipe
+    EHCI_QH ControlQH; //the pre-created default control pipe is for code's historical reason and could be removed
+    BOOL ControlEPCreated;
 }EHCI_HCDeviceData;
 
 BOOL EHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);

@@ -7,7 +7,12 @@
 #include "USBDDOS/HCD/EHCI.H"
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/DPMI/XMS.H"
+#include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
+
+#define EHCI_EP_MAKE(pQH, epaddr) (void*)(((uintptr_t)(pQH))|(epaddr))
+#define EHCI_EP_GETQH(pVoid) (EHCI_QH*)(((uintptr_t)(pVoid))&~0xFU)
+#define EHCI_EP_GETADDR(pVoid) (((uintptr_t)(pVoid))&0xFU)
 
 static uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
 static BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status);
@@ -31,21 +36,12 @@ HCD_Method EHCI_AccessMethod =
 };
 
 static void EHCI_ResetHC(HCD_Interface* pHCI);
+static BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI);
 static void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run);
+static void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto);
 
 BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 {
-    //configure PCI
-    {
-        PCI_CMD cmd;
-        cmd.reg16 = pPCIDev->Header.Command;
-        cmd.bits.BusMaster = 1;
-        cmd.bits.IOSpace = 0;
-        cmd.bits.MemorySpace = 1;
-        cmd.bits.InterruptDisable = 0;
-        PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
-    }
-
     pHCI->dwPhysicalAddress = (*(uint32_t*)&pPCIDev->Offset[USBBASE]) & 0xFFFFFFE0L;
     pHCI->dwBaseAddress = DPMI_MapMemory(pHCI->dwPhysicalAddress, 4096);
     _LOG("EHCI USBBASE: %04x %04x\n", pHCI->dwPhysicalAddress, pHCI->dwBaseAddress);
@@ -55,14 +51,16 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     uint32_t OperationalBase = pHCI->dwBaseAddress + caps->Size;
     pHCI->bNumPorts = caps->N_PORTS;
 
+    //first things to do is to take ownership from BIOS and reset HC.
+
     //take ownership & disable SMI
     if(caps->EECP)
     {
-        uint32_t legsup = READ_USBLEGSUP(pPCIDev, caps);
-        //uint32_t legctlsts = READ_USBLEGCTLSTS(pPCIDev, caps);
+        uint32_t legsup = READ_USBLEGSUP2(pPCIDev, caps);
+        //uint32_t legctlsts = READ_USBLEGCTLSTS2(pPCIDev, caps);
         if((legsup&CAPID) == CAPID_LEGSUP)
         {
-            const int TRYC = 500;
+            const int TRYC = 50;
             int tryc = 0;
             while((!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore)) && tryc++ < TRYC)
             {
@@ -70,55 +68,59 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
                 legsup &= ~HC_BIOS_Owned_Semaphore;
                 //PCI_WriteDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBLEGSUP(caps), legsup);
                 WRITE_USBLEGSUP(pHCI->PCIAddr, caps, legsup);
-                delay(1);
-                legsup = PCI_ReadDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBLEGSUP(caps));
+                delay(10);
+                //legsup = PCI_ReadDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBLEGSUP(caps));
+                legsup = READ_USBLEGSUP(pHCI->PCIAddr, caps);
             }
             if(!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore))
             {
                 printf("EHCI: Unable to take ownership from BIOS.\n");
+                DPMI_UnmapMemory(pHCI->dwBaseAddress);
                 return FALSE;
             }
             WRITE_USBLEGCTLSTS(pHCI->PCIAddr, caps, 0); //disable all SMIs
         }
     }
 
-    DPMI_StoreD(OperationalBase+CTRLDSSEGMENT, 0);
-
-    //setup frame list
-    uint16_t handle = 0;
-    uint32_t FrameList = DPMI_LoadD(OperationalBase + PERIODICLISTBASE) & 0xFFFFF000L;
-    //if(FrameList == 0) //if not 0, probably previous inited by BIOS
-    { // use xms directly instead of DPMI_DMAMalloc to save memory for driver, especially BC (64K data only).
-        handle = XMS_Alloc(4, &FrameList);
-        if(handle == 0 || FrameList == 0)
-            return FALSE;
-        if((FrameList&0xFFF) != 0)
-        {
-            if(!XMS_Realloc(handle, 8, &FrameList)) // 4k data + 4k alignement
-            {
-                XMS_Free(handle);
-                return FALSE;
-            }
-        }
-        FrameList = align(FrameList, 4096);
-        DPMI_StoreD(OperationalBase + PERIODICLISTBASE, FrameList);
-    }
-
-    FrameList = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
-    _LOG("EHCI frame list base address: %08lx\n", FrameList);
-    //TODO: 1: build frame list entries
     pHCI->pHCDData = DPMI_DMAMalloc(sizeof(EHCI_HCData), EHCI_ALIGN);
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     memset(pHCData, 0, sizeof(EHCI_HCData));
 
-    //setup async list
-    DPMI_StoreD(OperationalBase+ASYNCLISTADDR, 0); //TODO: 2:
-
-    //TODO: 3:
+    //reset
     pHCData->Caps = caps;
-    pHCData->OPRegBase = OperationalBase;
-    pHCData->dwPeroidicListBase = FrameList;
-    pHCData->wPeroidicListHandle = handle;
+    pHCData->OPBase = OperationalBase;
+    EHCI_ResetHC(pHCI);
+
+    //configure PCI
+    {
+        PCI_CMD cmd;
+        cmd.reg16 = pPCIDev->Header.Command;
+        cmd.bits.BusMaster = 1;
+        cmd.bits.IOSpace = 0;
+        cmd.bits.MemorySpace = 1;
+        cmd.bits.InterruptDisable = 0;
+        PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
+        pPCIDev->Header.Command = cmd.reg16;
+    }
+
+    DPMI_StoreD(OperationalBase+CTRLDSSEGMENT, 0);
+
+    //setup frame list
+    if(!EHCI_SetupPeriodicList(pHCI))
+    {
+        pHCI->pHCDData = NULL;
+        DPMI_DMAFree(pHCData);
+        return FALSE;
+    }
+
+    //setup async list
+    pHCData->ControlTail = &pHCData->ControlQH;
+    pHCData->BulkTail = &pHCData->BulkQH;
+    pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH);
+    pHCData->ControlQH.HorizLink.T = 0;
+    pHCData->ControlQH.HorizLink.Typ = Typ_QH;
+    pHCData->BulkQH.HorizLink.T = 1;
+    DPMI_StoreD(OperationalBase+ASYNCLISTADDR, DPMI_PTR2P(&pHCData->ControlQH));
 
     //setup cmd
     EHCI_USBCMD cmd = {0};
@@ -133,7 +135,6 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     cmd.HCReset = 0;
     cmd.RunStop = 0;
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
-    EHCI_ResetHC(pHCI);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
     //clear all sts
@@ -149,8 +150,27 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 
 BOOL EHCI_DeinitController(HCD_Interface* pHCI)
 {
-    #error not implemented.
-    return FALSE;
+    if(pHCI->pHCDData)
+    {
+        EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
+        EHCI_RunStop(pHCI, FALSE);
+        EHCI_ResetHC(pHCI);
+
+        DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, 0);
+        DPMI_StoreD(pHCData->OPBase + ASYNCLISTADDR, 0);
+        DPMI_StoreD(pHCData->OPBase + CONFIGFLAG, ~ConfigureFlag);
+
+        if(pHCData->wPeroidicListHandle)
+        {
+            XMS_Free(pHCData->wPeroidicListHandle);
+            if(pHCData->dwPeroidicListBase >= 0x100000L)
+                DPMI_UnmapMemory(pHCData->dwPeroidicListBase);
+        }
+        DPMI_DMAFree(pHCI->pHCDData);
+    }
+    pHCI->pHCDData = NULL;
+    pHCI->dwBaseAddress = 0;
+    return TRUE;
 }
 
 BOOL EHCI_ISR(HCD_Interface* pHCI)
@@ -169,8 +189,8 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
 {
-    #error not implemented.
-    return 0;
+    assert(false); //not implemented
+    return 0xFF;
 }
 
 uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
@@ -182,50 +202,369 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
 
 uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
 {
-    #error not implemented.
-    return 0;
+    assert(port < pHCI->bNumPorts);
+    EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
+    uint32_t addr = pHCData->OPBase + PORTSC + port*4;
+    uint32_t status = DPMI_LoadD(addr);
+    uint16_t result = 0;
+
+    if(status & ConnectStatus)
+        result |= USB_PORT_ATTACHED;
+
+    if(!(status & PortEnable)) //port not enabled for low/full speed device
+    {
+        DPMI_StoreD(addr, PortOwner); //release ownership to companion HC
+        result &= ~USB_PORT_ATTACHED;
+    }
+    else if(status & ConnectStatus)
+        result |= USB_PORT_High_Speed_Device;
+
+    if(status & PortEnable)
+        result |= USB_PORT_ENABLE;
+    else
+        result |= USB_PORT_DISABLE;
+
+    if(status & PortSuspend)
+        result |= USB_PORT_SUSPEND;
+
+    if(status & PortReset) //in reset
+        result |= USB_PORT_RESET;
+
+    if(status & ConnectStatusChange)
+        result |= USB_PORT_CONNECT_CHANGE;
+    return result;
 }
 
 BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 {
-    #error not implemented.
-    return FALSE;
+    if(port > pHCI->bNumPorts || !pHCI);
+        return FALSE;
+    EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
+    uint32_t addr = pHCData->OPBase + PORTSC + port*4;
+    uint32_t current = DPMI_LoadD(addr);
+    
+   if((status&USB_PORT_RESET))
+    {
+        const int timeout = 100; //5sec timeout
+        DPMI_StoreD(addr, PortReset);
+        int i = 0;
+        do
+        {
+            delay(55);// spec require at least 10ms, 50+ms get more compatibility
+            ++i;
+        } while(!(DPMI_LoadD(addr)&PortReset) && i < timeout);
+        if(i == timeout)
+            return FALSE;
+
+        DPMI_StoreD(addr, 0); //release reset signal
+        i = 0;
+        do
+        {
+            delay(1);
+            ++i;
+        } while((DPMI_LoadD(addr)&PortReset) && i < timeout*50);
+        if(i == timeout)
+            return FALSE;
+        //DPMI_StoreD(addr, ConnectStatusChange|PortEnableChange);
+        current = DPMI_LoadD(addr); //reload enable/disable state
+    }
+
+    if((status&USB_PORT_ENABLE) && !(current&PortEnable))
+    {
+        //driver cannot enable ports by the spec.
+        //port is enabled on HC reset if a high speed device attached.
+    }
+
+    if((status&USB_PORT_DISABLE) && (current&PortEnable))
+    {
+        DPMI_StoreD(addr, 0);
+        do
+        {
+            delay(1);
+        } while((DPMI_LoadD(addr)&PortEnable));
+        DPMI_StoreD(addr, PortEnableChange); //clear states
+    }
+
+    if((status&USB_PORT_SUSPEND) && !(current&PortSuspend))
+    {
+        do
+        {
+            DPMI_StoreD(addr, PortSuspend);
+            delay(1);
+        } while(!(DPMI_LoadD(addr)&PortSuspend));
+    }
+
+    if((status&USB_PORT_CONNECT_CHANGE))
+    {
+        DPMI_StoreD(addr, ConnectStatusChange); //clear connect status change
+        do
+        {
+            delay(10);
+        } while(DPMI_LoadD(addr)&ConnectStatusChange);
+        delay(150);
+    }
+    return TRUE;
 }
 
 BOOL EHCI_InitDevice(HCD_Device* pDevice)
 {
-    #error not implemented.
-    return FALSE;
+    pDevice->pHCData = DPMI_DMAMalloc(sizeof(EHCI_HCDeviceData), EHCI_ALIGN);
+    EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
+    memset(pDeviceData, 0, sizeof(EHCI_HCDeviceData));
+    
+    //EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
+    //EHCI_InitQH(&pDeviceData->ControlQH, pHCData->ControlTail);
+    //pHCData->ControlTail = &pDeviceData->ControlQH;
+    return TRUE;
 }
 
 BOOL EHCI_RemoveDevice(HCD_Device* pDevice)
 {
-    #error not implemented.
+    if(!HCD_IS_DEVICE_VALID(pDevice))
+        return FALSE;
+    EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
+    EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
+    //EHCI_DetachQH(&pDeviceData->ControlQH, &pHCData->ControlQH, &pHCData->ControlTail);
+    //USB_TFree32(pDeviceData->ControlQH.EXT.pTail);
+    DPMI_DMAFree(pDeviceData);
     return FALSE;
 }
 
 void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, uint8_t bTransferType, uint16_t MaxPacketSize, uint8_t bInterval)
 {
-    #error not implemented.
-    return NULL;
+    EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
+    EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
+    int EPS = (pDevice->bSpeed==USB_PORT_Low_Speed_Device) ? EPS_LOW : (pDevice->bSpeed==USB_PORT_Full_Speed_Device) ? EPS_FULL : EPS_HIGH;
+
+    if(EPAddr == 0) //default control pipe
+    {
+        if(pDeviceData->ControlEPCreated)
+            return EHCI_EP_MAKE(&pDeviceData->ControlQH, 0);
+        else
+            pDeviceData->ControlEPCreated = TRUE;
+    }
+
+    assert(EPAddr <= 0xF);
+    assert(bTransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR || bInterval >= 1);
+
+    EHCI_QH* pQH = EPAddr == 0 ? &pDeviceData->ControlQH : (EHCI_QH*)DPMI_DMAMalloc(sizeof(EHCI_QH), EHCI_ALIGN);
+    pQH->Caps.DeviceAddr = pDevice->bAddress;
+    pQH->Caps.Endpoint = EPAddr;
+    pQH->Caps.EndpointSpd = EPS;
+    pQH->Caps.MaxPacketSize = MaxPacketSize;
+
+    pQH->Caps2.Mult = 1;
+    pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? 0xF : 0;
+
+    pQH->Token.PID = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL) ? PID_SETUP : dir&0x1;
+    pQH->EXT.TransferType = bTransferType&0x3U;
+
+    if(pQH->Caps.EndpointSpd != EPS_HIGH)
+    {
+        pQH->Caps2.PortNum_1x = pDevice->bHubPort;
+        //pQH->Caps2.HubAddr_1x = ? //TODO:
+        if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
+            pQH->Caps2.uFrameCMask_1x = 0x1; //8 micro frames (1ms)
+    }
+
+    if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
+    {
+        if(pQH->Caps.EndpointSpd != EPS_HIGH)
+            pQH->Caps.ControlEP_1x = 1;
+        EHCI_InitQH(pQH, pHCData->ControlTail);
+        pHCData->ControlTail = pQH;
+    }
+    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK )
+    {
+        EHCI_InitQH(pQH, pHCData->BulkTail);
+        pHCData->BulkTail = pQH;
+    }
+    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
+    {
+        bInterval = min(bInterval, 11); //clamp [1~16] to [1~11]
+        pQH->EXT.Interval = bInterval;
+        //EHCI_QH* head = &pHCData->InterruptQH[bInterval-1];
+        EHCI_QH** tail = &pHCData->InterruptTail[bInterval-1];
+        EHCI_InitQH(pQH, *tail);
+        *tail = pQH;
+    }
+    return EHCI_EP_MAKE(pQH, EPAddr);
 }
 
 BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
 {
-    #error not implemented.
-    return FALSE;
+    EHCI_QH* pQH = EHCI_EP_GETQH(pEndpoint);
+    if(pDevice == NULL || pQH == NULL)
+        return FALSE;
+    EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
+    if(pDeviceData == NULL)
+        return FALSE;
+    if(&pDeviceData->ControlQH == pEndpoint) //default control pipe
+        pDeviceData->ControlEPCreated = FALSE;
+
+    BOOL result = FALSE;
+    EHCI_qTD* pTail = pQH->EXT.pTail;
+    EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
+    uint8_t bTransferType = pQH->EXT.TransferType;
+
+    if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
+        result = EHCI_DetachQH(pQH, &pHCData->ControlQH, &pHCData->ControlTail);
+    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK)
+        result = EHCI_DetachQH(pQH, &pHCData->BulkQH, &pHCData->BulkTail);
+    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
+    {
+        assert(pQH->EXT.Interval <= 11);
+        EHCI_QH* head = &pHCData->InterruptQH[pQH->EXT.Interval-1];
+        EHCI_QH** tail = &pHCData->InterruptTail[pQH->EXT.Interval-1];
+        result = EHCI_DetachQH(pQH, head, tail);
+    }
+
+    while(pTail != NULL) //remove unfinished TD
+    {
+        EHCI_qTD* pPrev = pTail->EXT_prev;
+        USB_TFree32(pTail);
+        pTail = pPrev;
+    }
+    return result;
 }
 
 void EHCI_ResetHC(HCD_Interface* pHCI)
 {
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
-    DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) | HCRESET);
-    delay(50);
-    DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) & ~HCRESET & ~RS);
+    DPMI_StoreD(pHCData->OPBase+USBCMD, DPMI_LoadD(pHCData->OPBase+USBCMD) | HCRESET);
+    delay(55); //spec requred 50ms
+    DPMI_StoreD(pHCData->OPBase+USBCMD, DPMI_LoadD(pHCData->OPBase+USBCMD) & ~HCRESET & ~RS);
+}
+
+BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
+{
+    EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
+    uint16_t handle = 0;
+    uint32_t FrameList = DPMI_LoadD(pHCData->OPBase + PERIODICLISTBASE) & 0xFFFFF000L;
+    //if(FrameList == 0) //if not 0, probably previous inited by BIOS
+    { // use xms directly instead of DPMI_DMAMalloc to save memory for driver, especially BC (64K data only).
+        handle = XMS_Alloc(4, &FrameList);
+        if(handle == 0 || FrameList == 0)
+            return FALSE;
+        if((FrameList&0xFFF) != 0)
+        {
+            if(!XMS_Realloc(handle, 8, &FrameList)) // 4k data + 4k alignement
+            {
+                XMS_Free(handle);
+                return FALSE;
+            }
+        }
+        FrameList = align(FrameList, 4096);
+        assert((FrameList&0xFFF) == 0);
+        DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList);
+    }
+
+    FrameList = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
+    _LOG("EHCI frame list base address: %08lx\n", FrameList);
+    pHCData->dwPeroidicListBase = FrameList;
+    pHCData->wPeroidicListHandle = handle;
+
+    // build frame list entries
+    EHCI_FLEP* flep = (EHCI_FLEP*)(uintptr_t)FrameList;
+
+    int i; //for BC
+    for(i = 0; i < 11; ++i)
+    {
+        pHCData->InterruptQH[i].HorizLink.Typ = Typ_QH;
+        pHCData->InterruptQH[i].HorizLink.T = 1;
+        pHCData->InterruptTail[i] = &pHCData->InterruptQH[i];
+    }
+    for(i = 0; i < 1024; ++i)
+    {
+        flep[i].Ptr = 0;
+        flep[i].Typ = Typ_QH;
+        flep[i].T = 1;
+    }
+
+    int offset = 0;
+    for(i = 10; i >= 3; --i)
+    {
+        int step = 1<<i;
+        int j;
+        for(j = offset++; j < 1024; j+=step)
+        {
+            EHCI_FLEP* ptr = &flep[j];
+            assert(ptr->Ptr == 0);
+            ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
+            ptr->T = 0;
+        }
+    }
+
+    for(i = 2; i >= 0; --i)
+    {
+        int step = 1<<i;
+        int j;
+        for(j = 0; j < 1024; j+=step)
+        {
+            EHCI_FLEP* ptr = &flep[j];
+            EHCI_QH* last = NULL;
+            while((ptr->Ptr&0xFFFFFFF0UL) != 0)
+            {
+                last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr);
+                ptr = &(last->HorizLink);
+            }
+            if(last != &pHCData->InterruptQH[i])
+            {
+                ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
+                ptr->T = 0;
+            }
+        }
+    }
+    return TRUE;
 }
 
 void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run)
 {
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
-    DPMI_StoreD(pHCData->OPRegBase+USBCMD, DPMI_LoadD(pHCData->OPRegBase+USBCMD) | (Run ? RS : 0));
+    DPMI_MaskD(pHCData->OPBase+USBCMD, Run ? (~0UL) : (~RS), Run ? RS : 0);
+}
+
+void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto)
+{
+    memset(pInit, 0, sizeof(EHCI_QH));
+    pInit->HorizLink.T = 1;
+    pInit->qTDNext.T = 1;
+    pInit->qTDAltNext.T = 1;
+    EHCI_qTD* pTD = (EHCI_qTD*)USB_TAlloc32(sizeof(EHCI_qTD));
+    memset(pTD, 0, sizeof(EHCI_qTD));
+    pInit->EXT.pTail = pTD;
+    pInit->qTDCurrent = DPMI_PTR2P(pTD);
+
+    if(pLinkto)
+    {
+        pInit->HorizLink = pLinkto->HorizLink;
+        EHCI_FLEP link; //make the link in one atomic write
+        link.Ptr = DPMI_PTR2P(pInit);
+        link.Typ = Typ_QH;
+        link.T = 0;
+        pLinkto->HorizLink = link;
+    }
+}
+
+BOOL EHCI_DetachQH(EHCI_QH* pQH, EHCI_QH* pLinkHead, EHCI_QH** ppLinkEnd)
+{
+    if(!pQH || !pLinkHead || !ppLinkEnd) return FALSE;
+
+    EHCI_QH* qh = pLinkHead;
+    EHCI_QH* prevQH = NULL;
+    while(qh != *ppLinkEnd && qh != pQH)
+    {
+        prevQH = qh;
+        qh = (qh->HorizLink.Ptr&~0xFUL) ? (EHCI_QH*)DPMI_P2PTR(qh->HorizLink.Ptr&~0xFUL) : NULL;
+        assert(qh != NULL);
+    }
+    if(qh != pQH)
+    {
+        assert(FALSE);
+        return FALSE;
+    }
+    if(*ppLinkEnd == pQH)
+        *ppLinkEnd = prevQH;
+    prevQH->HorizLink = qh->HorizLink;
+    return TRUE;
 }
