@@ -371,19 +371,27 @@ _Static_assert(sizeof(EHCI_siTD)==32);
 #define PID_IN  1
 #define PID_SETUP 2
 #define EHCI_qTD_MaxSize (5*4096) //5 pages=5*4096
+#define EHCI_QTK_ERRORS (BIT6 | BIT5 | BIT4 | BIT3 | BIT2 | BIT0) //BIT0 low/full only
 
 //Token (status and control) for qTD and QH overlay
 typedef struct QueueToken
 {
     //status 8bit
-    uint8_t PingState : 1;
-    uint8_t SplitXstate : 1;
-    uint8_t MisseduFrame : 1;
-    uint8_t TransactionErr : 1;
-    uint8_t BabbleDetected : 1;
-    uint8_t DataBufferErr : 1;
-    uint8_t Halted : 1;
-    uint8_t Active : 1;
+    union
+    {
+        uint8_t Status;
+        struct
+        {
+            uint8_t P_ERROR : 1; //ping state for high speed transfer, error for low/full.
+            uint8_t SplitXstate_1x : 1;
+            uint8_t MisseduFrame_1x : 1; //low/full & periodic only
+            uint8_t TransactionErr : 1;
+            uint8_t BabbleDetected : 1;
+            uint8_t DataBufferErr : 1;
+            uint8_t Halted : 1;
+            uint8_t Active : 1;
+        };
+    };
 
     uint8_t PID : 2;
     uint8_t CERR : 2; //err counter
@@ -418,11 +426,12 @@ typedef struct QueueElementTD
     struct
     {
         struct QueueElementTD* Prev;
+        struct QueueElementTD* Next;
         HCD_Request* Request;
 #if defined(__BC__)
-        uint16_t Unused[14];
+        uint16_t Unused[12];
 #else
-        uint32_t Unused[6];
+        uint32_t Unused[5];
 #endif
     }EXT;
 }EHCI_qTD;
@@ -508,7 +517,7 @@ typedef struct QueueHead
     //extra data & padding, used by driver
     struct
     {
-        EHCI_qTD* pTail;
+        EHCI_qTD* Tail;
         uint8_t TransferType : 2;
         uint8_t Interval : 4;
         uint8_t PaddingBIT : 2;

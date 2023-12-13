@@ -10,6 +10,8 @@
 #include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
 
+#define EHCI_INTERRUPTS (/*INTonAsyncAdvanceEN|*/INTHostSysErrorEN|INTPortChangeEN|USBERRINTEN|USBINTEN)
+
 #define EHCI_EP_MAKE(pQH, epaddr) (void*)(((uintptr_t)(pQH))|(epaddr))
 #define EHCI_EP_GETQH(pVoid) (EHCI_QH*)(((uintptr_t)(pVoid))&~0xFU)
 #define EHCI_EP_GETADDR(pVoid) (((uintptr_t)(pVoid))&0xFU)
@@ -40,6 +42,9 @@ static BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI);
 static void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run);
 static void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto);
 static void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Request* pRequest, void* pBuffer);
+static void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail);
+static void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH);
+
 
 BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 {
@@ -138,12 +143,8 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
-    //clear all sts
-    DPMI_StoreD(OperationalBase+USBSTS, ~0);
-
-    //enable interrups
-    DPMI_StoreD(OperationalBase+USBINTR, (/*INTonAsyncAdvanceEN|*/INTHostSysErrorEN|INTPortChangeEN|USBERRINTEN|USBINTEN));
-
+    DPMI_StoreD(OperationalBase+USBSTS, ~0); //clear all sts
+    DPMI_StoreD(OperationalBase+USBINTR, EHCI_INTERRUPTS); //enable interrups
     DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
     EHCI_RunStop(pHCI, TRUE);
     return TRUE;
@@ -176,8 +177,35 @@ BOOL EHCI_DeinitController(HCD_Interface* pHCI)
 
 BOOL EHCI_ISR(HCD_Interface* pHCI)
 {
-    #error not implemented.
-    return FALSE;
+    EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
+    uint32_t sts = DPMI_LoadD(pHCData->OPBase+USBSTS);
+    if(!(sts&USBERRINT) && !(sts&USBINT))
+        return FALSE;
+    DPMI_StoreD(pHCData->OPBase+USBINTR, 0); //disable interrupts
+
+    if(sts&INTonAsyncAdvance)
+        DPMI_StoreD(pHCData->OPBase+USBSTS, INTonAsyncAdvance);//clear
+    if(sts&HostSysError)
+    {
+        DPMI_StoreD(pHCData->OPBase+USBSTS, HostSysError);//clear
+        EHCI_RunStop(pHCI, TRUE);
+    }
+    if(sts&FrameListRollover)
+        DPMI_StoreD(pHCData->OPBase+USBSTS, FrameListRollover);
+    if(sts&PortChangeDetect)
+        DPMI_StoreD(pHCData->OPBase+USBSTS, PortChangeDetect);
+
+    //process QH & qTDs
+    EHCI_ISR_QH(pHCI, &pHCData->ControlQH, pHCData->ControlTail);
+    EHCI_ISR_QH(pHCI, &pHCData->BulkQH, pHCData->BulkTail);
+    for(int i = 0 ; i < 11; ++i)
+        EHCI_ISR_QH(pHCI, &pHCData->InterruptQH[i], pHCData->InterruptTail[i]);
+
+    //process iTDs & siTDs TODO:
+    
+    DPMI_StoreD(pHCData->OPBase+USBSTS, sts&(USBERRINT|USBINT));
+    DPMI_StoreD(pHCData->OPBase+USBINTR, EHCI_INTERRUPTS); //enable interrupts
+    return TRUE;
 }
 
 uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t inputp setup8[8],
@@ -240,7 +268,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 
     // build setup TD
     CLIS();
-    EHCI_qTD* pSetupTD = pQH->EXT.pTail;
+    EHCI_qTD* pSetupTD = pQH->EXT.Tail;
     assert(pSetupTD->EXT.Prev == NULL);
     EHCI_QToken stt = token;
     stt.Active = 0;
@@ -248,7 +276,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     stt.Length = 8;
     stt.DataToggle = 0; //setup data toggle always 0
     EHCI_BuildqTD(pSetupTD, length ? pDataTD : pStatusTD, stt, pRequest, setup8);
-    pQH->EXT.pTail = pEnd;
+    pQH->EXT.Tail = pEnd;
     // start transfer
     pSetupTD->Token.Active = 1;
     uint8_t error = 0;
@@ -259,7 +287,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
 {
-    assert(false); //not implemented
+    assert(false); //not implemented. TODO:
     return 0xFF;
 }
 
@@ -275,7 +303,7 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     assert(MaxLen);
     uint8_t Toggle = pQH->Token.DataToggle;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, bEndpoint, pCB, pCBData);
-    EHCI_qTD* pHead = pQH->EXT.pTail;
+    EHCI_qTD* pHead = pQH->EXT.Tail;
     EHCI_qTD* pEnd = NULL;
 
     EHCI_QToken token = {0};
@@ -297,15 +325,15 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         tk.Active = (transferred != 0) ? 1 : 0; 
         tk.DataToggle = Toggle;
         tk.Length = PacketLength;
-        EHCI_BuildqTD(pQH->EXT.pTail, pNewTail, tk, pRequest, (char*)pBuffer + transferred);
+        EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, tk, pRequest, (char*)pBuffer + transferred);
         Toggle ^=1;
         transferred = (uint16_t)(transferred + PacketLength);
 
         assert(transferred == length || align((char*)pBuffer + transferred, 4096) == (uint32_t)pBuffer + transferred);
         MaxLen = EHCI_qTD_MaxSize;
 
-        pEnd = pQH->EXT.pTail;
-        pQH->EXT.pTail = pNewTail;
+        pEnd = pQH->EXT.Tail;
+        pQH->EXT.Tail = pNewTail;
     }
     //start transfer
     pHead->Token.Active = 1;
@@ -439,7 +467,7 @@ BOOL EHCI_RemoveDevice(HCD_Device* pDevice)
     EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
     EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
     //EHCI_DetachQH(&pDeviceData->ControlQH, &pHCData->ControlQH, &pHCData->ControlTail);
-    //USB_TFree32(pDeviceData->ControlQH.EXT.pTail);
+    //USB_TFree(pDeviceData->ControlQH.EXT.Tail);
     DPMI_DMAFree(pDeviceData);
     return FALSE;
 }
@@ -519,7 +547,7 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         pDeviceData->ControlEPCreated = FALSE;
 
     BOOL result = FALSE;
-    EHCI_qTD* pTail = pQH->EXT.pTail;
+    EHCI_qTD* pTail = pQH->EXT.Tail;
     EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
     uint8_t bTransferType = pQH->EXT.TransferType;
 
@@ -538,7 +566,7 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     while(pTail != NULL) //remove unfinished TD
     {
         EHCI_qTD* pPrev = pTail->EXT.Prev;
-        USB_TFree32(pTail);
+        USB_TFree(pTail);
         pTail = pPrev;
     }
     return result;
@@ -643,7 +671,7 @@ void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto)
     pInit->qTDAltNext.T = 1;
     EHCI_qTD* pTD = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
     memset(pTD, 0, sizeof(EHCI_qTD)); //pTD->Token.Active = 0;
-    pInit->EXT.pTail = pTD;
+    pInit->EXT.Tail = pTD;
     pInit->qTDCurrent = DPMI_PTR2P(pTD);
 
     if(pLinkto)
@@ -690,7 +718,8 @@ void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Reques
     pTD->AltNext = pTD->Next;
 
     pTD->EXT.Request = pRequest;
-    pTD->EXT.Prev = pNext;
+    pTD->EXT.Next = pNext;
+    if(pNext) pNext->EXT.Prev = pTD;
 
     if(!token.Length)
         return;
@@ -711,4 +740,66 @@ void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Reques
         length -= size;
     }
     assert(length == 0);
+}
+
+void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail)
+{
+    assert(pHead != NULL && pTail != NULL);
+    while(pHead != pTail)
+    {
+        EHCI_ISR_qTD(pHCI, pHead);
+        while(pHead != pTail && pHead->HorizLink.Typ != Typ_QH)
+            pHead = (EHCI_QH*)DPMI_P2PTR(pHead->HorizLink.Ptr&~0xFUL);
+        assert(pHead != NULL);
+    }
+    EHCI_ISR_qTD(pHCI, pHead); //[pQH, pEnd]
+}
+
+void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
+{
+    // detach all inactive TD first, then issue callback, to prevent extra transferr happen in callback and break the in-processing list
+    EHCI_qTD* pTD = (pQH->qTDCurrent&~0xFUL) ? (EHCI_qTD*)DPMI_P2PTR(pQH->qTDCurrent&~0xFUL) : NULL;
+    EHCI_qTD* pList = NULL;
+    HCD_Request* pReq = NULL;
+    uint8_t error = 0;
+    while(pTD && pTD->EXT.Prev) pTD = pTD->EXT.Prev; //find head TD
+
+    while(pTD && pTD != pQH->EXT.Tail)
+    {
+        assert(pTD->EXT.Request);
+        EHCI_qTD* pNext = pTD->EXT.Next;
+        error |= (uint8_t)((pTD->Token.Status&EHCI_QTK_ERRORS));
+        if(!pTD->Token.Active || (error && pTD->EXT.Request == pReq)) //stop after first inactive request
+        {
+            assert(pTD->EXT.Prev == NULL); //prev should be inactive in queue
+            //remove from list
+            if(pNext)
+                pNext->EXT.Prev = pTD->EXT.Prev;
+            pTD->EXT.Next = pList;
+            pList = pTD;
+            pReq = pTD->EXT.Request;
+            pTD = pNext;
+        }
+        else
+            /*pTD = pNext;*/break;
+    }
+    if(pTD && error)
+    {
+        assert(!pTD->Token.Active && pTD == pQH->EXT.Tail || pTD->Token.Active);
+        pQH->qTDCurrent = DPMI_PTR2P(pTD);
+    }
+
+    while(pList) //release TD in reversed order
+    {
+        pTD = pList;
+        pList = pList->EXT.Next;
+        if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.Active)
+        {
+            uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
+            HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);
+        }
+        //_LOG("Free TD: %x ", pTD);
+        assert(pTD != pQH->EXT.Tail);
+        USB_TFree(pTD);
+    }
 }
