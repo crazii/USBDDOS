@@ -16,6 +16,7 @@ typedef struct HCD_RequestBlock HCD_Request;
 typedef struct //device in HC's view
 {
     uint8_t         bHubPort; //0 based port index
+    uint8_t         bHubAddress; //HUB device's address if this device connected to a HUB
     uint8_t         bAddress; //device address assigned outside by enumeration process
     uint8_t         bSpeed;
     uint8_t         bReserved;      //temp padding

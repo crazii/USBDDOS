@@ -13,8 +13,8 @@
 #define EHCI_INTERRUPTS (/*INTonAsyncAdvanceEN|*/INTHostSysErrorEN|INTPortChangeEN|USBERRINTEN|USBINTEN)
 
 #define EHCI_EP_MAKE(pQH, epaddr) (void*)(((uintptr_t)(pQH))|(epaddr))
-#define EHCI_EP_GETQH(pVoid) (EHCI_QH*)(((uintptr_t)(pVoid))&~0xFU)
-#define EHCI_EP_GETADDR(pVoid) (((uintptr_t)(pVoid))&0xFU)
+#define EHCI_EP_GETQH(pVoid) (EHCI_QH*)(((uintptr_t)(pVoid))&~0xFUL)
+#define EHCI_EP_GETADDR(pVoid) (((uintptr_t)(pVoid))&0xFUL)
 
 static uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
 static BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status);
@@ -131,15 +131,9 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     //setup cmd
     EHCI_USBCMD cmd = {0};
     cmd.IntThreshold = 0x8;
-    cmd.AsyncScheduleParkEN = 0;
-    cmd.AsyncScheduleParkCNT = 0;
-    cmd.LightHCRESET = 0;
-    cmd.INTonAsyncAdv = 0;
     cmd.AynscScheduleEN = 1; //enable async process
     cmd.PeroidicScheduleEN = 1; //enable peroidic process
     cmd.FLSize = FLS_4096;
-    cmd.HCReset = 0;
-    cmd.RunStop = 0;
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
@@ -221,11 +215,10 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     token.Active = 1;
     token.CERR = 3;
     token.C_Page = 0;
-    uint8_t bEndpoint = EHCI_EP_GETADDR(pEndpoint);
     uint16_t MaxLength = EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0); //pQH->Caps.MaxPacketSize;
-    HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pSetupData, length, bEndpoint, pCB, pCBData);
+    HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pSetupData, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
 
-    EHCI_qTD* pEnd = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
+    EHCI_qTD* pEnd = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN); //dummy end (tail)
     memset(pEnd, 0, sizeof(EHCI_qTD));
 
     // build status TD
@@ -298,11 +291,9 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     if(pCB == NULL || pQH == NULL || pQH->Token.PID != dir || pQH->EXT.TransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL || pBuffer == NULL || length == 0)
         return 0xFF;
 
-    uint8_t bEndpoint = EHCI_EP_GETADDR(pEndpoint);
     uint16_t MaxLen = EHCI_qTD_MaxSize - (length ? (uint32_t)(pBuffer) - alignup(pBuffer, 4096) : 0); //pQH->Caps.MaxPacketSize;
-    assert(MaxLen);
     uint8_t Toggle = pQH->Token.DataToggle;
-    HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, bEndpoint, pCB, pCBData);
+    HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
     EHCI_qTD* pHead = pQH->EXT.Tail;
     EHCI_qTD* pEnd = NULL;
 
@@ -317,15 +308,13 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     while(transferred < length)
     {
         uint16_t PacketLength = min((uint16_t)(length - transferred), MaxLen);
-        //Build TD with active state to start transfer
         EHCI_qTD* pNewTail = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
         memset(pNewTail, 0, sizeof(EHCI_qTD));
-        EHCI_QToken tk = token;
-        tk.IOC = (transferred + PacketLength == length) ? 1 : 0;
-        tk.Active = (transferred != 0) ? 1 : 0; 
-        tk.DataToggle = Toggle;
-        tk.Length = PacketLength;
-        EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, tk, pRequest, (char*)pBuffer + transferred);
+        token.IOC = (transferred + PacketLength == length) ? 1 : 0; //enable interrupt for last TD
+        token.Active = (transferred != 0) ? 1 : 0; 
+        token.DataToggle = Toggle;
+        token.Length = PacketLength;
+        EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, token, pRequest, (char*)pBuffer + transferred);
         Toggle ^=1;
         transferred = (uint16_t)(transferred + PacketLength);
 
@@ -353,7 +342,6 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
 
     if(status & ConnectStatus)
         result |= USB_PORT_ATTACHED;
-
     if(!(status & PortEnable)) //port not enabled for low/full speed device
     {
         DPMI_StoreD(addr, PortOwner); //release ownership to companion HC
@@ -369,10 +357,8 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
 
     if(status & PortSuspend)
         result |= USB_PORT_SUSPEND;
-
     if(status & PortReset) //in reset
         result |= USB_PORT_RESET;
-
     if(status & ConnectStatusChange)
         result |= USB_PORT_CONNECT_CHANGE;
     return result;
@@ -391,21 +377,15 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         const int timeout = 100; //5sec timeout
         DPMI_StoreD(addr, PortReset);
         int i = 0;
-        do
-        {
-            delay(55);// spec require at least 10ms, 50+ms get more compatibility
-            ++i;
-        } while(!(DPMI_LoadD(addr)&PortReset) && i < timeout);
+        do { delay(55); ++i; }//spec require at least 10ms, 50+ms get more compatibility
+        while(!(DPMI_LoadD(addr)&PortReset) && i < timeout);
         if(i == timeout)
             return FALSE;
 
-        DPMI_StoreD(addr, 0); //release reset signal
+        DPMI_StoreD(addr, PortEnable); //release reset signal
+
         i = 0;
-        do
-        {
-            delay(1);
-            ++i;
-        } while((DPMI_LoadD(addr)&PortReset) && i < timeout*50);
+        do { delay(1); ++i; } while((DPMI_LoadD(addr)&PortReset) && i < timeout);
         if(i == timeout)
             return FALSE;
         //DPMI_StoreD(addr, ConnectStatusChange|PortEnableChange);
@@ -421,29 +401,19 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     if((status&USB_PORT_DISABLE) && (current&PortEnable))
     {
         DPMI_StoreD(addr, 0);
-        do
-        {
-            delay(1);
-        } while((DPMI_LoadD(addr)&PortEnable));
+        do { delay(5); } while((DPMI_LoadD(addr)&PortEnable));
         DPMI_StoreD(addr, PortEnableChange); //clear states
     }
 
     if((status&USB_PORT_SUSPEND) && !(current&PortSuspend))
     {
-        do
-        {
-            DPMI_StoreD(addr, PortSuspend);
-            delay(1);
-        } while(!(DPMI_LoadD(addr)&PortSuspend));
+        do { DPMI_StoreD(addr, PortSuspend); delay(5); } while(!(DPMI_LoadD(addr)&PortSuspend));
     }
 
     if((status&USB_PORT_CONNECT_CHANGE))
     {
         DPMI_StoreD(addr, ConnectStatusChange); //clear connect status change
-        do
-        {
-            delay(10);
-        } while(DPMI_LoadD(addr)&ConnectStatusChange);
+        do { delay(10); } while(DPMI_LoadD(addr)&ConnectStatusChange);
         delay(150);
     }
     return TRUE;
@@ -610,48 +580,40 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)(uintptr_t)FrameList;
-
-    int i; //for BC
-    for(i = 0; i < 11; ++i)
+    for(int i = 0; i < 11; ++i)
     {
         pHCData->InterruptQH[i].HorizLink.Ptr = (Typ_QH<<Typ_Shift) | Tbit;
         pHCData->InterruptTail[i] = &pHCData->InterruptQH[i];
     }
-    for(i = 0; i < 1024; ++i)
+    for(int i = 0; i < 1024; ++i)
         flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
 
     int offset = 0;
-    for(i = 10; i >= 3; --i)
+    for(int i = 10; i >= 3; --i)
     {
         int step = 1<<i;
-        int j;
-        for(j = offset++; j < 1024; j+=step)
+        for(int j = offset++; j < 1024; j+=step)
         {
             EHCI_FLEP* ptr = &flep[j];
-            assert(ptr->Ptr == 0);
-            ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
-            ptr->T = 0;
+            assert(ptr->Ptr == ((Typ_QH<<Typ_Shift) | Tbit));
+            ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
         }
     }
 
-    for(i = 2; i >= 0; --i)
+    for(int i = 2; i >= 0; --i)
     {
         int step = 1<<i;
-        int j;
-        for(j = 0; j < 1024; j+=step)
+        for(int j = 0; j < 1024; j+=step)
         {
             EHCI_FLEP* ptr = &flep[j];
             EHCI_QH* last = NULL;
             while((ptr->Ptr&0xFFFFFFF0UL) != 0)
             {
-                last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr);
+                last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr&~0x1FUL);
                 ptr = &(last->HorizLink);
             }
             if(last != &pHCData->InterruptQH[i])
-            {
-                ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
-                ptr->T = 0;
-            }
+                ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
         }
     }
     return TRUE;
@@ -694,7 +656,7 @@ BOOL EHCI_DetachQH(EHCI_QH* pQH, EHCI_QH* pLinkHead, EHCI_QH** ppLinkEnd)
     while(qh != *ppLinkEnd && qh != pQH)
     {
         prevQH = qh;
-        qh = (qh->HorizLink.Ptr&~0xFUL) ? (EHCI_QH*)DPMI_P2PTR(qh->HorizLink.Ptr&~0xFUL) : NULL;
+        qh = (qh->HorizLink.Ptr&~0x1FUL) ? (EHCI_QH*)DPMI_P2PTR(qh->HorizLink.Ptr&~0x1FUL) : NULL;
         assert(qh != NULL);
     }
     if(qh != pQH)
@@ -749,7 +711,7 @@ void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail)
     {
         EHCI_ISR_qTD(pHCI, pHead);
         while(pHead != pTail && pHead->HorizLink.Typ != Typ_QH)
-            pHead = (EHCI_QH*)DPMI_P2PTR(pHead->HorizLink.Ptr&~0xFUL);
+            pHead = (EHCI_QH*)DPMI_P2PTR(pHead->HorizLink.Ptr&~0x1FUL);
         assert(pHead != NULL);
     }
     EHCI_ISR_qTD(pHCI, pHead); //[pQH, pEnd]
@@ -758,7 +720,7 @@ void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail)
 void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
 {
     // detach all inactive TD first, then issue callback, to prevent extra transferr happen in callback and break the in-processing list
-    EHCI_qTD* pTD = (pQH->qTDCurrent&~0xFUL) ? (EHCI_qTD*)DPMI_P2PTR(pQH->qTDCurrent&~0xFUL) : NULL;
+    EHCI_qTD* pTD = (pQH->qTDCurrent&~0x1FUL) ? (EHCI_qTD*)DPMI_P2PTR(pQH->qTDCurrent&~0x1FUL) : NULL;
     EHCI_qTD* pList = NULL;
     HCD_Request* pReq = NULL;
     uint8_t error = 0;
