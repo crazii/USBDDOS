@@ -15,6 +15,7 @@
 #include "USBDDOS/USB.H"
 #include "USBDDOS/HCD/OHCI.H"
 #include "USBDDOS/HCD/UHCI.H"
+#include "USBDDOS/HCD/EHCI.H"
 #include "USBDDOS/CLASS/CDC.H"
 #include "USBDDOS/CLASS/MSC.H"
 #include "USBDDOS/CLASS/HID.H"
@@ -43,9 +44,10 @@ USB_Table USBT =
         },
         //EHCI
         {
-            0x20,
-            NULL,
-            NULL,
+            EHCI_PI, //0x20,
+            EHCI_InitController,
+            EHCI_DeinitController,
+            EHCI_ISR,
         },
     },
 
