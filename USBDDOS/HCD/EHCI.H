@@ -4,16 +4,17 @@
 
 //Enhanced Host Controller Interface Specification for Universal Serial Bus (ehci-specification-for-usb)
 
-//PIC configuration space
+#define EHCI_PI 0x20    //PCI programming interface
+
+#ifdef _EHCI_IMPL //avoid headers/defines polution
+
+//PCI configuration space
 #define USBBASE 0x10    //RW, 4, (MM) IO base
 # define USBBASE_MM32 0x0 //bit1~2 of USBBASE,RO, 00
 # define USBBASE_MM64 0x4 //bit1~2 of USBBASE,RO, 10
 #define SBRN    0x60    //RO, 1, Serial bus release number
 #define FLADJ   0x61    //RW, 1, Frame length adjustment
 #define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
-
-#define EHCI_PI 0x20    //PCI programming interface
-
 
 //EHCI register offsets (USBBASE)
 //capabilities (RO)
@@ -62,8 +63,8 @@ typedef struct _EHCI_CAPS //helper structs
 }EHCI_CAPS;
 
 //MUST check EECP != 0 before using it
-#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (ehci_cap->EECP+0) //RO/RW, 4
-#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (ehci_cap->EECP+4) //RO/RW/RWC, 4
+#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap->EECP+0) //RO/RW, 4
+#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap->EECP+4) //RO/RW/RWC, 4
 
 #define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
 #define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
@@ -92,7 +93,7 @@ typedef union _LEGSUP
         uint8_t OS_Owned : 1;
         uint8_t Reserved1 : 7;
     };
-}LEGSUP;
+}ECHI_LEGSUP;
 //USBLEGCTLSTS
 #define SMIonBAR BIT31 //RWC
 #define SMIonPCICMD BIT30 //RWC
@@ -163,7 +164,7 @@ typedef union _EHCI_USBCMD
     };
 }EHCI_USBCMD;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_USBCMD)==4);
+_Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 #endif
 
 
@@ -188,7 +189,7 @@ _Static_assert(sizeof(EHCI_USBCMD)==4);
 #define USBINTEN BIT0
 
 //CONFIGFLAG
-#define ConfigureFlag 0x1 //RW, last action
+#define ConfigureFlag BIT0 //RW, last action
 
 //PORTSCs
 #define WKOC_E BIT22 //RW
@@ -218,6 +219,12 @@ _Static_assert(sizeof(EHCI_USBCMD)==4);
 #define ConnectStatusChange BIT1 //RWC
 #define ConnectStatus BIT0 //RO
 
+#endif //_EHCI_IMPL
+
+//structures
+struct _EHCI_CAPS;
+typedef struct _EHCI_CAPS EHCI_CAPS;
+
 //Periodic frame list
 #define Tbit 0x1 //terminate
 #define Typ_iTD 0x0
@@ -237,8 +244,9 @@ typedef union FLElementPointer //frame list element pointer
         uint16_t Hw : 16; //28 bit ptr by spec (but spec require it reference 32bytes aligned object, so we use 27bit)
     };
 }EHCI_FLEP;
-
-//structures
+#if defined(__DJ2__)
+_Static_assert(sizeof(EHCI_FLEP)==4, "incorrect size/alignment");
+#endif
 
 //iTD
 typedef struct IsoTransferDescriptor
@@ -261,7 +269,7 @@ typedef struct IsoTransferDescriptor
     union BufferPagePointerList
     {
         uint32_t Val;
-        struct BufferPage0
+        struct iBufferPage0
         {
             uint16_t DeviceAddr : 7;
             uint16_t Reserved0 : 1;
@@ -269,14 +277,14 @@ typedef struct IsoTransferDescriptor
             uint16_t PtrLw : 4; //4k aligned
             uint16_t PtrHw : 16;
         }BP0;
-        struct BufferPage1
+        struct iBufferPage1
         {
             uint16_t MaxPacketSize : 11;
             uint16_t IO : 1; //direction. Out=0,In=1
             uint16_t PtrLw : 4;
             uint16_t PtrHw : 16;
         }BP1;
-        struct BufferPage2
+        struct iBufferPage2
         {
             uint16_t Multi : 2;
             uint16_t Reserved2 : 10;
@@ -293,7 +301,7 @@ typedef struct IsoTransferDescriptor
 
 }EHCI_iTD;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_iTD)==64);
+_Static_assert(sizeof(EHCI_iTD)==64, "incorrect size/alignment");
 #endif
 
 typedef struct SplitIsoTransferDescriptor
@@ -338,19 +346,19 @@ typedef struct SplitIsoTransferDescriptor
 
         uint8_t CProgMask;
         uint16_t Length : 10; //bytes to transfer (1023/3FF max)
-        uint16_t Reserved5 : 4;
+        uint16_t Reserved6 : 4;
         uint16_t P : 1; //page select
         uint16_t IOC : 1; //interrupt on completion
     }StatusCtl;
 
-    struct BufferPage0
+    struct siBufferPage0
     {
         uint16_t CurrentOffset : 12; //written back by HC
         uint16_t BufferPointerLw : 4;
         uint16_t BufferPointerHw : 16;
     }BP0;
 
-    struct BufferPage1
+    struct siBufferPage1
     {
         uint16_t TCount : 2; //transaction count
         uint16_t TP : 2; //transaction position
@@ -364,7 +372,7 @@ typedef struct SplitIsoTransferDescriptor
     uint32_t Padding;
 }EHCI_siTD;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_siTD)==32);
+_Static_assert(sizeof(EHCI_siTD)==32, "incorrect size/alignment");
 #endif
 
 #define PID_OUT 0
@@ -401,7 +409,7 @@ typedef struct QueueToken
     uint16_t DataToggle : 1;
 }EHCI_QToken;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_QToken)==32);
+_Static_assert(sizeof(EHCI_QToken)==4, "incorrect size/alignment");
 #endif
 
 //qTD
@@ -436,7 +444,7 @@ typedef struct QueueElementTD
     }EXT;
 }EHCI_qTD;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_qTD)==64);
+_Static_assert(sizeof(EHCI_qTD)==64, "incorrect size/alignment");
 #endif
 
 #define EPS_LOW  1
@@ -465,8 +473,8 @@ typedef struct QueueHead
     //Endpoint capabilities/characteristics 2
     struct EndpointCC2
     {
-        uint8_t uFrameSMask;
-        uint8_t uFrameCMask_1x; //periodic only
+        uint16_t uFrameSMask : 8;
+        uint16_t uFrameCMask_1x : 8; //periodic only
         uint16_t HubAddr_1x : 7;
         uint16_t PortNum_1x : 7;
         uint16_t Mult : 2; //high bandwith pipe multiplier (valid: 1~3)
@@ -489,28 +497,28 @@ typedef struct QueueHead
 
     EHCI_QToken Token;
 
-    union BufferPointer
+    union qhBufferPointer
     {
-        struct Page0
+        struct
         {
             uint16_t CurrentOffset : 12;
             uint16_t PtrLw : 4;
             uint16_t PtrHw : 16;
-        };
-        struct Page1
+        }Page0;
+        struct
         {
-            uint8_t CProgMask;
-            uint8_t ReservedP1;
+            uint16_t CProgMask : 8;
+            uint16_t ReservedP1 : 4;
             uint16_t PtrLw : 4;
             uint16_t PtrHw : 16;
-        };
-        struct Page2
+        }Page1;
+        struct
         {
             uint16_t FrameTag : 5;
             uint16_t SBytes : 7;
             uint16_t PtrLw : 4;
             uint16_t PtrHw : 16;
-        };
+        }Page2;
         //page 3&4 low 12 bits reserved
     }BufferPointers[5];
 
@@ -529,7 +537,7 @@ typedef struct QueueHead
     }EXT;
 }EHCI_QH;
 #if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_QH)==64);
+_Static_assert(sizeof(EHCI_QH)==64, "incorrect size/alignment");
 #endif
 
 //FSTN: periodic frame span traversal node

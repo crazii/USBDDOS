@@ -4,6 +4,7 @@
 #include <conio.h>
 #include <string.h>
 #include <assert.h>
+#define _EHCI_IMPL
 #include "USBDDOS/HCD/EHCI.H"
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/DPMI/XMS.H"
@@ -41,6 +42,7 @@ static void EHCI_ResetHC(HCD_Interface* pHCI);
 static BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI);
 static void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run);
 static void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto);
+static BOOL EHCI_DetachQH(EHCI_QH* pQH, EHCI_QH* pLinkHead, EHCI_QH** ppLinkEnd);
 static void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Request* pRequest, void* pBuffer);
 static void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail);
 static void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH);
@@ -137,7 +139,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
-    DPMI_StoreD(OperationalBase+USBSTS, ~0); //clear all sts
+    DPMI_StoreD(OperationalBase+USBSTS, ~0UL); //clear all sts
     DPMI_StoreD(OperationalBase+USBINTR, EHCI_INTERRUPTS); //enable interrups
     DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
     EHCI_RunStop(pHCI, TRUE);
@@ -215,7 +217,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     token.Active = 1;
     token.CERR = 3;
     token.C_Page = 0;
-    uint16_t MaxLength = EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0); //pQH->Caps.MaxPacketSize;
+    uint16_t MaxLength = (uint16_t)(EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0)); //pQH->Caps.MaxPacketSize;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pSetupData, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
 
     EHCI_qTD* pEnd = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN); //dummy end (tail)
@@ -226,7 +228,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     EHCI_QToken st = token;
     st.IOC = 1;
     st.DataToggle = 1; //status data toggle always 1
-    st.PID = StatusPID;
+    st.PID = StatusPID&0x3U;
     EHCI_BuildqTD(pStatusTD, pEnd, st, pRequest, 0);
 
     // build data TD
@@ -245,9 +247,9 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
             pNext = (Transferred + DataLength == length) ? pStatusTD : (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
             if(pNext != pStatusTD) memset(pNext, 0, sizeof(EHCI_qTD));
             EHCI_QToken dt = token;
-            dt.Length = DataLength;
-            dt.DataToggle = DataToggle;
-            dt.PID = DataPID;
+            dt.Length = DataLength&0x7FFFU;
+            dt.DataToggle = DataToggle&0x1U;
+            dt.PID = DataPID&0x3U;
             EHCI_BuildqTD(pTD, pNext, dt, pRequest, (char*)pSetupData + Transferred);
             DataToggle ^= 1;
 
@@ -280,7 +282,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
 {
-    assert(false); //not implemented. TODO:
+    assert(FALSE); //not implemented. TODO:
     return 0xFF;
 }
 
@@ -291,11 +293,10 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     if(pCB == NULL || pQH == NULL || pQH->Token.PID != dir || pQH->EXT.TransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL || pBuffer == NULL || length == 0)
         return 0xFF;
 
-    uint16_t MaxLen = EHCI_qTD_MaxSize - (length ? (uint32_t)(pBuffer) - alignup(pBuffer, 4096) : 0); //pQH->Caps.MaxPacketSize;
+    uint16_t MaxLen = (uint16_t)(EHCI_qTD_MaxSize - (length ? (uint32_t)(pBuffer) - alignup(pBuffer, 4096) : 0)); //pQH->Caps.MaxPacketSize;
     uint8_t Toggle = pQH->Token.DataToggle;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
     EHCI_qTD* pHead = pQH->EXT.Tail;
-    EHCI_qTD* pEnd = NULL;
 
     EHCI_QToken token = {0};
     token.CERR = 3;
@@ -312,8 +313,8 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         memset(pNewTail, 0, sizeof(EHCI_qTD));
         token.IOC = (transferred + PacketLength == length) ? 1 : 0; //enable interrupt for last TD
         token.Active = (transferred != 0) ? 1 : 0; 
-        token.DataToggle = Toggle;
-        token.Length = PacketLength;
+        token.DataToggle = Toggle&0x1U;
+        token.Length = PacketLength&0x7FFFU;
         EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, token, pRequest, (char*)pBuffer + transferred);
         Toggle ^=1;
         transferred = (uint16_t)(transferred + PacketLength);
@@ -321,7 +322,6 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         assert(transferred == length || align((char*)pBuffer + transferred, 4096) == (uint32_t)pBuffer + transferred);
         MaxLen = EHCI_qTD_MaxSize;
 
-        pEnd = pQH->EXT.Tail;
         pQH->EXT.Tail = pNewTail;
     }
     //start transfer
@@ -336,7 +336,7 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
 {
     assert(port < pHCI->bNumPorts);
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
-    uint32_t addr = pHCData->OPBase + PORTSC + port*4;
+    uint32_t addr = pHCData->OPBase + PORTSC + port*4U;
     uint32_t status = DPMI_LoadD(addr);
     uint16_t result = 0;
 
@@ -345,7 +345,7 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
     if(!(status & PortEnable)) //port not enabled for low/full speed device
     {
         DPMI_StoreD(addr, PortOwner); //release ownership to companion HC
-        result &= ~USB_PORT_ATTACHED;
+        result &= (uint16_t)(~USB_PORT_ATTACHED);
     }
     else if(status & ConnectStatus)
         result |= USB_PORT_High_Speed_Device;
@@ -369,7 +369,7 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     if(port > pHCI->bNumPorts || !pHCI);
         return FALSE;
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
-    uint32_t addr = pHCData->OPBase + PORTSC + port*4;
+    uint32_t addr = pHCData->OPBase + PORTSC + port*4U;
     uint32_t current = DPMI_LoadD(addr);
     
    if((status&USB_PORT_RESET))
@@ -435,7 +435,7 @@ BOOL EHCI_RemoveDevice(HCD_Device* pDevice)
     if(!HCD_IS_DEVICE_VALID(pDevice))
         return FALSE;
     EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
-    EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
+    //EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
     //EHCI_DetachQH(&pDeviceData->ControlQH, &pHCData->ControlQH, &pHCData->ControlTail);
     //USB_TFree(pDeviceData->ControlQH.EXT.Tail);
     DPMI_DMAFree(pDeviceData);
@@ -446,7 +446,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
 {
     EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
     EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
-    int EPS = (pDevice->bSpeed==USB_PORT_Low_Speed_Device) ? EPS_LOW : (pDevice->bSpeed==USB_PORT_Full_Speed_Device) ? EPS_FULL : EPS_HIGH;
+    uint16_t EPS = (pDevice->bSpeed==USB_PORT_Low_Speed_Device) ? EPS_LOW : (pDevice->bSpeed==USB_PORT_Full_Speed_Device) ? EPS_FULL : EPS_HIGH;
 
     if(EPAddr == 0) //default control pipe
     {
@@ -460,10 +460,10 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     assert(bTransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR || bInterval >= 1);
 
     EHCI_QH* pQH = EPAddr == 0 ? &pDeviceData->ControlQH : (EHCI_QH*)DPMI_DMAMalloc(sizeof(EHCI_QH), EHCI_ALIGN);
-    pQH->Caps.DeviceAddr = pDevice->bAddress;
-    pQH->Caps.Endpoint = EPAddr;
-    pQH->Caps.EndpointSpd = EPS;
-    pQH->Caps.MaxPacketSize = MaxPacketSize;
+    pQH->Caps.DeviceAddr = pDevice->bAddress&0x3FU;
+    pQH->Caps.Endpoint = EPAddr&0xFU;
+    pQH->Caps.EndpointSpd = EPS&0x3U;
+    pQH->Caps.MaxPacketSize = MaxPacketSize&0x7FFU;
 
     pQH->Caps2.Mult = 1;
     pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? 0xF : 0;
@@ -475,16 +475,16 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
 
     if(pQH->Caps.EndpointSpd != EPS_HIGH)
     {
-        pQH->Caps2.PortNum_1x = pDevice->bHubPort;
+        pQH->Caps2.PortNum_1x = pDevice->bHubPort&0x3FU;
         //pQH->Caps2.HubAddr_1x = ? //TODO:
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
-            pQH->Caps2.uFrameCMask_1x = 0x1; //8 micro frames (1ms)
+            pQH->Caps2.uFrameCMask_1x = 0x1U; //8 micro frames (1ms)
     }
 
     if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
     {
         if(pQH->Caps.EndpointSpd != EPS_HIGH)
-            pQH->Caps.ControlEP_1x = 1;
+            pQH->Caps.ControlEP_1x = 1U;
         EHCI_InitQH(pQH, pHCData->ControlTail);
         pHCData->ControlTail = pQH;
     }
@@ -496,7 +496,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
     {
         bInterval = min(bInterval, 11); //clamp [1~16] to [1~11]
-        pQH->EXT.Interval = bInterval;
+        pQH->EXT.Interval = bInterval&0xFU;
         //EHCI_QH* head = &pHCData->InterruptQH[bInterval-1];
         EHCI_QH** tail = &pHCData->InterruptTail[bInterval-1];
         EHCI_InitQH(pQH, *tail);
@@ -693,13 +693,13 @@ void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Reques
     int i = 0;
     while(length > 0 && i < 5)
     {
-        uint32_t size = min(4096 - offset, length);
+        uint16_t size = (uint16_t)min(4096U - offset, length);
         pTD->BufferPages[i].Ptr = physaddr;
-        pTD->BufferPages[i].CurrentOffset = offset;
+        pTD->BufferPages[i].CurrentOffset = offset&0xFFFU;
 
         offset = 0;
         physaddr += 4096;
-        length -= size;
+        length = (uint16_t)(length-size);
     }
     assert(length == 0);
 }
@@ -730,7 +730,8 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
     {
         assert(pTD->EXT.Request);
         EHCI_qTD* pNext = pTD->EXT.Next;
-        error |= (uint8_t)((pTD->Token.Status&EHCI_QTK_ERRORS));
+        uint8_t errmask = (uint8_t)(pTD->Token.Status&EHCI_QTK_ERRORS); //workaround -Wconversion bug
+        error |= errmask;
         if(!pTD->Token.Active || (error && pTD->EXT.Request == pReq)) //stop after first inactive request
         {
             assert(pTD->EXT.Prev == NULL); //prev should be inactive in queue
