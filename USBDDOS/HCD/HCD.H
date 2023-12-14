@@ -89,6 +89,7 @@ typedef struct HCD_HostrControllerDriverMethod
 typedef struct HCD_HostControllerType
 {
     uint32_t dwPI;    //program interface
+    const char* name;
     BOOL (*InitController)(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev);
     BOOL (*DeinitController)(HCD_Interface* pHCI);
     BOOL (*ISR)(HCD_Interface* pHCI); //DON'T do IO, memory allocation in ISR.

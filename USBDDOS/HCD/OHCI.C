@@ -507,10 +507,7 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     uint32_t cur = DPMI_LoadD(dwPortAddr);
 
     if(!(cur & CurrentConnectStatus))
-    {
-        assert(FALSE);
         return FALSE;
-    }
 
     // setting bits to 0 always has no effect by OHCI spec, so we just set the effective bit
     if(status & USB_PORT_RESET)

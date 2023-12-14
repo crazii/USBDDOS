@@ -31,6 +31,7 @@ USB_Table USBT =
         //UHCI
         {
             0x00,
+            "UHCI",
             UHCI_InitController,
             UHCI_DeinitController,
             UHCI_ISR,
@@ -38,6 +39,7 @@ USB_Table USBT =
         //OHCI
         {
             0x10,
+            "OHCI",
             OHCI_InitController,
             OHCI_DeinitController,
             OHCI_ISR,
@@ -45,6 +47,7 @@ USB_Table USBT =
         //EHCI
         {
             EHCI_PI, //0x20,
+            "EHCI",
             EHCI_InitController,
             EHCI_DeinitController,
             EHCI_ISR,

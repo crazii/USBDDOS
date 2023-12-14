@@ -55,7 +55,7 @@ typedef struct
 static USB_ISR_Finalizer USB_ISR_FinalizerHeader;
 static USB_ISR_Finalizer* USB_ISR_FinalizerPtr;
 static DPMI_ISR_HANDLE USB_ISRHandle[USB_MAX_HC_COUNT];
-static BOOL USB_IRQShared[USB_MAX_HC_COUNT];
+#define ISR_HANDLE_SHARED(i) USB_ISRHandle[i].user
 static BOOL USB_InISR = FALSE;
 static uint16_t USB_IRQMask = 0;
 
@@ -71,6 +71,13 @@ static void USB_ISR_Wraper(void);
 static __INLINE void USB_ISR(void);
 static void USB_Completion_SyncCallback(HCD_Request* pRequest); //calledin hc driver interrupt handler
 static void USB_Completion_UserCallback(HCD_Request* pRequest); //calledin hc driver interrupt handler
+
+static int USB_ComparePI(const void* l, const void* r) //compare PCI programming interface
+{
+    const HCD_Interface* pHCIL = (HCD_Interface*)l;
+    const HCD_Interface* pHCIR = (HCD_Interface*)r;
+    return (long)pHCIR->pType->dwPI - (long)pHCIL->pType->dwPI; //large PI comes first
+}
 
 void USB_Init(void)
 {
@@ -97,7 +104,7 @@ void USB_Init(void)
     {
         for(uint8_t dev = 0; dev < PCI_MAX_DEV; dev++)
         {
-            for(uint8_t func = 0; func < PCI_MAX_FUNC; func++)
+            for(uint8_t func = 0; func < PCI_MAX_FUNC; ++func)
             {//some controller has multiple functions (i.e. 0 - UHCI,1 - UHCI,2 - UHCI,x - EHCI)
                 PCI_DEVICE pcidev;
                 PCI_ReadDevice(bus, dev, func, &pcidev);
@@ -113,6 +120,17 @@ void USB_Init(void)
             }
         }
     }
+    
+    //sort by programing interface so that advanced HC comes first
+    //so we can detect 2.0 devices first instead of its compation HC.
+    //after sorting, USB_ISRHandle won't match the HC_List, but that won't hurt
+    
+    //note: on detection HC, we can reverse function search order that it iterates from high to low
+    //since ECHI specs require ECHI has higher function num than its companion HC
+    //but on some machine (VirtualBox sometimes) they are on a separated bus
+    //so sorting would be a better solution
+    qsort(USBT.HC_List, USBT.HC_Count, sizeof(HCD_Interface), USB_ComparePI);
+
     USB_EnumerateDevices();
     return;
 }
@@ -137,7 +155,7 @@ void USB_Shutdown(void)
     PIC_SetIRQMask(USB_IRQMask);
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
-        if(USB_ISRHandle[j].n && !USB_IRQShared[j])
+        if(USB_ISRHandle[j].n && !ISR_HANDLE_SHARED(j))
         {
             _LOG("Unstalling ISR, IRQ: %d, Vector: 0x%02x\n", PIC_VEC2IRQ(USB_ISRHandle[j].n), USB_ISRHandle[j].n);
             DPMI_UninstallISR(&USB_ISRHandle[j]);
@@ -201,7 +219,7 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
             if(handle != NULL)
             {
                 USB_ISRHandle[index] = *handle;
-                USB_IRQShared[index] = TRUE;
+                ISR_HANDLE_SHARED(index) = 1;
             }
             else if(DPMI_InstallISR(iv, USB_ISR_Wraper, &USB_ISRHandle[index]) != 0)
             {
@@ -296,7 +314,7 @@ BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus)
         }
     }
     
-    printf("Error intializing device at port: %d.\n", portIndex);
+    printf("Error initializing device at port: %d.\n", portIndex);
     USB_RemoveDevice(pDevice);
     return FALSE;
 }
@@ -656,8 +674,9 @@ static void USB_EnumerateDevices()
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
         HCD_Interface* pHCI = &USBT.HC_List[j];
+        _LOG("Enumerate device for %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function);
 
-        {    //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
+        {   //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
             for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
             {
                 uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
@@ -857,24 +876,17 @@ void USB_ISR(void)
     if(irq == 0xFF)
         return;
     BOOL handled = FALSE;
-    //_LOG("USB_ISR: irq: %d\n",irq);
     USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
 
-    const uint8_t vec = PIC_IRQ2VEC(irq);
-
-    int i;
-    for(i = 0; i < USBT.HC_Count; ++i)
+    for(int i = 0; i < USBT.HC_Count; ++i)
     {
-        if(USB_ISRHandle[i].n == vec)
-        {
-            HCD_Interface* pHCI = &USBT.HC_List[i];
-            if(!HCD_IS_CONTROLLER_VALID(pHCI))
-                continue;
-            if(pHCI->PCI.Header.DevHeader.Device.IRQ != irq)
-                continue;
-            if((handled=pHCI->pType->ISR(pHCI)) != 0)
-                break; //exit. level triggered event will still exist for next device
-        }
+        HCD_Interface* pHCI = &USBT.HC_List[i];
+        if(!HCD_IS_CONTROLLER_VALID(pHCI))
+            continue;
+        if(pHCI->PCI.Header.DevHeader.Device.IRQ != irq)
+            continue;
+        if((handled=pHCI->pType->ISR(pHCI)) != 0)
+            break; //exit. level triggered event will still exist for next device
     }
     //default handler is empty (IRQ 9~11) and do nothing, not even EOI
     //assume 3rd party driver handler exist if previous irq mask bit is clear

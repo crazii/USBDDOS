@@ -941,7 +941,7 @@ void USB_MSC_PreInit()
                 {
                     _LOG("Drive %c IntEntry OK.\n", 'A' + CDSIndex);
                     //uint32_t bpb = DPMI_LoadD(DPMI_SEGOFF2L(DrvMem, offsetof(DOS_DRS, BuildBPB.BPBPtr)));
-                    #if DEBUG
+                    #if DEBUG && 0
                     _LOG("Drive %c BPB:\n", 'A'+ CDSIndex);
                     DBG_DumpLB(DPMI_SEGOFF2L(SectorBuffer, 11), sizeof(DOS_BPB), NULL);
                     #endif

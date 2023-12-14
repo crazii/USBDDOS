@@ -6,16 +6,6 @@
 
 #define EHCI_PI 0x20    //PCI programming interface
 
-#ifdef _EHCI_IMPL //avoid headers/defines polution
-
-//PCI configuration space
-#define USBBASE 0x10    //RW, 4, (MM) IO base
-# define USBBASE_MM32 0x0 //bit1~2 of USBBASE,RO, 00
-# define USBBASE_MM64 0x4 //bit1~2 of USBBASE,RO, 10
-#define SBRN    0x60    //RO, 1, Serial bus release number
-#define FLADJ   0x61    //RW, 1, Frame length adjustment
-#define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
-
 //EHCI register offsets (USBBASE)
 //capabilities (RO)
 #define CAPLENGTH   0x00 //1
@@ -61,18 +51,31 @@ typedef struct _EHCI_CAPS //helper structs
     };
     uint64_t hcspPortRoute;
 }EHCI_CAPS;
+#if defined( __DJ2__)
+_Static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
+#endif
+
+#ifdef _EHCI_IMPL //avoid defines polution
+
+//PCI configuration space
+#define USBBASE 0x10    //RW, 4, (MM) IO base
+# define USBBASE_MM32 0x0 //bit1~2 of USBBASE,RO, 00
+# define USBBASE_MM64 0x4 //bit1~2 of USBBASE,RO, 10
+#define SBRN    0x60    //RO, 1, Serial bus release number
+#define FLADJ   0x61    //RW, 1, Frame length adjustment
+#define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
 
 //MUST check EECP != 0 before using it
-#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap->EECP+0) //RO/RW, 4
-#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap->EECP+4) //RO/RW/RWC, 4
+#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.EECP+0) //RO/RW, 4
+#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.EECP+4) //RO/RW/RWC, 4
 
-#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
-#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
-#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
-#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap->EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
+#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
+#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
+#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
+#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
 
-#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
-#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap->EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
+#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
+#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
 
 //USBLEGSUP: legacy support
 #define HC_OS_Owned_Semaphore BIT24 //RW
@@ -222,8 +225,6 @@ _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 #endif //_EHCI_IMPL
 
 //structures
-struct _EHCI_CAPS;
-typedef struct _EHCI_CAPS EHCI_CAPS;
 
 //Periodic frame list
 #define Tbit 0x1 //terminate
@@ -559,8 +560,8 @@ typedef struct EHCI_HostControllerDriverData
     EHCI_QH InterruptQH[11]; //2^(0~10), the bInterval of INTR(/ISO) endpoint for USB2.0 ranges from 1~16, in 2^(bInterval-1) micro frames (125us)
 
     //no aligment
+    EHCI_CAPS Caps;
     uint32_t OPBase; //operational regs base
-    const EHCI_CAPS* Caps;
     EHCI_QH* ControlTail;
     EHCI_QH* BulkTail;
     EHCI_QH* InterruptTail[11];

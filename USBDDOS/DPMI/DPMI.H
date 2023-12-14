@@ -77,6 +77,7 @@ typedef struct //old interrupt handler info returned by install isr.
     uint16_t rm_offset;
     uint16_t rm_cs;
     uint8_t n; //INTn
+    uint8_t user; //user defined
 }DPMI_ISR_HANDLE;
 
 #ifdef __cplusplus
