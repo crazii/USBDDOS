@@ -2,6 +2,8 @@
 #include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
 
+#if USBALLOC_ENABLE
+
 #define USBALLOC_FLAG_USED  0x01
 #define USBALLOC_FLAG_32    0x02
 
@@ -313,3 +315,5 @@ void USBALLOC_TransientFree32(void* ptr)
     STIL();
     assert(FALSE);
 }
+
+#endif //USBALLOC_ENABLE

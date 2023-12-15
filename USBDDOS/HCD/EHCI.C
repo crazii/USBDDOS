@@ -58,12 +58,12 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     EHCI_CAPS caps;
     DPMI_CopyLinear(DPMI_PTR2L(&caps), pHCI->dwBaseAddress, sizeof(caps));
     uint32_t OperationalBase = pHCI->dwBaseAddress + caps.Size;
-    pHCI->bNumPorts = caps.N_PORTS;
+    pHCI->bNumPorts = caps.hcsParamsBm.N_PORTS;
 
     //first things to do is to take ownership from BIOS and reset HC.
 
     //take ownership & disable SMI
-    if(caps.EECP)
+    if(caps.hccParamsBm.EECP)
     {
         uint32_t legsup = READ_USBLEGSUP2(pPCIDev, caps);
         //uint32_t legctlsts = READ_USBLEGCTLSTS2(pPCIDev, caps);
@@ -128,15 +128,15 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->ControlTail = &pHCData->ControlQH;
     pHCData->BulkTail = &pHCData->BulkQH;
     pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH) | (Typ_QH<<Typ_Shift);
-    pHCData->BulkQH.HorizLink.T = 1;
-    pHCData->ControlQH.Token.Halted = pHCData->BulkQH.Token.Halted = 1; //dummy heads
+    pHCData->BulkQH.HorizLink.Bm.T = 1;
+    pHCData->ControlQH.Token.StatusBm.Halted = pHCData->BulkQH.Token.StatusBm.Halted = 1; //dummy heads
     DPMI_StoreD(OperationalBase+ASYNCLISTADDR, DPMI_PTR2P(&pHCData->ControlQH) | (Typ_QH<<Typ_Shift));
 
     //setup cmd
     EHCI_USBCMD cmd = {0};
-    cmd.IntThreshold = 0x8;
-    cmd.AynscScheduleEN = 1; //enable async process
-    cmd.PeroidicScheduleEN = 1; //enable peroidic process
+    cmd.Bm.IntThreshold = 0x8;
+    cmd.Bm.AynscScheduleEN = 1; //enable async process
+    cmd.Bm.PeroidicScheduleEN = 1; //enable peroidic process
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
     DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
@@ -216,7 +216,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     uint8_t DataPID = (dir == HCD_TXW) ? PID_OUT : PID_IN;
     uint8_t StatusPID = (dir == HCD_TXW) ? PID_IN : PID_OUT; //usb1.1 spec, status inverts direction of data
     EHCI_QToken token = {0};
-    token.Active = 1;
+    token.StatusBm.Active = 1;
     token.CERR = 3;
     token.C_Page = 0;
     uint16_t MaxLength = (uint16_t)(EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0)); //pQH->Caps.MaxPacketSize;
@@ -232,7 +232,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     st.DataToggle = 1; //status data toggle always 1
     st.PID = StatusPID&0x3U;
     EHCI_BuildqTD(pStatusTD, pEnd, st, pRequest, 0);
-    pStatusTD->Next.T = pStatusTD->AltNext.T = 1; //prevent QH advance queue
+    pStatusTD->Next.Bm.T = pStatusTD->AltNext.Bm.T = 1; //prevent QH advance queue
 
     // build data TD
     EHCI_qTD* pDataTD = NULL;
@@ -275,7 +275,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     EHCI_BuildqTD(pSetupTD, length ? pDataTD : pStatusTD, stt, pRequest, setup8);
     pQH->EXT.Tail = pEnd;
     // start transfer
-    pQH->qTDNext.T = 0;
+    pQH->qTDNext.Bm.T = 0;
     STIL();
     uint8_t error = 0;
     return error;
@@ -306,7 +306,7 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
 
     EHCI_QToken token = {0};
     token.CERR = 3;
-    token.Active = 1;
+    token.StatusBm.Active = 1;
     token.PID = (dir == HCD_TXW) ? PID_OUT : PID_IN;
     token.C_Page = 0;
     assert((pQH->qTDNext.Ptr&~0x1FU)==DPMI_PTR2P(pQH->EXT.Tail));
@@ -328,11 +328,11 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         MaxLen = EHCI_qTD_MaxSize;
         
         if(transferred == length)
-            pQH->EXT.Tail->Next.T = pQH->EXT.Tail->AltNext.T = 1; //prevent QH advance queue (stop here)
+            pQH->EXT.Tail->Next.Bm.T = pQH->EXT.Tail->AltNext.Bm.T = 1; //prevent QH advance queue (stop here)
         pQH->EXT.Tail = pNewTail;
     }
     //start transfer
-    pQH->qTDNext.T = 0;
+    pQH->qTDNext.Bm.T = 0;
     STIL();
     pQH->Token.DataToggle = Toggle&0x1U;
     uint8_t error = 0;    
@@ -359,7 +359,7 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
         delay(55);
         result &= (uint16_t)(~USB_PORT_ATTACHED);
         status = DPMI_LoadD(addr);
-        _LOG("ECHI compation HC count: %d\n", pHCData->Caps.N_CC);
+        _LOG("ECHI compation HC count: %d\n", pHCData->Caps.hcsParamsBm.N_CC);
         _LOG("ECHI port with low/full speed device %x.\n", status);
     }
     else if(status & ConnectStatus)
@@ -590,41 +590,47 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)malloc(4096);
-    for(int i = 0; i < 11; ++i)
-    {
-        pHCData->InterruptQH[i].Token.Halted = 1;
-        pHCData->InterruptQH[i].HorizLink.Ptr = (Typ_QH<<Typ_Shift) | Tbit;
-        pHCData->InterruptTail[i] = &pHCData->InterruptQH[i];
-    }
-    for(int i = 0; i < 1024; ++i)
-        flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
-
-    int offset = 0;
-    for(int i = 10; i >= 3; --i)
-    {
-        int step = 1<<i;
-        for(int j = offset++; j < 1024; j+=step)
+    {//scope for BC
+        for(int i = 0; i < 11; ++i)
         {
-            EHCI_FLEP* ptr = &flep[j];
-            assert(ptr->Ptr == ((Typ_QH<<Typ_Shift) | Tbit));
-            ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
+            pHCData->InterruptQH[i].Token.StatusBm.Halted = 1;
+            pHCData->InterruptQH[i].HorizLink.Ptr = (Typ_QH<<Typ_Shift) | Tbit;
+            pHCData->InterruptTail[i] = &pHCData->InterruptQH[i];
         }
     }
-
-    for(int i = 2; i >= 0; --i)
-    {
-        int step = 1<<i;
-        for(int j = 0; j < 1024; j+=step)
+    {//scope for BC
+        for(int i = 0; i < 1024; ++i)
+            flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
+    }
+    int offset = 0;
+    {//scope for BC
+        for(int i = 10; i >= 3; --i)
         {
-            EHCI_FLEP* ptr = &flep[j];
-            EHCI_QH* last = NULL;
-            while((ptr->Ptr&0xFFFFFFF0UL) != 0)
+            int step = 1<<i;
+            for(int j = offset++; j < 1024; j+=step)
             {
-                last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr&~0x1FUL);
-                ptr = &(last->HorizLink);
-            }
-            if(last != &pHCData->InterruptQH[i])
+                EHCI_FLEP* ptr = &flep[j];
+                assert(ptr->Ptr == ((Typ_QH<<Typ_Shift) | Tbit));
                 ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
+            }
+        }
+    }
+    {//scope for BC
+        for(int i = 2; i >= 0; --i)
+        {
+            int step = 1<<i;
+            for(int j = 0; j < 1024; j+=step)
+            {
+                EHCI_FLEP* ptr = &flep[j];
+                EHCI_QH* last = NULL;
+                while((ptr->Ptr&0xFFFFFFF0UL) != 0)
+                {
+                    last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr&~0x1FUL);
+                    ptr = &(last->HorizLink);
+                }
+                if(last != &pHCData->InterruptQH[i])
+                    ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
+            }
         }
     }
 
@@ -642,8 +648,8 @@ void EHCI_RunStop(HCD_Interface* pHCI, BOOL Run)
 void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto)
 {
     //memset(pInit, 0, sizeof(EHCI_QH));
-    pInit->HorizLink.T = 1;
-    pInit->qTDAltNext.T = 1;
+    pInit->HorizLink.Bm.T = 1;
+    pInit->qTDAltNext.Bm.T = 1;
     EHCI_qTD* pTD = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
     memset(pTD, 0, sizeof(EHCI_qTD)); //pTD->Token.Active = 0;
     pInit->EXT.Tail = pTD;
@@ -654,8 +660,8 @@ void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto)
         pInit->HorizLink = pLinkto->HorizLink;
         EHCI_FLEP link; //make the link in one atomic write
         link.Ptr = DPMI_PTR2P(pInit);
-        link.Typ = Typ_QH;
-        link.T = 0;
+        link.Bm.Typ = Typ_QH;
+        link.Bm.T = 0;
         pLinkto->HorizLink = link;
     }
 }
@@ -688,7 +694,7 @@ void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Reques
     memset(pTD, 0, sizeof(*pTD));
     pTD->Token = token;
     pTD->Next.Ptr = pNext ? DPMI_PTR2P(pNext) : 0;
-    pTD->Next.T = pNext ? 0 : 1;
+    pTD->Next.Bm.T = pNext ? 0 : 1;
     pTD->AltNext = pTD->Next;
 
     pTD->EXT.Request = pRequest;
@@ -708,7 +714,7 @@ void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Reques
     {
         uint16_t size = (uint16_t)min(4096U - offset, length);
         pTD->BufferPages[i].Ptr = DPMI_L2P(linear); //L2P for each page
-        pTD->BufferPages[i++].CurrentOffset = offset&0xFFFU;
+        pTD->BufferPages[i++].Bm.CurrentOffset = offset&0xFFFU;
 
         offset = 0;
         linear += 4096;
@@ -724,7 +730,7 @@ void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail)
     {
         EHCI_ISR_qTD(pHCI, pHead);
         EHCI_FLEP p = pHead->HorizLink;
-        while(p.Typ != Typ_QH) p = *(EHCI_FLEP*)DPMI_P2PTR(p.Ptr&~0x1FUL); //iTD,siTD,QH,FSTN all start with a link ptr
+        while(p.Bm.Typ != Typ_QH) p = *(EHCI_FLEP*)DPMI_P2PTR(p.Ptr&~0x1FUL); //iTD,siTD,QH,FSTN all start with a link ptr
         pHead = (EHCI_QH*)DPMI_P2PTR(p.Ptr&~0x1FUL);
         assert(pHead != NULL);
     }
@@ -746,7 +752,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         EHCI_qTD* pNext = pTD->EXT.Next;
         uint8_t errmask = (uint8_t)(pTD->Token.Status&EHCI_QTK_ERRORS); //workaround -Wconversion bug
         error |= errmask;
-        if(!pTD->Token.Active || (error && pTD->EXT.Request == pReq)) //stop after first inactive request
+        if(!pTD->Token.StatusBm.Active || (error && pTD->EXT.Request == pReq)) //stop after first inactive request
         {
             assert(pTD->EXT.Prev == NULL); //prev should be inactive in queue
             //remove from list
@@ -762,15 +768,15 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
     }
     if(pTD && error)
     {
-        assert(!pTD->Token.Active && pTD == pQH->EXT.Tail || pTD->Token.Active);
-        pQH->qTDNext.Ptr = DPMI_PTR2P(pTD) | pQH->qTDNext.T;
+        assert(!pTD->Token.StatusBm.Active && pTD == pQH->EXT.Tail || pTD->Token.StatusBm.Active);
+        pQH->qTDNext.Ptr = DPMI_PTR2P(pTD) | pQH->qTDNext.Bm.T;
     }
 
     while(pList) //release TD in reversed order
     {
         pTD = pList;
         pList = pList->EXT.Next;
-        if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.Active)
+        if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.StatusBm.Active)
         {
             uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
             //_LOG("CB %x %d %d ", error, pTD->EXT.Request->size, pTD->Token.Length);

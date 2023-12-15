@@ -32,7 +32,7 @@ typedef struct _EHCI_CAPS //helper structs
             uint16_t hcsReserved2 : 3;
             uint16_t debugPort : 4;
             uint16_t hcsReserved1 : 8;
-        };
+        }hcsParamsBm;
         uint32_t hcsParams;
     };
     union
@@ -46,7 +46,7 @@ typedef struct _EHCI_CAPS //helper structs
             uint16_t IsochronousSchedulingThreshold : 4;
             uint16_t EECP : 8; //EHCI extended cap ptr, 0 or valid val, offset to PCI configuration space (>=0x40)
             uint16_t hccReserved1;
-        };
+        }hccParamsBm;
         uint32_t hccParams;
     };
     uint64_t hcspPortRoute;
@@ -66,16 +66,16 @@ _Static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
 #define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
 
 //MUST check EECP != 0 before using it
-#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.EECP+0) //RO/RW, 4
-#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.EECP+4) //RO/RW/RWC, 4
+#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+0) //RO/RW, 4
+#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+4) //RO/RW/RWC, 4
 
-#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
-#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
-#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
-#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
+#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
+#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
+#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap.hccParamsBm.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
+#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap.hccParamsBm.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
 
-#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
-#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
+#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
+#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
 
 //USBLEGSUP: legacy support
 #define HC_OS_Owned_Semaphore BIT24 //RW
@@ -164,7 +164,7 @@ typedef union _EHCI_USBCMD
         uint8_t Reserved2 : 4;
         uint8_t IntThreshold; //default: 0x8 (8 micro Frames=1ms)
         uint8_t Reserved1;
-    };
+    }Bm;
 }EHCI_USBCMD;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
@@ -243,7 +243,7 @@ typedef union FLElementPointer //frame list element pointer
         uint16_t Zero : 2;
         uint16_t Lw : 11; //use uint16_t for Borland C 3.1
         uint16_t Hw : 16; //28 bit ptr by spec (but spec require it reference 32bytes aligned object, so we use 27bit)
-    };
+    }Bm;
 }EHCI_FLEP;
 #if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_FLEP)==4, "incorrect size/alignment");
@@ -399,7 +399,7 @@ typedef struct QueueToken
             uint8_t DataBufferErr : 1;
             uint8_t Halted : 1;
             uint8_t Active : 1;
-        };
+        }StatusBm;
     };
 
     uint8_t PID : 2;
@@ -429,7 +429,7 @@ typedef struct QueueElementTD
             uint16_t CurrentOffset : 12; //reserved for BufferPages 1~4, only valid for 0
             uint16_t PtrLw : 4;
             uint16_t PtrHw : 16;
-        };
+        }Bm;
     }BufferPages[5];
 
     struct
@@ -438,7 +438,7 @@ typedef struct QueueElementTD
         struct QueueElementTD* Next;
         HCD_Request* Request;
 #if defined(__BC__)
-        uint16_t Unused[12];
+        uint16_t Unused[13];
 #else
         uint32_t Unused[5];
 #endif
@@ -493,7 +493,7 @@ typedef struct QueueHead
             uint16_t NakCnt : 4;
             uint16_t PtrLw : 11;
             uint16_t PtrHw : 16;
-        };
+        }Bm;
     }qTDAltNext; //alternate next
 
     EHCI_QToken Token;

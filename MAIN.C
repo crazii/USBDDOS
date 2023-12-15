@@ -2,15 +2,24 @@
 #include <stdlib.h>
 #include <dos.h>
 #include <assert.h>
+#include <string.h>
 #include "USBDDOS/USB.H"
 #include "USBDDOS/CLASS/MSC.H"
 #include "USBDDOS/CLASS/HID.H"
+#include "USBDDOS/DBGUTIL.h"
+
+#if defined(__BC__)
+#define ENABLE_RETROWAVE 0 //code exceed 64K
+#else
+#define ENABLE_RETROWAVE 1
+#endif
+
+#if ENABLE_RETROWAVE
 #include "RetroWav/RetroWav.h"
 #include "RetroWav/Platform/DOS_CDC.h"
 #include "RetroWav/Board/OPL3.h"
 #include "EMM.h"
 #include "HDPMIPT.H"
-#include "USBDDOS/DBGUTIL.h"
 
 #define OPL_PRIMARY 0
 #define OPL_SECONDARY 1
@@ -122,6 +131,7 @@ static EMM_IOPT MAIN_IOPT;
 static EMM_IOPT MAIN_HDPMI_IOPT;
 BOOL MAIN_HDPMI_PortTrapped;
 #endif
+#endif
 
 struct 
 {
@@ -131,7 +141,9 @@ struct
 }MAIN_Options[] =
 {
     "/?", "Show help.", FALSE,
+#if ENABLE_RETROWAVE
     "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ needed.", FALSE,
+#endif    
     "/disk", "Enable USB-disk support", FALSE,
     "/HID", "Enable USB keyboard & mouse support", FALSE,
 
@@ -143,7 +155,9 @@ struct
 enum EOption
 {
     OPT_Help,
+#if ENABLE_RETROWAVE
     OPT_RetroWave,
+#endif    
     OPT_Disk,
     OPT_HID,
 
@@ -192,8 +206,11 @@ int main(int argc, char* argv[])
     }
 #endif
 
+
     DPMI_Init();
 
+
+#if ENABLE_RETROWAVE
     if(MAIN_Options[OPT_RetroWave].enable)
     {
         unsigned short EMMVer = EMM_GetVersion();
@@ -204,9 +221,13 @@ int main(int argc, char* argv[])
             return -1;
         }
     }
+#endif
+
 
     USB_Init();
 
+
+#if ENABLE_RETROWAVE
     if(MAIN_Options[OPT_RetroWave].enable)
     {
         if(retrowave_init_dos_cdc(&MAIN_RWContext) != 0)
@@ -225,8 +246,10 @@ int main(int argc, char* argv[])
             puts("Protected mode IO trap installation failed, make sure an HDPMI that supporting port trap is used.\n");
         #endif
     }
-
     BOOL TSR = MAIN_Options[OPT_RetroWave].enable;
+#else
+    BOOL TSR = FALSE;
+#endif
     TSR = (MAIN_Options[OPT_Disk].enable && USB_MSC_DOS_Install()) || TSR; //note: TSR must be put in the back
     TSR = (MAIN_Options[OPT_HID].enable && USB_HID_DOS_Install()) || TSR;
 #if DEBUG && 0
@@ -241,6 +264,7 @@ int main(int argc, char* argv[])
         puts("No USB device found, exit.\n");
     
     //TSR failure
+#if ENABLE_RETROWAVE
     if(MAIN_Options[OPT_RetroWave].enable)
     {
         BOOL uninstalled;
@@ -256,5 +280,6 @@ int main(int argc, char* argv[])
         }
         #endif
     }
+#endif
     return 0;
 }

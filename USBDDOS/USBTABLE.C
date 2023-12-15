@@ -20,7 +20,11 @@
 #include "USBDDOS/CLASS/MSC.H"
 #include "USBDDOS/CLASS/HID.H"
 
+#if defined(__BC__) //exceed 64K code
+#define USE_CDC 0
+#else
 #define USE_CDC 1
+#endif
 #define USE_MSC 1
 #define USE_HID 1
 
@@ -67,7 +71,7 @@ USB_Table USBT =
         #if USE_CDC
         USB_CDC_InitDevice, USB_CDC_DeinitDevice,
         #else
-        0,0
+        0,0,
         #endif
         //USBC_HID              0x3
         #if USE_HID
