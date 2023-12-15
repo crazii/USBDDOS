@@ -267,7 +267,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     CLIS();
     EHCI_qTD* pSetupTD = pQH->EXT.Tail;
     assert(pSetupTD->EXT.Prev == NULL);
-    assert((pQH->qTDNext.Ptr&~0x1FU) == DPMI_PTR2P(pSetupTD));
+    assert((pQH->qTDNext.Ptr&~0x1FUL) == DPMI_PTR2P(pSetupTD));
     EHCI_QToken stt = token;
     stt.PID = PID_SETUP;
     stt.Length = 8;
@@ -309,7 +309,7 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     token.StatusBm.Active = 1;
     token.PID = (dir == HCD_TXW) ? PID_OUT : PID_IN;
     token.C_Page = 0;
-    assert((pQH->qTDNext.Ptr&~0x1FU)==DPMI_PTR2P(pQH->EXT.Tail));
+    assert((pQH->qTDNext.Ptr&~0x1FUL)==DPMI_PTR2P(pQH->EXT.Tail));
 
     uint16_t transferred = 0;
     CLIS();
