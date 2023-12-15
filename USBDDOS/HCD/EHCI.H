@@ -65,24 +65,12 @@ _Static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
 #define FLADJ   0x61    //RW, 1, Frame length adjustment
 #define PORTWAKECAP 0x62 //RW,2, Port wake capability, optional
 
-//MUST check EECP != 0 before using it
-#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+0) //RO/RW, 4
-#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+4) //RO/RW/RWC, 4
-
-#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
-#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
-#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap.hccParamsBm.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap), legsup)
-#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap.hccParamsBm.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
-
-#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
-#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
-
 //USBLEGSUP: legacy support
 #define HC_OS_Owned_Semaphore BIT24 //RW
 #define HC_BIOS_Owned_Semaphore BIT16 //RW
 #define NextEECP 0xFF00 //mask (RO)
 #define GetNextEECP(legsup_val) (((legsup_val)&NextEECP)>>8)
-#define CAPID 0x00FF //mask (RO)
+#define CAPID_MASK 0x00FF //mask (RO)
 #define CAPID_LEGSUP 0x01
 typedef union _LEGSUP
 {
@@ -95,7 +83,7 @@ typedef union _LEGSUP
         uint8_t Reserved2 : 7;
         uint8_t OS_Owned : 1;
         uint8_t Reserved1 : 7;
-    };
+    }Bm;
 }ECHI_LEGSUP;
 //USBLEGCTLSTS
 #define SMIonBAR BIT31 //RWC
@@ -116,6 +104,19 @@ typedef union _LEGSUP
 #define SMIonPortChangeEnable BIT2 //RW
 #define SMIonUSBErrorEnable BIT1 //RW
 #define USBSMIEnable BIT0 //RW
+
+//MUST check EECP != 0 before using it
+#define USBLEGSUP(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+0) //RO/RW, 4
+#define USBLEGCTLSTS(ehci_cap /*EHCI_CAPS*/) (uint8_t)(ehci_cap.hccParamsBm.EECP+4) //RO/RW/RWC, 4
+
+#define READ_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)) : 0))
+#define READ_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? PCI_ReadDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap)) : 0))
+#define WRITE_USBLEGSUP(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legsup) if(ehci_cap.hccParamsBm.EECP) PCI_WriteByte((addr).Bus, (addr).Device, (addr).Function, USBLEGSUP(ehci_cap)+3, legsup.Bm.OS_Owned)
+#define WRITE_USBLEGCTLSTS(addr /*PCI_Addr*/, ehci_cap /*EHCI_CAPS*/, legctlsts) if(ehci_cap.hccParamsBm.EECP) PCI_WriteDWord((addr).Bus, (addr).Device, (addr).Function, USBLEGCTLSTS(ehci_cap), legctlsts)
+
+#define READ_USBLEGSUP2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGSUP(ehci_cap)] : 0))
+#define READ_USBLEGCTLSTS2(pcidev /*PCI_DEVICE*/, ehci_cap /*EHCI_CAPS*/) ((uint32_t)(ehci_cap.hccParamsBm.EECP ? *(uint32_t*)&pcidev->Offset[USBLEGCTLSTS(ehci_cap)] : 0))
+
 
 //Operational Regsisters
 #define USBCMD 0x00 //cmd
@@ -175,7 +176,7 @@ _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 #define AsyncSheduleSts BIT15 //RO
 #define PeriodicSheduleSts BIT14 //RO
 #define Reclamation BIT13 //RO
-#define HCHalted BIT13 //RO
+#define HCHalted BIT12 //RO
 #define INTonAsyncAdvance BIT5 //RWC
 #define HostSysError BIT4 //RWC
 #define FrameListRollover BIT3 //RWC
@@ -209,8 +210,8 @@ _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 #define LineStatus 0xC00 //mask, RO
 #define LineStatusShift 10
 # define LS_SE0 0x00 //
-# define LS_JS 0x01
-# define LS_KS 0x02
+# define LS_JS 0x02
+# define LS_KS 0x01
 # define LS_Undefined 0x03
 #define PortReset BIT8 //RW
 #define PortSuspend BIT7 //RW

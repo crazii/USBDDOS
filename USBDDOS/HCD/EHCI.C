@@ -50,39 +50,79 @@ static void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH);
 
 BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 {
-    pHCI->dwPhysicalAddress = (*(uint32_t*)&pPCIDev->Offset[USBBASE]) & 0xFFFFFFE0L;
+    //configure PCI: must enable MMIO first to read registers
+    PCI_CMD pcicmd;
+    pcicmd.reg16 = pPCIDev->Header.Command;
+    pcicmd.bits.BusMaster = 1;
+    pcicmd.bits.IOSpace = 0;
+    pcicmd.bits.MemorySpace = 1;
+    pcicmd.bits.InterruptDisable = 0;
+    PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, pcicmd.reg16);
+    pPCIDev->Header.Command = pcicmd.reg16;
+
+    uint32_t usbbase = (*(uint32_t*)&pPCIDev->Offset[USBBASE]) & 0xFFFFFFE0L;
+    #if 0 //is this necessary?
+    if(usbbase < 0x100000L) //cannot in conventional memory
+    {
+        //test maxsize, by the spec
+        PCI_WriteDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBBASE, 0);
+        PCI_WriteDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBBASE, ~0UL);
+        uint32_t barsize = PCI_ReadDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBBASE);
+        barsie = (~barsize) + 1;
+        _LOG("ECHI size of USBBASE: %08lx\n", barsize);
+
+        //note: BIOS/OS configure all devices address space uniformly
+        //here we cannot decide the address (i.e. rolling down from 0xF000)
+        //since it might be used by other devices
+        //so we shadow XMS RAM address, and notify XMS manager that this address is used
+        barsize = (barsize+1023)/1024;
+        uint16_t handle = XMS_Alloc(barsize, &usbbase);
+        if(handle == 0 || usbbase == 0)
+            return FALSE;
+        if((usbbase&0xFFF) != 0)
+        {
+            if(!XMS_Realloc(handle, barsize+4, &usbbase)) //+ 4k alignement
+            {
+                XMS_Free(handle);
+                return FALSE;
+            }
+        }
+        usbbase = align(usbbase, 4096);
+        assert((usbbase&0xFFF) == 0);
+        PCI_WriteDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBBASE, usbbase);
+    }
+    #endif
+
+    pHCI->dwPhysicalAddress = usbbase;
     pHCI->dwBaseAddress = DPMI_MapMemory(pHCI->dwPhysicalAddress, 4096);
-    _LOG("EHCI USBBASE: %08x %08x\n", pHCI->dwPhysicalAddress, pHCI->dwBaseAddress);
+    _LOG("EHCI USBBASE: %08lx %08lx\n", pHCI->dwPhysicalAddress, pHCI->dwBaseAddress);
     pHCI->pHCDMethod = &EHCI_AccessMethod;
 
     EHCI_CAPS caps;
     DPMI_CopyLinear(DPMI_PTR2L(&caps), pHCI->dwBaseAddress, sizeof(caps));
     uint32_t OperationalBase = pHCI->dwBaseAddress + caps.Size;
     pHCI->bNumPorts = caps.hcsParamsBm.N_PORTS;
+    _LOG("ECHI version: %x.%02x, PPC: %x, EECP: %x\n", caps.hciVersion>>8, caps.hciVersion&0xFF, caps.hcsParamsBm.PPC, caps.hccParamsBm.EECP);
 
     //first things to do is to take ownership from BIOS and reset HC.
-
     //take ownership & disable SMI
-    if(caps.hccParamsBm.EECP)
+    if(caps.hciVersion > 0x95 && caps.hccParamsBm.EECP)
     {
-        uint32_t legsup = READ_USBLEGSUP2(pPCIDev, caps);
+        ECHI_LEGSUP legsup = {READ_USBLEGSUP2(pPCIDev, caps)};
         //uint32_t legctlsts = READ_USBLEGCTLSTS2(pPCIDev, caps);
-        if((legsup&CAPID) == CAPID_LEGSUP)
+        if((legsup.Val&CAPID_MASK) == CAPID_LEGSUP)
         {
             _LOG("ECHI: take ownership from BIOS...\n");
             const int TRYC = 50;
             int tryc = 0;
-            while((!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore)) && tryc++ < TRYC)
+            while((!legsup.Bm.OS_Owned || legsup.Bm.BIOS_Owned) && tryc++ < TRYC)
             {
-                legsup |= HC_OS_Owned_Semaphore;
-                legsup &= ~HC_BIOS_Owned_Semaphore;
-                //PCI_WriteDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBLEGSUP(caps), legsup);
+                legsup.Bm.OS_Owned = 1;
                 WRITE_USBLEGSUP(pHCI->PCIAddr, caps, legsup);
                 delay(10);
-                //legsup = PCI_ReadDWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, USBLEGSUP(caps));
-                legsup = READ_USBLEGSUP(pHCI->PCIAddr, caps);
+                legsup.Val = READ_USBLEGSUP(pHCI->PCIAddr, caps);
             }
-            if(!(legsup&HC_OS_Owned_Semaphore) || (legsup&HC_BIOS_Owned_Semaphore))
+            if(!legsup.Bm.OS_Owned || legsup.Bm.BIOS_Owned)
             {
                 printf("EHCI: Unable to take ownership from BIOS.\n");
                 DPMI_UnmapMemory(pHCI->dwBaseAddress);
@@ -100,21 +140,14 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->Caps = caps;
     pHCData->OPBase = OperationalBase;
     EHCI_ResetHC(pHCI);
-    _LOG("EHCI operational base: %08x\n", OperationalBase);
+    _LOG("EHCI operational base: %08lx\n", OperationalBase);
 
-    //configure PCI
+    //power up ports
+    if(caps.hcsParamsBm.PPC)
     {
-        PCI_CMD cmd;
-        cmd.reg16 = pPCIDev->Header.Command;
-        cmd.bits.BusMaster = 1;
-        cmd.bits.IOSpace = 0;
-        cmd.bits.MemorySpace = 1;
-        cmd.bits.InterruptDisable = 0;
-        PCI_WriteWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_CMD, cmd.reg16);
-        pPCIDev->Header.Command = cmd.reg16;
+        for(int i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
+            DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower);
     }
-
-    DPMI_StoreD(OperationalBase+CTRLDSSEGMENT, 0);
 
     //setup frame list
     if(!EHCI_SetupPeriodicList(pHCI))
@@ -138,13 +171,13 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     cmd.Bm.AynscScheduleEN = 1; //enable async process
     cmd.Bm.PeroidicScheduleEN = 1; //enable peroidic process
     DPMI_StoreD(OperationalBase+USBCMD, cmd.Val);
-    DPMI_StoreD(OperationalBase+FRINDEX, 0);
 
     DPMI_StoreD(OperationalBase+USBSTS, ~0UL); //clear all sts
     DPMI_StoreD(OperationalBase+USBINTR, EHCI_INTERRUPTS); //enable interrups
     DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
     EHCI_RunStop(pHCI, TRUE);
-    //_LOG("USBCMD: %08x USBSTS: %08x\n", DPMI_LoadD(OperationalBase+USBCMD), DPMI_LoadD(OperationalBase+USBSTS));
+    delay(50); //UBSTS not updated immediately
+    //_LOG("USBCMD: %08lx USBSTS: %08lx\n", DPMI_LoadD(OperationalBase+USBCMD), DPMI_LoadD(OperationalBase+USBSTS));
     return TRUE;
 }
 
@@ -302,7 +335,7 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     uint16_t MaxLen = (uint16_t)(EHCI_qTD_MaxSize - ((uint32_t)(pBuffer) - alignup(pBuffer, 4096))); //pQH->Caps.MaxPacketSize;
     uint8_t Toggle = pQH->Token.DataToggle;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
-    //_LOG("req: %08x TD: %08x\n", pRequest, pQH->EXT.Tail);
+    //_LOG("req: %08lx TD: %08lx\n", pRequest, pQH->EXT.Tail);
 
     EHCI_QToken token = {0};
     token.CERR = 3;
@@ -346,16 +379,17 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
     uint32_t addr = pHCData->OPBase + PORTSC + port*4U;
     uint32_t status = DPMI_LoadD(addr);
     uint16_t result = 0;
-    //_LOG("ECHI port %d status: %x\n", port, status);
+    //_LOG("ECHI port %d status: %lx\n", port, status);
 
     if(status & ConnectStatus)
         result |= USB_PORT_ATTACHED;
     //for low/full speed device: port not enabled, or line status is KS
     //initial port status might not be enabled even for high speed device (before port reset), so we test the line status
-    if(((status & LineStatus)>>LineStatusShift) == LS_KS && (result&USB_PORT_ATTACHED))
+    //line status only valid when PortEnable=0
+    if(!(status&PortEnable) && ((status & LineStatus)>>LineStatusShift) == LS_KS && (result&USB_PORT_ATTACHED) && pHCData->Caps.hcsParamsBm.N_CC > 0)
     {
-        DPMI_StoreD(addr, ConnectStatusChange);
-        DPMI_StoreD(addr, PortOwner); //release ownership to companion HC
+        DPMI_StoreD(addr, PortPower|ConnectStatusChange);
+        DPMI_StoreD(addr, PortPower|PortOwner); //release ownership to companion HC
         delay(55);
         result &= (uint16_t)(~USB_PORT_ATTACHED);
         status = DPMI_LoadD(addr);
@@ -386,18 +420,19 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     uint32_t addr = pHCData->OPBase + PORTSC + port*4U;
     uint32_t current = DPMI_LoadD(addr);
+    uint32_t forcebits = PortPower|PortEnable;
 
-    if((status&USB_PORT_RESET))
+    if((status&USB_PORT_RESET)) //reset will auto enable this port if high speed device attached
     {
         const int timeout = 100; //5sec timeout
-        DPMI_StoreD(addr, PortReset); //reset will auto enable this port
+        DPMI_StoreD(addr, PortPower|PortReset); //PortReset won't use PortEnable by spec
         
         delay(55); //spec require at least 10ms, 50+ms get more compatibility
 
-        DPMI_StoreD(addr, PortEnable); //release reset signal, and don't disable port
+        DPMI_StoreD(addr, forcebits); //release reset signal, and don't disable port
 
         int i = 0;
-        do { delay(1); ++i; } while((DPMI_LoadD(addr)&PortReset) && i < timeout);
+        do { delay(5); ++i; } while((DPMI_LoadD(addr)&PortReset) && i < timeout); //spec require 2ms to enable high speed ports
         if(i == timeout)
             return FALSE;
         current = DPMI_LoadD(addr); //reload enable/disable state
@@ -412,19 +447,20 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 
     if((status&USB_PORT_DISABLE) && (current&PortEnable))
     {
-        DPMI_StoreD(addr, 0);
+        forcebits &= ~PortEnable;
+        DPMI_StoreD(addr, forcebits);
         do { delay(5); } while((DPMI_LoadD(addr)&PortEnable));
-        DPMI_StoreD(addr, PortEnableChange); //clear states
+        DPMI_StoreD(addr, forcebits|PortEnableChange); //clear states
     }
 
     if((status&USB_PORT_SUSPEND) && !(current&PortSuspend))
     {
-        do { DPMI_StoreD(addr, PortSuspend); delay(5); } while(!(DPMI_LoadD(addr)&PortSuspend));
+        do { DPMI_StoreD(addr, forcebits|PortSuspend); delay(5); } while(!(DPMI_LoadD(addr)&PortSuspend));
     }
 
     if((status&USB_PORT_CONNECT_CHANGE))
     {
-        DPMI_StoreD(addr, ConnectStatusChange); //clear connect status change
+        DPMI_StoreD(addr, forcebits|ConnectStatusChange); //clear connect status change
         do { delay(10); } while(DPMI_LoadD(addr)&ConnectStatusChange);
         delay(150);
     }
@@ -556,7 +592,7 @@ void EHCI_ResetHC(HCD_Interface* pHCI)
 {
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     DPMI_StoreD(pHCData->OPBase+USBCMD, DPMI_LoadD(pHCData->OPBase+USBCMD) | HCRESET);
-    delay(55); //spec requred 50ms
+    delay(55); //spec require 50ms
     DPMI_StoreD(pHCData->OPBase+USBCMD, DPMI_LoadD(pHCData->OPBase+USBCMD) & ~HCRESET & ~RS);
 }
 
@@ -779,11 +815,11 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.StatusBm.Active)
         {
             uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
-            //_LOG("CB %x %d %d ", error, pTD->EXT.Request->size, pTD->Token.Length);
-            //_LOG("req: %08x TD: %08x\n", pTD->EXT.Request, pTD);
+            //_LOG("CB %lx %d %d ", error, pTD->EXT.Request->size, pTD->Token.Length);
+            //_LOG("req: %08lx TD: %08lx\n", pTD->EXT.Request, pTD);
             HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);
         }
-        //_LOG("Free TD: %x ", pTD);
+        //_LOG("Free TD: %lx ", pTD);
         assert(pTD != pQH->EXT.Tail);
         USB_TFree(pTD);
     }

@@ -108,14 +108,15 @@ void USB_Init(void)
             {//some controller has multiple functions (i.e. 0 - UHCI,1 - UHCI,2 - UHCI,x - EHCI)
                 PCI_DEVICE pcidev;
                 PCI_ReadDevice(bus, dev, func, &pcidev);
-                if(pcidev.Header.Class == USB_PCI_SBC_CLASS && pcidev.Header.SubClass == USB_SUBCLASS && pcidev.Header.DevHeader.Device.IRQ < 15)
-                    USB_InitController(bus, dev, func, &pcidev);
-                else if(func == 0) // multi function
+                if(pcidev.Header.Class == USB_PCI_SBC_CLASS && pcidev.Header.SubClass == USB_SUBCLASS)
                 {
-                    if (pcidev.Header.HeaderType&PCI_HEADER_MULTI_FUNCTION)
-                        ;
-                    else
-                        break;
+                    if(pcidev.Header.DevHeader.Device.IRQ>15 || pcidev.Header.DevHeader.Device.IRQ == 0)
+                    {
+                        pcidev.Header.DevHeader.Device.IRQ = 11;
+                        PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, 11);
+                    }
+
+                    USB_InitController(bus, dev, func, &pcidev);
                 }
             }
         }
