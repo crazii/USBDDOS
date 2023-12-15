@@ -403,7 +403,7 @@ typedef struct QueueToken
     };
 
     uint8_t PID : 2;
-    uint8_t CERR : 2; //err counter
+    uint8_t CERR : 2; //err counter down
     uint8_t C_Page : 3;
     uint8_t IOC : 1;
     uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max (EHCI_qTD_MaxSize)
@@ -464,7 +464,7 @@ typedef struct QueueHead
         uint16_t InactiveonNext_1x : 1; //only valid in perioidic for full/low endpoint
         uint16_t Endpoint : 4; //ep no.
         uint16_t EndpointSpd : 2; //EPS. 0=FullSpeed, 1=LowSpeed, 2=HighSpeed
-        uint16_t DataToggle : 1; //DTC data oggle control
+        uint16_t DTC : 1; //DTC data oggle control
         uint16_t HeadofReclamation : 1;
         uint16_t MaxPacketSize : 11;
         uint16_t ControlEP_1x : 1; //only set when endpoint is full/low speed and a control ep

@@ -149,6 +149,7 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     uint8_t error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[0], dma, size, &len); //TODO: error code now is HC specific, need abstraction (wrapper).
     if(len != size || error)
     {
+        DPMI_DMAFree(dma);
         _LOG("MSC CBW failed: %x, %d, %d.\n", error, size, len);
         USB_ClearHalt(pDevice, pDriverData->bEPAddr[0]);
         return FALSE;
@@ -157,19 +158,19 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     //DATA
     if(DataSize)
     {
-        memset(dma, 0, DataSize);
         if(dir == HCD_TXW)
             memcpy(dma, data, DataSize);
         len = 0;
         error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[dir&0x1], dma, (uint16_t)DataSize, &len);
-        if(dir == HCD_TXR)
-            memcpy(data, dma, DataSize);
         if(len != DataSize || error)
         {
+            DPMI_DMAFree(dma);
             _LOG("MSC DATA Failed: %x, %d, %d, %d.\n", error, dir, DataSize, len);
             USB_ClearHalt(pDevice, pDriverData->bEPAddr[dir&0x1]);
             return FALSE;
         }
+        if(dir == HCD_TXR)
+            memcpy(data, dma, DataSize);
     }
 
     //CSW
@@ -186,7 +187,6 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
         _LOG("MSC CBW length: %d\n", cbw.dCBWDataTransferLength);
         return FALSE;
     }
-    
     return TRUE;
 }
 
