@@ -7,8 +7,8 @@ CC = bcc +USBDDOS.CFG
 TASM = TASM
 TLIB = tlib
 TLINK = tlink
-LIBPATH = C:\BC31\LIB
-INCLUDEPATH = C:\BC31\INCLUDE;..;
+LIBPATH = C:\BORLANDC\LIB
+INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
 
 
 #		*Implicit Rules*
@@ -22,25 +22,20 @@ INCLUDEPATH = C:\BC31\INCLUDE;..;
 
 
 EXE_dependencies =  \
+ ehci.obj \
  dpmi_bc.obj \
  dpmi.obj \
  xms.obj \
  pci.obj \
- retrowav.obj \
- opl3.obj \
- serial.obj \
  pic.obj \
  usb.obj \
  usballoc.obj \
  usbtable.obj \
  dbgutil.obj \
- cdc.obj \
  hcd.obj \
  ohci.obj \
  uhci.obj \
- dos_cdc.obj \
  main.obj \
- emm.obj \
  msc.obj \
  hid.obj
 
@@ -48,25 +43,20 @@ EXE_dependencies =  \
 .\output\usbddos.exe: usbddos.cfg $(EXE_dependencies)
   $(TLINK) /v/x/c/P-/L$(LIBPATH) @&&|
 c0s.obj+
+.\output\ehci.obj+
 .\output\dpmi_bc.obj+
 .\output\dpmi.obj+
 .\output\xms.obj+
 .\output\pci.obj+
-.\output\retrowav.obj+
-.\output\opl3.obj+
-.\output\serial.obj+
 .\output\pic.obj+
 .\output\usb.obj+
 .\output\usballoc.obj+
 .\output\usbtable.obj+
 .\output\dbgutil.obj+
-.\output\cdc.obj+
 .\output\hcd.obj+
 .\output\ohci.obj+
 .\output\uhci.obj+
-.\output\dos_cdc.obj+
 .\output\main.obj+
-.\output\emm.obj+
 .\output\msc.obj+
 .\output\hid.obj
 .\output\usbddos
@@ -78,6 +68,9 @@ cs.lib
 
 
 #		*Individual File Dependencies*
+ehci.obj: usbddos.cfg ..\usbddos\hcd\ehci.c 
+	$(CC) -c ..\usbddos\hcd\ehci.c
+
 dpmi_bc.obj: usbddos.cfg ..\usbddos\dpmi\dpmi_bc.cpp 
 	$(CC) -B -c ..\usbddos\dpmi\dpmi_bc.cpp
 
@@ -89,15 +82,6 @@ xms.obj: usbddos.cfg ..\usbddos\dpmi\xms.c
 
 pci.obj: usbddos.cfg ..\usbddos\pci.c 
 	$(CC) -B -c ..\usbddos\pci.c
-
-retrowav.obj: usbddos.cfg ..\retrowav\retrowav.c 
-	$(CC) -c ..\retrowav\retrowav.c
-
-opl3.obj: usbddos.cfg ..\retrowav\board\opl3.c 
-	$(CC) -c ..\retrowav\board\opl3.c
-
-serial.obj: usbddos.cfg ..\retrowav\protocol\serial.c 
-	$(CC) -c ..\retrowav\protocol\serial.c
 
 pic.obj: usbddos.cfg ..\usbddos\pic.c 
 	$(CC) -c ..\usbddos\pic.c
@@ -114,9 +98,6 @@ usbtable.obj: usbddos.cfg ..\usbddos\usbtable.c
 dbgutil.obj: usbddos.cfg ..\usbddos\dbgutil.c 
 	$(CC) -c ..\usbddos\dbgutil.c
 
-cdc.obj: usbddos.cfg ..\usbddos\class\cdc.c 
-	$(CC) -c ..\usbddos\class\cdc.c
-
 hcd.obj: usbddos.cfg ..\usbddos\hcd\hcd.c 
 	$(CC) -c ..\usbddos\hcd\hcd.c
 
@@ -126,14 +107,8 @@ ohci.obj: usbddos.cfg ..\usbddos\hcd\ohci.c
 uhci.obj: usbddos.cfg ..\usbddos\hcd\uhci.c 
 	$(CC) -c ..\usbddos\hcd\uhci.c
 
-dos_cdc.obj: usbddos.cfg ..\retrowav\platform\dos_cdc.c 
-	$(CC) -c ..\retrowav\platform\dos_cdc.c
-
 main.obj: usbddos.cfg ..\main.c 
 	$(CC) -c ..\main.c
-
-emm.obj: usbddos.cfg ..\emm.c 
-	$(CC) -B -c ..\emm.c
 
 msc.obj: usbddos.cfg ..\usbddos\class\msc.c 
 	$(CC) -c ..\usbddos\class\msc.c
@@ -161,7 +136,7 @@ usbddos.cfg: makefile.bc
 -n.\OUTPUT
 -I$(INCLUDEPATH)
 -L$(LIBPATH)
--DDEBUG=0
+-DDEBUG=1;NDEBUG
 -P
 | usbddos.cfg
 

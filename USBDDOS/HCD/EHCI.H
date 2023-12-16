@@ -84,7 +84,7 @@ typedef union _LEGSUP
         uint8_t OS_Owned : 1;
         uint8_t Reserved1 : 7;
     }Bm;
-}ECHI_LEGSUP;
+}EHCI_LEGSUP;
 //USBLEGCTLSTS
 #define SMIonBAR BIT31 //RWC
 #define SMIonPCICMD BIT30 //RWC
@@ -183,6 +183,7 @@ _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 #define PortChangeDetect BIT2 //RWC
 #define USBERRINT BIT1 //RWC
 #define USBINT BIT0 //RWC
+#define USBINTMASK (BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5) //all RWC
 
 //USBINTR
 #define INTonAsyncAdvanceEN BIT5

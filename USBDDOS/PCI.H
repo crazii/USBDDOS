@@ -4,7 +4,7 @@
 
 #if defined(__DJ2__)
 #include <pc.h>
-#elif defined(__WC__)
+#elif defined(__WC__) || defined(__BC__)
 #include <conio.h>
 #endif
 
@@ -34,6 +34,28 @@ void outpd(uint16_t port, uint32_t value);
 #define PCI_HEADER_PCI_BRIDGE 0x1
 #define PCI_HEADER_CARDBUS_BRIDGE 0x2
 #define PCI_HEADER_MULTI_FUNCTION 0x80 //multi-function bit (mask)
+
+//PCI BIOS functions (PCI BIOS specification 2.1)
+#define PCI_FUNCTION_ID         0xB1
+#define PCI_BIOS_PRESENT        0x01
+#define FIND_PCI_DEVICE         0x02
+#define READ_CONFIG_BYTE        0x08
+#define READ_CONFIG_WORD        0x09
+#define READ_CONFIG_DWORD       0x0A
+#define WRITE_CONFIG_BYTE       0x0B
+#define WRITE_CONFIG_WORD       0x0C
+#define WRITE_CONFIG_DWORD      0x0D
+#define GET_IRQ_ROUTING_OPTIONS 0x0E
+#define SET_PCI_IRQ             0x0F //SET_PCI_HW_INT
+#define PCI_INT_NO              0x1A
+
+#define SUCCESSFUL              0x00
+#define FUNC_NOT_SUPPORTED      0x81
+#define BAD_VENDOR_ID           0x83
+#define DEVICE_NOT_FOUND        0x86
+#define BAD_REGISTER_NUMBER     0x87
+#define SET_FAILED              0x88
+#define BUFFER_TOO_SMALL        0x98
 
 //BDF
 typedef struct _PCIAddress
@@ -172,7 +194,7 @@ typedef union
     }bits;
 }PCI_CMD;
 
-#define PCI_REGISTER_IRQ 0xF //word: IRQ (low byte) & INTPIN
+#define PCI_REGISTER_IRQ 0x3C //word: IRQ (low byte) & INTPIN
 
 uint8_t PCI_ReadByte(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
 uint16_t PCI_ReadWord(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
@@ -185,6 +207,10 @@ void PCI_WriteDWord(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg, uint32_
 void PCI_ReadDevice(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* device);
 
 uint32_t PCI_Sizing(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
+
+uint16_t PCI_GetIRQMap(uint8_t bus, uint8_t dev, uint8_t INTPIN);
+
+BOOL PCI_SetIRQ(uint8_t bus, uint8_t dev, uint8_t func, uint8_t INTPIN, uint8_t IRQ); //SET_PCI_IRQ, INTPIN=0x1...4
 
 #ifdef __cplusplus
 }

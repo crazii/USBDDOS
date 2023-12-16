@@ -110,10 +110,32 @@ void USB_Init(void)
                 PCI_ReadDevice(bus, dev, func, &pcidev);
                 if(pcidev.Header.Class == USB_PCI_SBC_CLASS && pcidev.Header.SubClass == USB_SUBCLASS)
                 {
-                    if(pcidev.Header.DevHeader.Device.IRQ>15 || pcidev.Header.DevHeader.Device.IRQ == 0)
+                    uint8_t INTPIN = pcidev.Header.DevHeader.Device.INTPIN;
+                    uint8_t IRQ = pcidev.Header.DevHeader.Device.IRQ;
+                    //note: the PCI BIOS will setup the IRQ and write the IRQ register, the IRQ is setup as level triggered.
+                    _LOG("Host Controller: Bus:%d, Dev:%d, Func:%d, pi:0x%02x, IRQ: %d, INT Pin: INT%c#\n", bus, dev, func, pcidev.Header.PInterface, IRQ, 'A'+INTPIN-1);
+
+                    if(IRQ>15) //0xFF: INTPIN not connected to an IRQ
                     {
-                        pcidev.Header.DevHeader.Device.IRQ = 11;
-                        PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, 11);
+                        uint16_t map = PCI_GetIRQMap(bus, dev, INTPIN);
+                        _LOG("IRQ MAP: %x\n",map);
+                        for(int i = 15; i >= 3; --i)
+                        {
+                            if((map&(1<<i))/* && PCI_SetIRQ(bus, dev, func, INTPIN, i)*/) //why PCI_SetIRQ fails?
+                            {
+                                PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, i);
+                                PIC_SetLevelTriggered(i, TRUE); //make sure it is level triggerred
+                                break;
+                            }
+                        }
+                        IRQ = PCI_ReadByte(bus, dev, func, PCI_REGISTER_IRQ);
+                        if(IRQ>15)
+                        {
+                            _LOG("Invalid IRQ: %d, skip\n", IRQ);
+                            continue;
+                        }
+                        _LOG("Set IRQ from %d to %d\n", pcidev.Header.DevHeader.Device.IRQ, IRQ);
+                        pcidev.Header.DevHeader.Device.IRQ = IRQ;
                     }
 
                     USB_InitController(bus, dev, func, &pcidev);
@@ -127,7 +149,7 @@ void USB_Init(void)
     //after sorting, USB_ISRHandle won't match the HC_List, but that won't hurt
     
     //note: on detection HC, we can reverse function search order that it iterates from high to low
-    //since ECHI specs require ECHI has higher function num than its companion HC
+    //since EHCI specs require EHCI has higher function num than its companion HC
     //but on some machine (VirtualBox sometimes) they are on a separated bus
     //so sorting would be a better solution
     qsort(USBT.HC_List, USBT.HC_Count, sizeof(HCD_Interface), USB_ComparePI);
@@ -195,8 +217,6 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
 
     BOOL OK = FALSE;
     PCI_HEADER* header = &pPCIDev->Header;
-    //note: the PCI BIOS will setup the IRQ and write the IRQ register, the IRQ is setup as level triggered.
-    _LOG("Host Controller: Bus:%d, Dev:%d, Func:%d, pi:0x%02x, IRQ: %d, INT Pin: INT%c#\n", bus, dev, func, header->PInterface, header->DevHeader.Device.IRQ, 'A'+header->DevHeader.Device.INTPIN-1);
     CLIS();
     for(int i = 0; i < USB_MAX_HC_TYPE; ++i)
     {
@@ -671,22 +691,22 @@ static void USB_EnumerateDevices()
     //enable one port each time, and it will respond via device address (FA) 0, default pipe - endpoint 0.
     //if device inited, assign address to it (the address is used for further communication), and continue to next device.
     //otherwise disable the port (only one device can be enabled with address 0) and continue to next
+    {for(int j = 0; j < USBT.HC_Count; ++j) //disable all ports if they're previously enabled by default/by BIOS. only 1 can be enabled during enumearation.
+    {
+        HCD_Interface* pHCI = &USBT.HC_List[j];
+        for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
+        {
+            uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
+
+            if((status&USB_PORT_ATTACHED))
+                pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
+        }
+    }}
 
     for(int j = 0; j < USBT.HC_Count; ++j)
     {
         HCD_Interface* pHCI = &USBT.HC_List[j];
         _LOG("Enumerate device for %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function);
-
-        {   //disable all ports if they're previously enabled by BIOS. only 1 can be enabled during enumearation.
-            for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
-            {
-                uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
-
-                if(status&USB_PORT_ATTACHED)
-                    pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
-            }
-
-        }
 
         for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
         {
@@ -715,7 +735,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
     // 1st reset
     BOOL reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
-    if(!reset)
+    if(!reset || !(pHCI->pHCDMethod->GetPortStatus(pHCI, pDevice->HCDDevice.bHubPort)&USB_PORT_ENABLE)) //port enable failed: device detached, or 1.x device attached directly to EHCI root ports and EHCI has no companion HC to hand off
         return FALSE;
 
     uint8_t* Buffer = pDevice->pDeviceBuffer;

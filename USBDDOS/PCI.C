@@ -1,5 +1,6 @@
 #include <string.h>
 #include <assert.h>
+#include <dos.h>
 #include "USBDDOS/PCI.H"
 
 #define PCI_ADDR  0x0CF8
@@ -164,4 +165,72 @@ uint32_t PCI_Sizing(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg)
     else //Mem bit
         range &= ~0xFUL; //clear encoding bits (0-3)
     return (~range) + 1UL;
+}
+
+
+#include "USBDDOS/DPMI/DPMI.H"
+#include "USBDDOS/DBGUTIL.H"
+typedef struct
+{
+    uint16_t size;
+    uint16_t off;
+    uint16_t seg;
+    uint16_t padding;
+}IRQRoutingOptionBuffer;
+
+uint16_t PCI_GetIRQMap(uint8_t bus, uint8_t dev, uint8_t INTPIN)
+{
+    #define BUFSIZE 4096
+    uint32_t dosmem = DPMI_DOSMalloc(BUFSIZE>>4);
+    uint32_t seg = (dosmem&0xFFFFU);
+    IRQRoutingOptionBuffer buf;
+    buf.size = BUFSIZE-sizeof(buf);
+    buf.off = sizeof(buf);
+    buf.seg = seg;
+    DPMI_CopyLinear(seg<<4U, DPMI_PTR2L(&buf), sizeof(buf));
+
+    DPMI_REG r = {0};
+    r.h.ah = PCI_FUNCTION_ID;
+    r.h.al = GET_IRQ_ROUTING_OPTIONS;
+    r.w.ds = 0xF000;
+    r.w.es = seg;
+    r.w.di = 0;
+    uint16_t ret = DPMI_CallRealModeINT(PCI_INT_NO, &r);
+    uint16_t map = 0;
+    if(ret == 0 && r.h.ah == SUCCESSFUL)
+    {
+        DPMI_CopyLinear(DPMI_PTR2L(&buf), seg<<4U, sizeof(buf));
+
+        for(int start = 0; start < buf.size; start+=16)
+        {
+            uint32_t addr = (seg<<4)+sizeof(buf)+start;
+            uint8_t b = DPMI_LoadB(addr);
+            uint8_t d = DPMI_LoadB(addr+1)>>3;
+            if(b == bus && d == dev)
+            {
+                map = DPMI_LoadW(addr+INTPIN*3);
+                //_LOG("LINK: %d\n", DPMI_LoadB(addr+INTPIN*3-1));
+                break;
+            }
+        }
+    }
+    else
+        _LOG("PCI: Get IRQ Routing Options failed %d %x.\n", ret, r.h.ah);
+    DPMI_DOSFree(dosmem);
+    return map;
+}
+
+BOOL PCI_SetIRQ(uint8_t bus, uint8_t dev, uint8_t func, uint8_t INTPIN, uint8_t IRQ)
+{
+    DPMI_REG r = {0};
+    r.h.ah = PCI_FUNCTION_ID;
+    r.h.al = SET_PCI_IRQ;
+    r.h.cl = 0xA + INTPIN - 1;
+    r.h.ch = IRQ;
+    r.h.bh = bus;
+    r.h.bl = (func&0x7U) | (dev<<3U);
+    r.w.ds = 0xF000;
+    uint16_t ret = DPMI_CallRealModeINT(PCI_INT_NO, &r);
+    _LOG("PCI_SetIRQ: INT%c#->%d: %d %x\n", 'A'+INTPIN-1, IRQ, ret, r.h.ah);
+    return ret == 0 && r.h.ah == SUCCESSFUL;
 }

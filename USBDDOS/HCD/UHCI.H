@@ -66,7 +66,7 @@
 #define FRNUM               0x06    //frame number, 16bit (10bit used, 0~1024)
 #define FLBASEADD           0x08    //frame list base addr, 32bit
 #define SOF                 0x0c    //start of frame modify, 8bit
-#define PORTSC                0x10
+#define PORTSC              0x10
 #define PORT1               0x10
 #define PORT2               0x12
 
@@ -75,9 +75,9 @@
 #define HCRESET             BIT1
 #define GRESET              BIT2    //global reset
 #define EGSM                BIT3    //enter global suspend
-#define FGR                    BIT4    //force global resume
-#define SWDBG                BIT5    //software debug
-#define CF                    BIT6    //configure flag(HCD only, last action)
+#define FGR                 BIT4    //force global resume
+#define SWDBG               BIT5    //software debug
+#define CF                  BIT6    //configure flag(HCD only, last action)
 #define MAXP                BIT7    //max packet 0:32bytes, 1:64bytes
 
 //USBSTS
@@ -86,7 +86,7 @@
 #define USBRESUMEDETECT     BIT2
 #define USBHSERROR          BIT3    //host system error
 #define USBHCERROR          BIT4    //host controller error
-#define USBHCHALTED            BIT5    //HCHalted
+#define USBHCHALTED         BIT5    //HCHalted
 #define USBINTMASK          (BIT0|BIT1|BIT2|BIT3|BIT4)
 
 //PORT1 PORT2

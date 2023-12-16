@@ -42,6 +42,8 @@ uint16_t PIC_GetIRQMask(void);
 
 void PIC_SetIRQMask(uint16_t mask);
 
+BOOL PIC_SetLevelTriggered(uint8_t irq, BOOL LevelTriggered);
+
 #define PIC_IS_IRQ_MASKED(mask, irq) (((mask)&(1<<(irq))))
 #define PIC_IRQ_MASK(mask, irq) ((uint16_t)((mask)|(1<<(irq))))
 #define PIC_IRQ_UNMASK(mask, irq) ((uint16_t)((mask)&(~(1<<(irq)))))

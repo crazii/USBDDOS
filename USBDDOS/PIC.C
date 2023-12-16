@@ -1,4 +1,5 @@
 #include <dos.h>
+#include <conio.h>
 #include "USBDDOS/PIC.H"
 #include "USBDDOS/DBGUTIL.H"
 //reference: https://wiki.osdev.org/PIC
@@ -118,4 +119,19 @@ void PIC_SetIRQMask(uint16_t mask)
     outp(PIC_DATA1, (uint8_t)(mask & ~(1<<PIC_SLAVE_IRQ))); //make sure savle enabled
     outp(PIC_DATA2, (uint8_t)(mask>>8));
     //STIL();
+}
+
+BOOL PIC_SetLevelTriggered(uint8_t irq, BOOL LevelTriggered)
+{
+    uint16_t ELCR = inpw(0x4D0);
+    if(LevelTriggered)
+    {
+        if(irq == 0 || irq == 1 || irq == 2 || irq == 13)
+            return FALSE;
+        ELCR |= 1<<irq;
+    }
+    else
+        ELCR &= 1<<irq;
+    outpw(0x4D0, ELCR);
+    return TRUE;
 }
