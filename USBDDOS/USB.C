@@ -417,7 +417,7 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
     }
 
     uint16_t mask = PIC_GetIRQMask();
-    PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controlelr IRQ
+    PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controller IRQ
     while(!result.Finished)
         USB_IDLE_WAIT();
     PIC_SetIRQMask(mask);

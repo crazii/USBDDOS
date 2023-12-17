@@ -110,13 +110,6 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     EHCI_ResetHC(pHCI);
     _LOG("EHCI operational base: %08lx\n", OperationalBase);
 
-    //power up ports.
-    if(caps.hcsParamsBm.PPC)
-    {
-        for(int i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
-            DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower);
-    }
-
     //setup frame list
     if(!EHCI_SetupPeriodicList(pHCI))
     {
@@ -131,7 +124,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH) | (Typ_QH<<Typ_Shift);
     pHCData->BulkQH.HorizLink.Bm.T = 1;
     pHCData->ControlQH.Token.StatusBm.Halted = pHCData->BulkQH.Token.StatusBm.Halted = 1; //dummy heads
-    DPMI_StoreD(OperationalBase+ASYNCLISTADDR, DPMI_PTR2P(&pHCData->ControlQH) | (Typ_QH<<Typ_Shift));
+    DPMI_StoreD(OperationalBase+ASYNCLISTADDR, DPMI_PTR2P(&pHCData->ControlQH));
 
     //setup cmd
     EHCI_USBCMD cmd = {0};
@@ -144,10 +137,16 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     DPMI_StoreD(OperationalBase+USBINTR, EHCI_INTERRUPTS); //enable interrups
     DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
     EHCI_RunStop(pHCI, TRUE);
-    delay(50); //UBSTS not updated immediately
-    _LOG("USBCMD: %08lx USBSTS: %08lx\n", DPMI_LoadD(OperationalBase+USBCMD), DPMI_LoadD(OperationalBase+USBSTS));
 
-    //pre-detect low/full speed devices, release to companion HC. MUST do it after HC run
+    //power up ports.
+    if(caps.hcsParamsBm.PPC)
+    {
+        for(int i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
+            DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower);
+    }
+    delay(50);
+
+    //pre-detect low/full speed devices, release to companion HC. MUST do it after CONFIGFLAG to get ownership of the ports
     if(caps.hcsParamsBm.N_CC > 0) //we got companion
     {
         int i;
@@ -164,6 +163,8 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
                 DPMI_StoreD(pa, PortOwner);
         }
     }
+    //delay(50); //UBSTS not updated immediately
+    _LOG("USBCMD: %08lx USBSTS: %08lx\n", DPMI_LoadD(OperationalBase+USBCMD), DPMI_LoadD(OperationalBase+USBSTS));
     return TRUE;
 }
 
@@ -252,7 +253,6 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     st.DataToggle = 1; //status data toggle always 1
     st.PID = StatusPID&0x3U;
     EHCI_BuildqTD(pStatusTD, pEnd, st, pRequest, 0);
-    pStatusTD->Next.Bm.T = pStatusTD->AltNext.Bm.T = 1; //prevent QH advance queue
 
     // build data TD
     EHCI_qTD* pDataTD = NULL;
@@ -292,10 +292,11 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     stt.PID = PID_SETUP;
     stt.Length = 8;
     stt.DataToggle = 0; //setup data toggle always 0
+    stt.StatusBm.Active = 0;
     EHCI_BuildqTD(pSetupTD, length ? pDataTD : pStatusTD, stt, pRequest, setup8);
     pQH->EXT.Tail = pEnd;
     // start transfer
-    pQH->qTDNext.Bm.T = 0;
+    pSetupTD->Token.StatusBm.Active = 1;
     STIL();
     uint8_t error = 0;
     return error;
@@ -326,10 +327,10 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
 
     EHCI_QToken token = {0};
     token.CERR = 3;
-    token.StatusBm.Active = 1;
     token.PID = (dir == HCD_TXW) ? PID_OUT : PID_IN;
     token.C_Page = 0;
     assert((pQH->qTDNext.Ptr&~0x1FUL)==DPMI_PTR2P(pQH->EXT.Tail));
+    EHCI_qTD* pHead = pQH->EXT.Tail;
 
     uint16_t transferred = 0;
     CLIS();
@@ -341,18 +342,17 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         token.IOC = (transferred + PacketLength == length) ? 1 : 0; //enable interrupt for last TD
         token.DataToggle = Toggle&0x1U;
         token.Length = PacketLength&0x7FFFU;
+        token.StatusBm.Active = (transferred == 0) ? 0 : 1;
         EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, token, pRequest, (char*)pBuffer + transferred);
         Toggle ^=1;
         transferred = (uint16_t)(transferred + PacketLength);
         assert(transferred == length || align((char*)pBuffer + transferred, 4096) == (uint32_t)pBuffer + transferred);
         MaxLen = EHCI_qTD_MaxSize;
 
-        if(transferred == length)
-            pQH->EXT.Tail->Next.Bm.T = pQH->EXT.Tail->AltNext.Bm.T = 1; //prevent QH advance queue (stop here)
         pQH->EXT.Tail = pNewTail;
     }
     //start transfer
-    pQH->qTDNext.Bm.T = 0;
+    pHead->Token.StatusBm.Active = 1;
     STIL();
     pQH->Token.DataToggle = Toggle&0x1U;
     uint8_t error = 0;
@@ -590,7 +590,6 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
         }
         FrameList = align(FrameList, 4096);
         assert((FrameList&0xFFF) == 0);
-        DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList);
     }
 
     FrameList = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
@@ -646,6 +645,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     DPMI_CopyLinear(FrameList, DPMI_PTR2L(flep), 4096);
     free(flep);
+    DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList);
     return TRUE;
 }
 
@@ -659,11 +659,10 @@ void EHCI_InitQH(EHCI_QH* pInit, EHCI_QH* pLinkto)
 {
     //memset(pInit, 0, sizeof(EHCI_QH));
     pInit->HorizLink.Bm.T = 1;
-    pInit->qTDAltNext.Bm.T = 1;
     EHCI_qTD* pTD = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
     memset(pTD, 0, sizeof(EHCI_qTD)); //pTD->Token.Active = 0;
     pInit->EXT.Tail = pTD;
-    pInit->qTDNext.Ptr = DPMI_PTR2P(pTD) | Tbit; //by spec
+    pInit->qTDAltNext.Ptr = pInit->qTDNext.Ptr = DPMI_PTR2P(pTD);
 
     if(pLinkto)
     {
@@ -779,7 +778,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
     if(pTD && error)
     {
         assert(!pTD->Token.StatusBm.Active && pTD == pQH->EXT.Tail || pTD->Token.StatusBm.Active);
-        pQH->qTDNext.Ptr = DPMI_PTR2P(pTD) | pQH->qTDNext.Bm.T;
+        pQH->qTDNext.Ptr = DPMI_PTR2P(pTD);
     }
 
     while(pList) //release TD in reversed order
