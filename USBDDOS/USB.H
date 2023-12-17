@@ -83,7 +83,7 @@ typedef struct USB_DeviceDescriptor
     uint8_t     bDeviceClass;
     uint8_t     bDeviceSubClass;
     uint8_t     bDeviceProtocol;
-    uint8_t     bMaxPacketSize;
+    uint8_t     bMaxPacketSize; //ep0 max packet size
     uint16_t    widVendor;
     uint16_t    widProduct;
     uint16_t    wbcdDevice;

@@ -121,17 +121,19 @@ void PIC_SetIRQMask(uint16_t mask)
     //STIL();
 }
 
+#define ELCR_PORT 0x4D0 //(word) Edge/Level Control Registers, exist on PCI machines
+
 BOOL PIC_SetLevelTriggered(uint8_t irq, BOOL LevelTriggered)
 {
-    uint16_t ELCR = inpw(0x4D0);
+    uint16_t ELCR = inpw(ELCR_PORT);
     if(LevelTriggered)
     {
-        if(irq == 0 || irq == 1 || irq == 2 || irq == 13)
+        if(irq == 0 || irq == 1 || irq == 2 || irq == 13) //legacy ISA interrupts cannot be level triggered
             return FALSE;
-        ELCR |= 1<<irq;
+        ELCR = (uint16_t)(ELCR|(1<<irq));
     }
     else
-        ELCR &= 1<<irq;
-    outpw(0x4D0, ELCR);
+        ELCR = (uint16_t)(ELCR&(~(1<<irq)));
+    outpw(ELCR_PORT, ELCR);
     return TRUE;
 }

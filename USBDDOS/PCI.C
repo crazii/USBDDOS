@@ -186,14 +186,14 @@ uint16_t PCI_GetIRQMap(uint8_t bus, uint8_t dev, uint8_t INTPIN)
     IRQRoutingOptionBuffer buf;
     buf.size = BUFSIZE-sizeof(buf);
     buf.off = sizeof(buf);
-    buf.seg = seg;
-    DPMI_CopyLinear(seg<<4U, DPMI_PTR2L(&buf), sizeof(buf));
+    buf.seg = (uint16_t)seg;
+    DPMI_CopyLinear(seg<<4UL, DPMI_PTR2L(&buf), sizeof(buf));
 
     DPMI_REG r = {0};
     r.h.ah = PCI_FUNCTION_ID;
     r.h.al = GET_IRQ_ROUTING_OPTIONS;
     r.w.ds = 0xF000;
-    r.w.es = seg;
+    r.w.es = (uint16_t)seg;
     r.w.di = 0;
     uint16_t ret = DPMI_CallRealModeINT(PCI_INT_NO, &r);
     uint16_t map = 0;
@@ -201,14 +201,14 @@ uint16_t PCI_GetIRQMap(uint8_t bus, uint8_t dev, uint8_t INTPIN)
     {
         DPMI_CopyLinear(DPMI_PTR2L(&buf), seg<<4U, sizeof(buf));
 
-        for(int start = 0; start < buf.size; start+=16)
+        for(uint16_t start = 0; start < buf.size; start=(uint16_t)(start+16U))
         {
-            uint32_t addr = (seg<<4)+sizeof(buf)+start;
+            uint32_t addr = (seg<<4U)+sizeof(buf)+start;
             uint8_t b = DPMI_LoadB(addr);
             uint8_t d = DPMI_LoadB(addr+1)>>3;
             if(b == bus && d == dev)
             {
-                map = DPMI_LoadW(addr+INTPIN*3);
+                map = DPMI_LoadW(addr+INTPIN*3U);
                 //_LOG("LINK: %d\n", DPMI_LoadB(addr+INTPIN*3-1));
                 break;
             }
@@ -225,10 +225,10 @@ BOOL PCI_SetIRQ(uint8_t bus, uint8_t dev, uint8_t func, uint8_t INTPIN, uint8_t 
     DPMI_REG r = {0};
     r.h.ah = PCI_FUNCTION_ID;
     r.h.al = SET_PCI_IRQ;
-    r.h.cl = 0xA + INTPIN - 1;
+    r.h.cl = (uint8_t)(0xA + INTPIN - 1);
     r.h.ch = IRQ;
     r.h.bh = bus;
-    r.h.bl = (func&0x7U) | (dev<<3U);
+    r.h.bl = (uint8_t)((func&0x7) | (dev<<3));
     r.w.ds = 0xF000;
     uint16_t ret = DPMI_CallRealModeINT(PCI_INT_NO, &r);
     _LOG("PCI_SetIRQ: INT%c#->%d: %d %x\n", 'A'+INTPIN-1, IRQ, ret, r.h.ah);

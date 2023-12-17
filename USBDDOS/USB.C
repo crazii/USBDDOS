@@ -123,8 +123,8 @@ void USB_Init(void)
                         {
                             if((map&(1<<i))/* && PCI_SetIRQ(bus, dev, func, INTPIN, i)*/) //why PCI_SetIRQ fails?
                             {
-                                PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, i);
-                                PIC_SetLevelTriggered(i, TRUE); //make sure it is level triggerred
+                                PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, (uint8_t)i);
+                                PIC_SetLevelTriggered((uint8_t)i, TRUE); //make sure it is level triggerred
                                 break;
                             }
                         }
@@ -623,14 +623,21 @@ BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, ui
     memset(Buffer, 0, USB_DEVBUFFER_SIZE);
     assert((void*)Buffer != (void*)pBuffer); //need a separate string buffer
     USB_Request Request = {USB_REQ_READ|USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, (uint16_t)((USB_DT_STRING << 8) + bID), USB_LANG_ID_ENG, 1U}; //get length first
+#if 0
     if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
     {
-        Request.wLength = Buffer[0];
+        Request.wLength = min(USB_DEVBUFFER_SIZE, Buffer[0]*2-2); //it's confusing that spec says Buffer[0] is descriptor in bytes but the unicode length is Buffer[0]-2
+#else
+    {
+        Request.wLength = USB_DEVBUFFER_SIZE;
+#endif
         if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
         {
-            wcstombs(pBuffer, (wchar_t*)(Buffer+2), min(length-1U, Buffer[0]));
-            int len = (int)strlen(pBuffer);
-            while(pBuffer[--len] == ' ' && len >= 0) pBuffer[len] = '\0'; //trim
+            int count = min(length-1, Buffer[0]-2);
+            wcstombs(pBuffer, (wchar_t*)(Buffer+2), (size_t)count);
+            pBuffer[count] = '\0';
+            count = (int)strlen(pBuffer);
+            while(--count > 0 && pBuffer[count] == ' ') pBuffer[count] = '\0'; //trim
             return TRUE;
         }
     }
@@ -748,11 +755,13 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     uint8_t result = USB_SyncSendRequest(pDevice, &Request1, Buffer);
     //first try may fail because incorrect max packet size
     USB_DeviceDesc* pDesc = (USB_DeviceDesc*)Buffer;
-    pDevice->Desc.bMaxPacketSize = pDesc->bMaxPacketSize ? pDesc->bMaxPacketSize : pDevice->Desc.bMaxPacketSize;
-    _LOG("USB: ep0 max packet size: %d\n", pDesc->bMaxPacketSize);
-
-    pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
-    pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0);//update EP0 maxpacket
+    _LOG("USB: ep0 max packet size: %d->%d\n", pDevice->Desc.bMaxPacketSize, pDesc->bMaxPacketSize);
+    if(pDesc->bMaxPacketSize && pDesc->bMaxPacketSize != pDevice->Desc.bMaxPacketSize)
+    {
+        pDevice->Desc.bMaxPacketSize = pDesc->bMaxPacketSize;
+        pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
+        pDevice->pDefaultControlEP = pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, 0, HCD_TXW, USB_ENDPOINT_TRANSFER_TYPE_CTRL, pDevice->Desc.bMaxPacketSize, 0);//update EP0 maxpacket
+    }
 
     // 2nd reset
     reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);

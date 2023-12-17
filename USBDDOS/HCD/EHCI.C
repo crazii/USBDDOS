@@ -122,7 +122,12 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->ControlTail = &pHCData->ControlQH;
     pHCData->BulkTail = &pHCData->BulkQH;
     pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH) | (Typ_QH<<Typ_Shift);
+    #if 0
     pHCData->BulkQH.HorizLink.Bm.T = 1;
+    #else //only circle queue + 'H' bit (EHCI spec 4.8.3) works on tested hardware (ECHI rev 0.95), although it works well in VirtualBox. this saves mem bandwidth anyways
+    pHCData->BulkQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->ControlQH) | (Typ_QH<<Typ_Shift);
+    pHCData->ControlQH.Caps.HeadofReclamation = 1;
+    #endif
     pHCData->ControlQH.Token.StatusBm.Halted = pHCData->BulkQH.Token.StatusBm.Halted = 1; //dummy heads
     DPMI_StoreD(OperationalBase+ASYNCLISTADDR, DPMI_PTR2P(&pHCData->ControlQH));
 
@@ -141,15 +146,15 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     //power up ports.
     if(caps.hcsParamsBm.PPC)
     {
-        for(int i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
+        for(uint8_t i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
             DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower);
     }
     delay(50);
 
-    //pre-detect low/full speed devices, release to companion HC. MUST do it after CONFIGFLAG to get ownership of the ports
+    //pre-detect low/full speed devices, release to companion HC. MUST do it after CONFIGFLAG to get ownership of all ports
     if(caps.hcsParamsBm.N_CC > 0) //we got companion
     {
-        int i;
+        uint8_t i;
         for(i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
             DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower|PortReset);
         delay(50);
@@ -160,7 +165,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
             delay(2); //spec require 2ms to enable ports with high speed devices after reset
             uint32_t status = DPMI_LoadD(pa);
             if((status&ConnectStatus) && !(status&PortEnable)) //not enabled: low/full speed
-                DPMI_StoreD(pa, PortOwner);
+                DPMI_StoreD(pa, PortOwner); //handoff to companion HC
         }
     }
     //delay(50); //UBSTS not updated immediately
@@ -199,20 +204,15 @@ BOOL EHCI_ISR(HCD_Interface* pHCI)
     uint32_t sts = DPMI_LoadD(pHCData->OPBase+USBSTS);
     if(!(sts&USBINTMASK))
         return FALSE;
-    _LOG("EHCI ISR %lx  %lx", sts, DPMI_LoadD(pHCData->OPBase+USBCMD));
+    //_LOG("EHCI ISR %lx  %lx", sts, DPMI_LoadD(pHCData->OPBase+USBCMD));
     DPMI_StoreD(pHCData->OPBase+USBINTR, 0); //disable interrupts
 
-    if(sts&INTonAsyncAdvance)
-        DPMI_StoreD(pHCData->OPBase+USBSTS, INTonAsyncAdvance);//clear
     if(sts&HostSysError)
     {
-        DPMI_StoreD(pHCData->OPBase+USBSTS, HostSysError);//clear
+        DPMI_StoreD(pHCData->OPBase+USBSTS, HostSysError);//ACK & clear
+        sts &= ~HostSysError;
         EHCI_RunStop(pHCI, TRUE);
     }
-    if(sts&FrameListRollover)
-        DPMI_StoreD(pHCData->OPBase+USBSTS, FrameListRollover);
-    if(sts&PortChangeDetect)
-        DPMI_StoreD(pHCData->OPBase+USBSTS, PortChangeDetect);
 
     //process QH & qTDs
     EHCI_ISR_QH(pHCI, &pHCData->ControlQH, pHCData->ControlTail);
@@ -222,7 +222,7 @@ BOOL EHCI_ISR(HCD_Interface* pHCI)
 
     //process iTDs & siTDs TODO:
 
-    DPMI_StoreD(pHCData->OPBase+USBSTS, sts);
+    DPMI_StoreD(pHCData->OPBase+USBSTS, sts); //ACK all interrupts
     DPMI_StoreD(pHCData->OPBase+USBINTR, EHCI_INTERRUPTS); //enable interrupts
     return TRUE;
 }
@@ -287,7 +287,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     CLIS();
     EHCI_qTD* pSetupTD = pQH->EXT.Tail;
     assert(pSetupTD->EXT.Prev == NULL);
-    assert((pQH->qTDNext.Ptr&~0x1FUL) == DPMI_PTR2P(pSetupTD));
+    assert((pQH->qTDNext.Ptr&~0x1FUL) == DPMI_PTR2P(pSetupTD) && pQH->Token.StatusBm.Active == 0); //currently control transfers are synced, and there's no pending transfers
     EHCI_QToken stt = token;
     stt.PID = PID_SETUP;
     stt.Length = 8;
@@ -351,10 +351,11 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
 
         pQH->EXT.Tail = pNewTail;
     }
+    pQH->Token.DataToggle = Toggle&0x1U;
+
     //start transfer
     pHead->Token.StatusBm.Active = 1;
     STIL();
-    pQH->Token.DataToggle = Toggle&0x1U;
     uint8_t error = 0;
     return error;
 }
@@ -366,7 +367,7 @@ uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port)
     uint32_t addr = pHCData->OPBase + PORTSC + port*4U;
     uint32_t status = DPMI_LoadD(addr);
     uint16_t result = 0;
-    _LOG("EHCI port %d status: %lx\n", port, status);
+    //_LOG("EHCI port %d status: %lx\n", port, status);
 
     if(status & ConnectStatus) //low/full speed devices already released to companion on HC init.
         result |= USB_PORT_ATTACHED|USB_PORT_High_Speed_Device;
@@ -486,11 +487,13 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Caps.Endpoint = EPAddr&0xFU;
     pQH->Caps.EndpointSpd = EPS&0x3U;
     pQH->Caps.MaxPacketSize = MaxPacketSize&0x7FFU;
+    pQH->Caps.DTC = 1; //always uses data toggle from qTD
 
     pQH->Caps2.Mult = 1;
     pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? 0xF : 0;
     if(pQH->Caps.EndpointSpd != EPS_HIGH)
     {
+        pQH->Caps.NakCounterRL = 0x8; //8 micro frames for low/high speed (1ms)
         pQH->Caps2.PortNum_1x = pDevice->bHubPort&0x3FU;
         //pQH->Caps2.HubAddr_1x = ? //TODO:
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
@@ -599,6 +602,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)malloc(4096);
+    memset(flep, 0, 4096);
     {//scope for BC
         for(int i = 0; i < 11; ++i)
         {
@@ -607,21 +611,13 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
             pHCData->InterruptTail[i] = &pHCData->InterruptQH[i];
         }
     }
-    {//scope for BC
-        for(int i = 0; i < 1024; ++i)
-            flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
-    }
     int offset = 0;
     {//scope for BC
         for(int i = 10; i >= 3; --i)
         {
             int step = 1<<i;
             for(int j = offset++; j < 1024; j+=step)
-            {
-                EHCI_FLEP* ptr = &flep[j];
-                assert(ptr->Ptr == ((Typ_QH<<Typ_Shift) | Tbit));
-                ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
-            }
+                flep[j].Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
         }
     }
     {//scope for BC
@@ -632,7 +628,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
             {
                 EHCI_FLEP* ptr = &flep[j];
                 EHCI_QH* last = NULL;
-                while((ptr->Ptr&0xFFFFFFF0UL) != 0)
+                while((ptr->Ptr&~0x1FUL) != 0)
                 {
                     last = (EHCI_QH*)DPMI_P2PTR(ptr->Ptr&~0x1FUL);
                     ptr = &(last->HorizLink);
@@ -641,6 +637,10 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
                     ptr->Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
             }
         }
+    }
+    {//scope for BC
+        for(int i = 0; i < 1024; ++i)
+            flep[i].Ptr &= ~0x1FUL; //spec require the lastbits to be 0
     }
 
     DPMI_CopyLinear(FrameList, DPMI_PTR2L(flep), 4096);
