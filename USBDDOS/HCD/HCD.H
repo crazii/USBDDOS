@@ -12,17 +12,18 @@ struct HCD_HostControllerInterface;
 typedef struct HCD_HostControllerInterface HCD_Interface;
 struct HCD_RequestBlock;
 typedef struct HCD_RequestBlock HCD_Request;
+typedef struct HCD_HUB HCD_HUB;
 
 typedef struct //device in HC's view
 {
     uint8_t         bHubPort; //0 based port index
-    uint8_t         bHubAddress; //HUB device's address if this device connected to a HUB
     uint8_t         bAddress; //device address assigned outside by enumeration process
     uint8_t         bSpeed;
     uint8_t         bReserved;      //temp padding
     HCD_Request* volatile pRequest;
     HCD_Interface*  pHCI;           //unique host controller data
     void*           pHCData;        //per device host controller data
+    HCD_HUB*        pHub;
 }HCD_Device;
 
 #define HCD_IS_DEVICE_VALID(device) ((device) != NULL && (device)->pHCData != NULL && (device)->pHCI != NULL)
@@ -115,7 +116,7 @@ BOOL HCD_InitController(HCD_Interface* pHCI, uint8_t bus, uint8_t dev, uint8_t f
 
 BOOL HCD_DeinitController(HCD_Interface* pHCI);
 
-BOOL HCD_InitDevice(HCD_Interface* pHCI, HCD_Device* pDevice, uint8_t port, uint16_t portStatus);
+BOOL HCD_InitDevice(HCD_HUB* pHub, HCD_Device* pDevice, uint8_t port, uint16_t portStatus);
 
 HCD_Device* HCD_FindDevice(HCD_Interface* pHCI, uint8_t address);
 
@@ -126,5 +127,20 @@ HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir,
 
 //invoke callback and remove the request entry
 BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode);
+
+typedef struct HCD_HUB
+{
+    const char* name;
+    HCD_Interface* pHCI; //HC of this hub, always valid
+    HCD_Device* pDevice; //optional, only valid if it is a hub device, instead of root hub
+    uint8_t bHubAddress; //optional, only valid if it is a hub device, instead of root hub
+    uint8_t bNumPorts;
+
+    //hub functions
+    uint16_t (*GetPortStatus)(struct HCD_HUB* pHCI, uint8_t port);
+    BOOL (*SetPortStatus)(struct HCD_HUB* pHCI, uint8_t port, uint16_t status);
+}HCD_HUB;
+
+extern const HCD_HUB HCD_ROOT_HUB_Prototype; //root hub prototype, copy it and set 'pHCI & bNumPorts' and it's done.
 
 #endif

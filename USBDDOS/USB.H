@@ -240,10 +240,12 @@ typedef struct
 {
     HCD_Type HC_Types[USB_MAX_HC_TYPE];
     HCD_Interface HC_List[USB_MAX_HC_COUNT];
+    HCD_HUB HUB_List[USB_MAX_HUB_COUNT];
     USBC_Driver ClassDrivers[USBC_MAX_DRIVER];
     USB_Device Devices[USB_MAX_DEVICE_COUNT];
     USB_Routine InitFunctions[USB_MAX_DEVICE_COUNT]; //un-ordered function array
     uint16_t HC_Count;
+    volatile uint16_t HUB_Count; //hub count changes during enumeration, i.e. new hub device found
     uint16_t DeviceCount;
 }USB_Table;
 
@@ -280,6 +282,8 @@ void USB_ShowDeviceInfo(USB_Device* pDevice);
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr); //clear stall
 
 void USB_IdleWait();
+
+BOOL USB_AddHub(HCD_HUB hub);
 
 //ISR related
 //the finalizer is a routine called after EOI, so that other IRQ can be handled.

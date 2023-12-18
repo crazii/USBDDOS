@@ -4,13 +4,14 @@
 //configurables
 #define USB_MAX_HC_COUNT        8
 #define USBC_MAX_DRIVER         0x10        //class driver [0,USBC_PERSONHEALTHCARE]
-#define USB_MAX_VENDOR_DRIVER   0x10  //not used yet
+#define USB_MAX_VENDOR_DRIVER   0x10        //not used yet
 #define USB_DEVBUFFER_SIZE      0x100
+#define USB_MAX_HUB_COUNT       0x10
 
 //constants
 #define HCD_MAX_DEVICE_COUNT 15     //device per root hub by spec
 #if defined(__BC__)
-#define USB_MAX_DEVICE_COUNT 15     //save 16 bit memory
+#define USB_MAX_DEVICE_COUNT 4      //save 16 bit memory
 #else
 #define USB_MAX_DEVICE_COUNT 127    //no need to change, max address 127
 #endif

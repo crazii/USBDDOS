@@ -493,7 +493,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     if(pQH->Caps.EndpointSpd != EPS_HIGH)
     {
         pQH->Caps2.PortNum_1x = pDevice->bHubPort&0x3FU;
-        //pQH->Caps2.HubAddr_1x = ? //TODO:
+        pQH->Caps2.HubAddr_1x = pDevice->pHub->bHubAddress&0x7FU;
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
             pQH->Caps2.uFrameCMask_1x = 0x1U; //8 micro frames (1ms)
     }

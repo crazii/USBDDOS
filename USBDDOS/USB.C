@@ -61,7 +61,7 @@ static uint16_t USB_IRQMask = 0;
 
 static void USB_Shutdown(void);
 static BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCIDev);
-static BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus);
+static BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus);
 static BOOL USB_RemoveDevice(USB_Device* pDevice);
 static void USB_EnumerateDevices();
 static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address);
@@ -233,6 +233,17 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
                 PIC_SetIRQMask(irqmask);
                 continue;
             }
+
+            //add root hub
+            HCD_HUB hub = HCD_ROOT_HUB_Prototype;
+            hub.pHCI = pHCI;
+            hub.bNumPorts = pHCI->bNumPorts;
+            if(!USB_AddHub(hub))
+            {
+                printf("Error: max hub count exceeded %d.", USBT.HUB_Count);
+                exit(1);
+            }
+
             uint16_t index = USBT.HC_Count++;
             uint8_t iv = PIC_IRQ2VEC(header->DevHeader.Device.IRQ);
             _LOG("Install ISR 0x%02x\n", iv);
@@ -258,10 +269,10 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
     return OK;
 }
 
-BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus)
+BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
 {
     //early return
-    if(pHCI->bDevCount >= USB_MAX_HC_COUNT)
+    if(pHub->pHCI->bDevCount >= USB_MAX_HC_COUNT)
         return FALSE;
     if(USBT.DeviceCount >= USB_MAX_DEVICE_COUNT)
         return FALSE;
@@ -277,7 +288,7 @@ BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus)
     address = (uint8_t)(address + 1); //1 based
     memset(pDevice, 0, sizeof(USB_Device));
 
-    if( !HCD_InitDevice(pHCI, &pDevice->HCDDevice, portIndex, portStatus) )
+    if( !HCD_InitDevice(pHub, &pDevice->HCDDevice, portIndex, portStatus) )
         return FALSE;
     pDevice->bStatus = DS_Default;
     pDevice->pDeviceBuffer = (uint8_t*)DPMI_DMAMalloc(USB_DEVBUFFER_SIZE, 4);
@@ -303,7 +314,7 @@ BOOL USB_InitDevice(HCD_Interface* pHCI, uint8_t portIndex, uint16_t portStatus)
             assert(pDevice->bStatus == DS_Configured);
             break;
         }
-        pHCI->pHCDMethod->SetPortStatus(pHCI, portIndex, USB_PORT_DISABLE); //disable it to continue enumeration on next port
+        pHub->SetPortStatus(pHub, portIndex, USB_PORT_DISABLE); //disable it to continue enumeration on next port
     }
     // install device driver
     if(pDevice->bStatus == DS_Configured)
@@ -699,6 +710,20 @@ void USB_IdleWait()
     USB_IDLE_WAIT();
 }
 
+BOOL USB_AddHub(HCD_HUB hub)
+{
+    if(USBT.HUB_Count < USB_MAX_HUB_COUNT)
+    {
+        USBT.HUB_List[USBT.HUB_Count++] = hub;
+        return TRUE;
+    }
+    else
+    {
+        _LOG("Error: max hub count exceeded %d.", USB_MAX_DEVICE_COUNT);
+        return FALSE;
+    }
+}
+
 void USB_ISR_AddFinalizer(USB_ISR_Finalizer* finalizer)
 {
     finalizer->next = NULL;
@@ -712,38 +737,39 @@ static void USB_EnumerateDevices()
     //enable one port each time, and it will respond via device address (FA) 0, default pipe - endpoint 0.
     //if device inited, assign address to it (the address is used for further communication), and continue to next device.
     //otherwise disable the port (only one device can be enabled with address 0) and continue to next
-    {for(int j = 0; j < USBT.HC_Count; ++j) //disable all ports if they're previously enabled by default/by BIOS. only 1 can be enabled during enumearation.
+    {for(int j = 0; j < USBT.HUB_Count; ++j) //disable all ports if they're previously enabled by default/by BIOS. only 1 can be enabled during enumearation.
     {
-        HCD_Interface* pHCI = &USBT.HC_List[j];
-        for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
+        HCD_HUB* pHub = &USBT.HUB_List[j];
+        for(uint8_t i = 0; i < pHub->bNumPorts; ++i)
         {
-            uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
+            uint16_t status = pHub->GetPortStatus(pHub, i);
 
             if((status&USB_PORT_ATTACHED))
-                pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_DISABLE);
+                pHub->SetPortStatus(pHub, i, USB_PORT_DISABLE);
         }
     }}
 
-    for(int j = 0; j < USBT.HC_Count; ++j)
+    for(int j = 0; j < USBT.HUB_Count; ++j)
     {
-        HCD_Interface* pHCI = &USBT.HC_List[j];
-        _LOG("Enumerate device for %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function);
+        HCD_HUB* pHub = &USBT.HUB_List[j];
+        HCD_Interface* pHCI = pHub->pHCI;
+        _LOG("Enumerate device for %s %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHub->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function);
 
-        for(uint8_t i = 0; i < pHCI->bNumPorts; ++i)
+        for(uint8_t i = 0; i < pHub->bNumPorts; ++i)
         {
-            uint16_t status = pHCI->pHCDMethod->GetPortStatus(pHCI, i);
+            uint16_t status = pHub->GetPortStatus(pHub, i);
             
             if(status&USB_PORT_ATTACHED)
             {
                 //stablize
-                pHCI->pHCDMethod->SetPortStatus(pHCI, i, USB_PORT_CONNECT_CHANGE); //clear state change
+                pHub->SetPortStatus(pHub, i, USB_PORT_CONNECT_CHANGE); //clear state change
                 delay(100);
-                BOOL stablized = !(pHCI->pHCDMethod->GetPortStatus(pHCI, i)&USB_PORT_CONNECT_CHANGE);
+                BOOL stablized = !(pHub->GetPortStatus(pHub, i)&USB_PORT_CONNECT_CHANGE);
                 if(!stablized)
                     continue;
                 
                 _LOG("Enumerate device at port %d.\n",i);
-                USB_InitDevice(pHCI, i, status);
+                USB_InitDevice(pHub, i, status);
             }
         }    
     }
@@ -754,9 +780,10 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     //https://techcommunity.microsoft.com/t5/microsoft-usb-blog/how-does-usb-stack-enumerate-a-device/ba-p/270685
 
     HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
+    HCD_HUB* pHub = pDevice->HCDDevice.pHub;
     // 1st reset
-    BOOL reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
-    if(!reset || !(pHCI->pHCDMethod->GetPortStatus(pHCI, pDevice->HCDDevice.bHubPort)&USB_PORT_ENABLE)) //port enable failed: device detached, or 1.x device attached directly to EHCI root ports and EHCI has no companion HC to hand off
+    BOOL reset = pHub->SetPortStatus(pHub, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
+    if(!reset || !(pHub->GetPortStatus(pHub, pDevice->HCDDevice.bHubPort)&USB_PORT_ENABLE)) //port enable failed: device detached, or 1.x device attached directly to EHCI root ports and EHCI has no companion HC to hand off
         return FALSE;
 
     uint8_t* Buffer = pDevice->pDeviceBuffer;
@@ -778,7 +805,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     }
 
     // 2nd reset
-    reset = pHCI->pHCDMethod->SetPortStatus(pHCI, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
+    reset = pHub->SetPortStatus(pHub, pDevice->HCDDevice.bHubPort, USB_PORT_RESET|USB_PORT_ENABLE);
     if(!reset)
         return FALSE;
 

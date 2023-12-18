@@ -324,7 +324,7 @@ uint8_t UHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     uint8_t bEndpoint = UHCI_ED_GETADDR(pEndpoint);
     uint8_t PID = (dir == HCD_TXW) ? OUTPID : INPID;
     assert(pQH->Flags.wMaxPacketSize);
-    uint16_t MaxLen = max(pQH->Flags.wMaxPacketSize, (1023/pQH->Flags.wMaxPacketSize-1)*pQH->Flags.wMaxPacketSize); //USB1.1 spec 0~1023 bytes data packet
+    uint16_t MaxLen = (uint16_t)max(pQH->Flags.wMaxPacketSize, (1023/pQH->Flags.wMaxPacketSize-1)*pQH->Flags.wMaxPacketSize); //USB1.1 spec 0~1023 bytes data packet
     //_LOG("EPADDR: %x, MAXLEN: %d\n", bEndpoint, MaxLen);
     uint8_t Toggle = pQH->Flags.DataToggle;
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, bEndpoint, pCB, pCBData);

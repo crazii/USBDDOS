@@ -475,8 +475,8 @@ static void USB_MSC_DOS_DriverINT()
     {
         case DOS_DRSCMD_MEDIACHECK:
         {
-            HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
-            uint16_t PortStatus = pHCI->pHCDMethod->GetPortStatus(pHCI, pDevice->HCDDevice.bHubPort);
+            HCD_HUB* pHub = pDevice->HCDDevice.pHub;
+            uint16_t PortStatus = pHub->GetPortStatus(pHub, pDevice->HCDDevice.bHubPort);
             if((PortStatus&USB_PORT_ATTACHED) && (PortStatus&USB_PORT_ENABLE) && !(PortStatus&USB_PORT_CONNECT_CHANGE))
                 request.MediaCheck.Returned = 1;
             else

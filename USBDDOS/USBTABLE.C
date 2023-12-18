@@ -32,7 +32,7 @@ USB_Table USBT =
 {
     //HC_Types
     {
-        /*/UHCI
+        //UHCI
         {
             0x00,
             "UHCI",
@@ -47,7 +47,7 @@ USB_Table USBT =
             OHCI_InitController,
             OHCI_DeinitController,
             OHCI_ISR,
-        },  */
+        }, 
         //EHCI
         {
             EHCI_PI, //0x20,
@@ -59,6 +59,8 @@ USB_Table USBT =
     },
 
     //HC_List
+    {0},
+    //Hub_List
     {0},
 
     //ClassDrivers

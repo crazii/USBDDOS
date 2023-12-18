@@ -5,6 +5,29 @@
 #include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
 
+static uint16_t HCD_RootHub_GetPortStatus(struct HCD_HUB* pHub, uint8_t port)
+{
+    assert(pHub && pHub->pHCI && port < pHub->bNumPorts);
+    return pHub->pHCI->pHCDMethod->GetPortStatus(pHub->pHCI, port);
+}
+
+static BOOL HCD_RootHub_SetPortStatus(struct HCD_HUB* pHub, uint8_t port, uint16_t status)
+{
+    assert(pHub && pHub->pHCI && port < pHub->bNumPorts);
+    return pHub->pHCI->pHCDMethod->SetPortStatus(pHub->pHCI, port, status);
+}
+
+const HCD_HUB HCD_ROOT_HUB_Prototype =
+{
+    "ROOT HUB",
+    NULL,
+    NULL,
+    0,
+    0,
+    HCD_RootHub_GetPortStatus,
+    HCD_RootHub_SetPortStatus,
+};
+
 BOOL HCD_InitController(HCD_Interface* pHCI, uint8_t bus, uint8_t dev, uint8_t func, HCD_Type* type, PCI_DEVICE* pPCIDev)
 {
     memset(pHCI, 0, sizeof(HCD_Interface));
@@ -25,20 +48,20 @@ BOOL HCD_DeinitController(HCD_Interface* pHCI)
     return result;
 }
 
-BOOL HCD_InitDevice(HCD_Interface* pHCI, HCD_Device* pDevice, uint8_t port, uint16_t portStatus)
+BOOL HCD_InitDevice(HCD_HUB* pHub, HCD_Device* pDevice, uint8_t port, uint16_t portStatus)
 {
-    if(pDevice == NULL || pHCI->bDevCount >= HCD_MAX_DEVICE_COUNT || port >= pHCI->bNumPorts || pHCI->DeviceList[port] != NULL)
+    if(pDevice == NULL || pHub->pHCI->bDevCount >= HCD_MAX_DEVICE_COUNT || port >= pHub->pHCI->bNumPorts || pHub->pHCI->DeviceList[port] != NULL)
         return FALSE;
     memset(pDevice, 0, sizeof(HCD_Device));
-    pHCI->DeviceList[port] = pDevice;
-    ++pHCI->bDevCount;
+    pHub->pHCI->DeviceList[port] = pDevice;
+    ++pHub->pHCI->bDevCount;
 
-    pDevice->pHCI = pHCI;
+    pDevice->pHCI = pHub->pHCI;
+    pDevice->pHub = pHub;
     pDevice->bHubPort = port;
-    pDevice->bAddress = 0;
     pDevice->bSpeed = portStatus&USB_PORT_SPEEDMASK;
     pDevice->pHCData = NULL;
-    return pHCI->pHCDMethod->InitDevice(pDevice);
+    return pHub->pHCI->pHCDMethod->InitDevice(pDevice);
 }
 
 HCD_Device* HCD_FindDevice(HCD_Interface* pHCI, uint8_t address)
@@ -63,7 +86,7 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 
     assert(pDevice->pRequest == NULL);
 
-    BOOL result = pDevice->pHCI->pHCDMethod->SetPortStatus(pDevice->pHCI, pDevice->bHubPort, USB_PORT_DISABLE);
+    BOOL result = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
     assert(result);
     result = result && pDevice->pHCI->pHCDMethod->RemoveDevice(pDevice);
     assert(result);
