@@ -2,6 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include <malloc.h>
+#include <dos.h>
 #include "USBDDOS/CLASS/MSC.H"
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/DBGUTIL.H"
@@ -500,6 +501,7 @@ static void USB_MSC_DOS_DriverINT()
             cmd.LUN = (uint8_t)request.Header.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
             start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            #if !defined(__BC__)
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
@@ -511,6 +513,31 @@ static void USB_MSC_DOS_DriverINT()
                 request.ReadWrite.Count = 0;
             }
             DPMI_CopyLinear(DPMI_FP2L(request.ReadWrite.Address), DPMI_PTR2L(dma), len);
+            #else  //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
+            //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
+            uint32_t len = max(8192U,pDriverData->BlockSize);
+            uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(len, 16);
+            //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
+            uint32_t count = request.ReadWrite.Count;
+            uint32_t off = 0;
+            while(count > 0)
+            {
+                uint16_t tc = min(count, len/pDriverData->BlockSize);
+                uint16_t tlen = tc * pDriverData->BlockSize;
+
+                cmd.LBA = EndianSwap32(start+off);
+                cmd.TransferLength = EndianSwap16(tc);
+                if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, tlen, HCD_TXR))
+                {
+                    request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_READ_FAULT;
+                    request.ReadWrite.Count = 0;
+                    break;
+                }
+                DPMI_CopyLinear(DPMI_FP2L(request.ReadWrite.Address)+off*pDriverData->BlockSize, DPMI_PTR2L(dma), tlen);
+                off += tc;
+                count -= tc;
+            }
+            #endif
             DPMI_DMAFree(dma);
             break;
         }
@@ -524,13 +551,39 @@ static void USB_MSC_DOS_DriverINT()
             cmd.LUN = (uint8_t)request.Header.SubUnit&0x7U;
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
             start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
+            #if !defined(__BC__)
             cmd.LBA = EndianSwap32(start);
             uint16_t len = (uint16_t)(request.ReadWrite.Count*pDriverData->BlockSize);
             cmd.TransferLength = EndianSwap16(request.ReadWrite.Count);
             uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(len, 16);
             DPMI_CopyLinear(DPMI_PTR2L(dma), DPMI_FP2L(request.ReadWrite.Address), len);
             if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, len, HCD_TXW))
+            {
                 request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_WRITE_FAULT;
+                request.ReadWrite.Count = 0;
+            }
+            #else //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
+            uint32_t len = max(8192U,pDriverData->BlockSize);
+            uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(len, 16);
+            uint32_t count = request.ReadWrite.Count;
+            uint32_t off = 0;
+            while(count > 0)
+            {
+                uint16_t tc = min(count, len/pDriverData->BlockSize);
+                uint16_t tlen = tc * pDriverData->BlockSize;
+                cmd.LBA = EndianSwap32(start+off);
+                cmd.TransferLength = EndianSwap16(tc);
+                DPMI_CopyLinear(DPMI_PTR2L(dma), DPMI_FP2L(request.ReadWrite.Address)+off*pDriverData->BlockSize, tlen);
+                if(!USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), dma, tlen, HCD_TXW))
+                {
+                    request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_WRITE_FAULT;
+                    request.ReadWrite.Count = 0;
+                    break;
+                }
+                off += tc;
+                count -= tc;
+            }
+            #endif
             DPMI_DMAFree(dma);
 
             if(request.Header.Status == DOS_DRSS_DONEBIT && request.Header.Cmd == DOS_DRSCMD_WRITEVERIFY)
@@ -565,7 +618,7 @@ static void USB_MSC_DOS_DriverINT()
         }
     }
 
-    //writ back status
+    //write back status
     DPMI_StoreW(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, Header.Status), request.Header.Status);
     if(request.Header.Cmd == DOS_DRSCMD_MEDIACHECK)
         DPMI_StoreB(DPMI_FP2L(ReqFarPtr) + offsetof(DOS_DRS, MediaCheck.Returned), request.MediaCheck.Returned);

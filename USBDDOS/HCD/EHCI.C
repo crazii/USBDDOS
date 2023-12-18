@@ -204,7 +204,7 @@ BOOL EHCI_ISR(HCD_Interface* pHCI)
     uint32_t sts = DPMI_LoadD(pHCData->OPBase+USBSTS);
     if(!(sts&USBINTMASK))
         return FALSE;
-    //_LOG("EHCI ISR %lx  %lx", sts, DPMI_LoadD(pHCData->OPBase+USBCMD));
+    //_LOG("EHCI ISR %lx %lx  ", sts, DPMI_LoadD(pHCData->OPBase+USBCMD));
     DPMI_StoreD(pHCData->OPBase+USBINTR, 0); //disable interrupts
 
     if(sts&HostSysError)
@@ -240,7 +240,8 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     token.StatusBm.Active = 1;
     token.CERR = 3;
     token.C_Page = 0;
-    uint16_t MaxLength = (uint16_t)(EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0)); //pQH->Caps.MaxPacketSize;
+    //uint16_t MaxLength = (uint16_t)(EHCI_qTD_MaxSize - (length ? (uint32_t)(pSetupData) - alignup(pSetupData, 4096) : 0)); //pQH->Caps.MaxPacketSize;
+    uint16_t MaxLength = EHCI_qTD_MaxSize - 4096; //not working when using maximum buffer (0...5 when 5th page finishes at page boundary), why?
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pSetupData, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
 
     EHCI_qTD* pEnd = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN); //dummy end (tail)
@@ -248,6 +249,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 
     // build status TD
     EHCI_qTD* pStatusTD = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
+    memset(pStatusTD, 0, sizeof(EHCI_qTD));
     EHCI_QToken st = token;
     st.IOC = 1;
     st.DataToggle = 1; //status data toggle always 1
@@ -262,6 +264,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
         uint8_t DataToggle = 1;
         assert(pSetupData);
         EHCI_qTD* pNext = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
+        memset(pNext, 0, sizeof(EHCI_qTD));
         pDataTD = pNext;
 
         while(Transferred < length)
@@ -278,8 +281,8 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
             DataToggle ^= 1;
 
             Transferred = (uint16_t)(Transferred + DataLength);
-            assert(Transferred == length || align((char*)pSetupData + Transferred, 4096) == (uint32_t)pSetupData + Transferred);
-            MaxLength = EHCI_qTD_MaxSize;
+            //assert(Transferred == length || align(DPMI_PTR2L(pSetupData) + Transferred, 4096) == DPMI_PTR2L(pSetupData) + Transferred);
+            //MaxLength = EHCI_qTD_MaxSize;
         }
     }
 
@@ -287,7 +290,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     CLIS();
     EHCI_qTD* pSetupTD = pQH->EXT.Tail;
     assert(pSetupTD->EXT.Prev == NULL);
-    assert((pQH->qTDNext.Ptr&~0x1FUL) == DPMI_PTR2P(pSetupTD) && pQH->Token.StatusBm.Active == 0); //currently control transfers are synced, and there's no pending transfers
+    assert((pQH->qTDNext.Ptr&~0x1FUL) == DPMI_PTR2P(pSetupTD) && pQH->Token.StatusBm.Active == 0); //currently control transfers are synced (from USBD), and there's no pending transfers
     EHCI_QToken stt = token;
     stt.PID = PID_SETUP;
     stt.Length = 8;
@@ -320,10 +323,10 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
     }
     assert(pQH->Caps.Endpoint == EHCI_EP_GETADDR(pEndpoint));
 
-    uint16_t MaxLen = (uint16_t)(EHCI_qTD_MaxSize - ((uint32_t)(pBuffer) - alignup(pBuffer, 4096))); //pQH->Caps.MaxPacketSize;
-    uint8_t Toggle = pQH->Token.DataToggle;
+    //uint16_t MaxLen = (uint16_t)(EHCI_qTD_MaxSize - ((uint32_t)DPMI_PTR2L(pBuffer) - alignup(DPMI_PTR2L(pBuffer), 4096))); //pQH->Caps.MaxPacketSize;
+    uint16_t MaxLen = EHCI_qTD_MaxSize - 4096; //not working when using maximum buffer (0...5 when 5th page finishes at page boundary), why?
     HCD_Request* pRequest = HCD_AddRequest(pDevice, pEndpoint, dir, pBuffer, length, EHCI_EP_GETADDR(pEndpoint), pCB, pCBData);
-    //_LOG("req: %08lx TD: %08lx\n", pRequest, pQH->EXT.Tail);
+    //_LOG("data xfer, ep: %d, size:%u, MaxLen:%u\n", pQH->Caps.Endpoint, length, MaxLen);
 
     EHCI_QToken token = {0};
     token.CERR = 3;
@@ -340,19 +343,14 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         EHCI_qTD* pNewTail = (EHCI_qTD*)USB_TAlloc(sizeof(EHCI_qTD), EHCI_ALIGN);
         memset(pNewTail, 0, sizeof(EHCI_qTD));
         token.IOC = (transferred + PacketLength == length) ? 1 : 0; //enable interrupt for last TD
-        token.DataToggle = Toggle&0x1U;
         token.Length = PacketLength&0x7FFFU;
         token.StatusBm.Active = (transferred == 0) ? 0 : 1;
         EHCI_BuildqTD(pQH->EXT.Tail, pNewTail, token, pRequest, (char*)pBuffer + transferred);
-        Toggle ^=1;
         transferred = (uint16_t)(transferred + PacketLength);
-        assert(transferred == length || align((char*)pBuffer + transferred, 4096) == (uint32_t)pBuffer + transferred);
-        MaxLen = EHCI_qTD_MaxSize;
-
+        //assert(transferred == length || align((char*)pBuffer + transferred, 4096) == (uint32_t)pBuffer + transferred);
+        //MaxLen = EHCI_qTD_MaxSize;
         pQH->EXT.Tail = pNewTail;
     }
-    pQH->Token.DataToggle = Toggle&0x1U;
-
     //start transfer
     pHead->Token.StatusBm.Active = 1;
     STIL();
@@ -487,13 +485,13 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Caps.Endpoint = EPAddr&0xFU;
     pQH->Caps.EndpointSpd = EPS&0x3U;
     pQH->Caps.MaxPacketSize = MaxPacketSize&0x7FFU;
-    pQH->Caps.DTC = 1; //always uses data toggle from qTD
+    pQH->Caps.DTC = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL) ? 1 : 0; //always uses data toggle from qTD
+    pQH->Caps.NakCounterRL = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK) ? 0xF : 0;
 
     pQH->Caps2.Mult = 1;
     pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? 0xF : 0;
     if(pQH->Caps.EndpointSpd != EPS_HIGH)
     {
-        pQH->Caps.NakCounterRL = 0x8; //8 micro frames for low/high speed (1ms)
         pQH->Caps2.PortNum_1x = pDevice->bHubPort&0x3FU;
         //pQH->Caps2.HubAddr_1x = ? //TODO:
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
@@ -510,7 +508,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
         EHCI_InitQH(pQH, pHCData->ControlTail);
         pHCData->ControlTail = pQH;
     }
-    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK )
+    else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK)
     {
         EHCI_InitQH(pQH, pHCData->BulkTail);
         pHCData->BulkTail = pQH;
@@ -561,6 +559,8 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         USB_TFree(pTail);
         pTail = pPrev;
     }
+    if(&pDeviceData->ControlQH != pEndpoint)
+        DPMI_DMAFree(pQH);
     return result;
 }
 
@@ -583,9 +583,9 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
         handle = XMS_Alloc(4, &FrameList);
         if(handle == 0 || FrameList == 0)
             return FALSE;
-        if((FrameList&0xFFF) != 0)
+        if((FrameList&0xFFF) != 0) //spec require frame list aligned to 4k
         {
-            if(!XMS_Realloc(handle, 8, &FrameList)) // 4k data + 4k alignement
+            if(!XMS_Realloc(handle, 8, &FrameList)) //4k data + 4k alignement
             {
                 XMS_Free(handle);
                 return FALSE;
@@ -595,14 +595,16 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
         assert((FrameList&0xFFF) == 0);
     }
 
-    FrameList = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
-    _LOG("EHCI frame list base address: %08lx\n", FrameList);
-    pHCData->dwPeroidicListBase = FrameList;
+    pHCData->dwPeroidicListBase = FrameList < 0x100000L ? FrameList : DPMI_MapMemory(FrameList, 4096);
+    _LOG("EHCI frame list base address: %08lx %08lx\n", FrameList, pHCData->dwPeroidicListBase);
     pHCData->wPeroidicListHandle = handle;
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)malloc(4096);
-    memset(flep, 0, 4096);
+    {//scope for BC
+        for(int i = 0; i < 1024; ++i)
+            flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
+    }
     {//scope for BC
         for(int i = 0; i < 11; ++i)
         {
@@ -617,7 +619,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
         {
             int step = 1<<i;
             for(int j = offset++; j < 1024; j+=step)
-                flep[j].Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]);
+                flep[j].Ptr = DPMI_PTR2P(&pHCData->InterruptQH[i]) | (Typ_QH<<Typ_Shift);
         }
     }
     {//scope for BC
@@ -638,14 +640,10 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
             }
         }
     }
-    {//scope for BC
-        for(int i = 0; i < 1024; ++i)
-            flep[i].Ptr &= ~0x1FUL; //spec require the lastbits to be 0
-    }
-
-    DPMI_CopyLinear(FrameList, DPMI_PTR2L(flep), 4096);
+    
+    DPMI_CopyLinear(pHCData->dwPeroidicListBase, DPMI_PTR2L(flep), 4096);
     free(flep);
-    DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList);
+    DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList); //physical addr
     return TRUE;
 }
 
@@ -700,35 +698,36 @@ BOOL EHCI_DetachQH(EHCI_QH* pQH, EHCI_QH* pLinkHead, EHCI_QH** ppLinkEnd)
 
 void EHCI_BuildqTD(EHCI_qTD* pTD, EHCI_qTD* pNext, EHCI_QToken token, HCD_Request* pRequest, void* pBuffer)
 {
-    memset(pTD, 0, sizeof(*pTD));
+    //memset(pTD, 0, sizeof(*pTD)); //preserve EXT.Prev
     pTD->Token = token;
-    pTD->Next.Ptr = pNext ? DPMI_PTR2P(pNext) : 0;
-    pTD->Next.Bm.T = pNext ? 0 : 1;
+    pTD->Next.Ptr = pNext ? DPMI_PTR2P(pNext) : Tbit;
     pTD->AltNext = pTD->Next;
 
     pTD->EXT.Request = pRequest;
     pTD->EXT.Next = pNext;
-    if(pNext) pNext->EXT.Prev = pTD;
+    if(pNext) {assert(pNext->EXT.Prev == NULL);pNext->EXT.Prev = pTD;}
 
     if(!token.Length)
         return;
-    assert(pBuffer != NULL);
+    assert(pBuffer != NULL && token.Length <= EHCI_qTD_MaxSize);
     uint16_t length = token.Length;
-    assert(length <= EHCI_qTD_MaxSize);
     uint32_t linear = DPMI_PTR2L(pBuffer); //although L:P is contiguous for DOS DPMI host, we just map for each page for safety
     uint16_t offset = linear - alignup(linear, 4096);
     linear = alignup(linear, 4096);
+
     int i = 0;
     while(length > 0 && i < 5)
     {
         uint16_t size = (uint16_t)min(4096U - offset, length);
         pTD->BufferPages[i].Ptr = DPMI_L2P(linear); //L2P for each page
-        pTD->BufferPages[i++].Bm.CurrentOffset = offset&0xFFFU;
+        pTD->BufferPages[i].Bm.CurrentOffset = offset&0xFFFU;
 
+        ++i;
         offset = 0;
         linear += 4096;
         length = (uint16_t)(length-size);
     }
+    for(; i < 5; ++i) assert(pTD->BufferPages[i].Ptr == 0);
     assert(length == 0); //length is pre-calc from outside that it must fit in the 5 buffer page.
 }
 
@@ -761,7 +760,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         EHCI_qTD* pNext = pTD->EXT.Next;
         uint8_t errmask = (uint8_t)(pTD->Token.Status&EHCI_QTK_ERRORS); //workaround -Wconversion bug
         error |= errmask;
-        if(!pTD->Token.StatusBm.Active || (error && pTD->EXT.Request == pReq)) //stop after first inactive request
+        if(!pTD->Token.StatusBm.Active || (error && (pTD->EXT.Request == pReq || pReq == NULL))) //stop after first inactive request
         {
             assert(pTD->EXT.Prev == NULL); //prev should be inactive in queue
             //remove from list
@@ -775,6 +774,10 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         else
             /*pTD = pNext;*/break;
     }
+
+    if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
+        error &= (uint8_t)~1U;
+
     if(pTD && error)
     {
         assert(!pTD->Token.StatusBm.Active && pTD == pQH->EXT.Tail || pTD->Token.StatusBm.Active);
@@ -788,8 +791,10 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.StatusBm.Active)
         {
             uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
-            //_LOG("CB %lx %d %d ", error, pTD->EXT.Request->size, pTD->Token.Length);
-            //_LOG("req: %08lx TD: %08lx\n", pTD->EXT.Request, pTD);
+            if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
+                error &= (uint8_t)~1U;
+            ///*if(error)*/_LOG("CB %x %d %d %x CBE ", error, pTD->EXT.Request->size, pTD->Token.Length, pTD);
+            //_LOG("req: %08x TD: %08x ", pTD->EXT.Request, pTD);
             HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);
         }
         //_LOG("Free TD: %lx ", pTD);

@@ -416,11 +416,18 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
         return error;
     }
 
+    CLIS();
     uint16_t mask = PIC_GetIRQMask();
     PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controller IRQ
+    STIL();
+
     while(!result.Finished)
         USB_IDLE_WAIT();
-    PIC_SetIRQMask(mask);
+    {
+        CLIS();
+        PIC_SetIRQMask(mask);
+        STIL();
+    }
     return result.ErrorCode;
 }
 
@@ -473,12 +480,19 @@ uint8_t USB_SyncTransfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer,
         return error;
     }
 
+    CLIS();
     uint16_t mask = PIC_GetIRQMask();
     PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controlelr IRQ
+    STIL();
+
     //idle wait for interrupt (HW notifying finish event and hcd driver call USB_Completion_Callback)
     while(!result.Finished)
         USB_IDLE_WAIT();
-    PIC_SetIRQMask(mask);
+    {
+        CLIS();
+        PIC_SetIRQMask(mask);
+        STIL();
+    }
     *txlen = result.Length;
     return result.ErrorCode;
 }
@@ -677,7 +691,7 @@ void USB_ShowDeviceInfo(USB_Device* pDevice)
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr)
 {
     USB_Request req = {USB_REQ_WRITE|USB_REQTYPE_STANDARD|USB_REQREC_ENDPOINT, USB_REQ_CLEAR_FEATURE, ENDPOINT_HALT, epAddr, 0};
-    return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
+    return USB_SyncSendRequest(pDevice, &req, NULL) == 0; //TODO: reset data toggle on ep
 }
 
 void USB_IdleWait()

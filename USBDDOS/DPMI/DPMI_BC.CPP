@@ -513,19 +513,23 @@ uint32_t DPMI_UnmapMemory(uint32_t addr)
 
 void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
 {
+    CLIS();
     alignment = max(alignment,4);
     uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
     uint16_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = align(addr, alignment) - addr;
     void* aligned = ptr + offset;
     ((uint16_t*)aligned)[-1] = offset + 2;
+    STIL();
     return aligned;
 }
 
 void DPMI_DMAFree(void* ptr)
 {
+    CLIS();
     uint16_t offset = ((uint16_t*)ptr)[-1];
     free((int8_t*)ptr - offset);
+    STIL();
 }
 
 uint32_t DPMI_DOSMalloc(uint16_t size)

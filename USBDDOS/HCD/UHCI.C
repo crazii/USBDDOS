@@ -218,6 +218,7 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 
     // build status TD
     UHCI_TD* pStatusTD = (UHCI_TD*)USB_TAlloc32(sizeof(UHCI_TD));
+    memset(pStatusTD,0,sizeof(UHCI_TD));
     UHCI_BuildTD(pStatusTD, pEnd, CS | CS_IOC, StatusPID, bAddress, bEndpoint, 1, 0, 0); //status data toggle always 1
     pStatusTD->pRequest = pRequest;
 
@@ -230,6 +231,7 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
         assert(pSetupData);
         uint32_t SetupDataAddr = DPMI_PTR2P(pSetupData);
         UHCI_TD* pNext = (UHCI_TD*)USB_TAlloc32(sizeof(UHCI_TD));
+        memset(pNext,0,sizeof(UHCI_TD));
 
         while(Transferred < length)
         {
@@ -678,6 +680,7 @@ BOOL UHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         USB_TFree32(pTail);
         pTail = pPrev;
     }
+    DPMI_DMAFree(pQH);
     //UHCI_StartHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
     return result;
@@ -740,7 +743,7 @@ void UHCI_InitQH(UHCI_QH* pQH)
 
 void UHCI_BuildTD(UHCI_TD* pTD, UHCI_TD* pNext, uint32_t  ControlStatus, uint8_t PID, uint8_t DevAddr, uint8_t EndPt, uint8_t DataToggle, uint16_t MaxLen, uint32_t buffer)
 {
-    memset(pTD, 0, sizeof(pTD));
+    //memset(pTD, 0, sizeof(pTD));
     pTD->LinkPointer = pNext ? ((pNext->PAddr ? pNext->PAddr : DPMI_PTR2P(pNext)) | DepthSelect) : TerminateFlag;
     pTD->ControlStatus = ControlStatus;
     pTD->TokenBits.MaxLen = (uint16_t)(MaxLen-1)&0x7FFU;
