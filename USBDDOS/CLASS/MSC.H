@@ -296,7 +296,7 @@ BOOL USB_MSC_DeinitDevice(USB_Device* pDevice);
 
 BOOL USB_MSC_BulkReset(USB_Device* pDevice);
 
-BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, void* inoutp nullable data, uint32_t DataSize, HCD_TxDir dir);
+BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSize, uint32_t LinearData, uint32_t DataSize, HCD_TxDir dir);
 
 //separate dos installation routine, might be called delayed
 BOOL USB_MSC_DOS_Install();
