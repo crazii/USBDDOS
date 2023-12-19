@@ -136,6 +136,13 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     //transfer status ?
     //USB_Transfer(pDevice, pDevice->pEndpointDesc[0], )
 
+    //powerup & disable all ports
+    {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
+        USB_HUB_SetPortFeature(pDevice, i, PORT_POWER);}
+    delay(50);
+    {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
+        USB_HUB_ClearPortFeature(pDevice, i, PORT_ENABLE);}
+
     HCD_HUB hub = 
     {
         "HUB", pDevice->HCDDevice.pHCI, &pDevice->HCDDevice, pDevice->HCDDevice.bAddress, 0,
