@@ -279,13 +279,13 @@ void USB_Init(void);
 //start requst and return immediately. pRequest & pBuffer are copied so is free to release
 uint8_t USB_SendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer, HCD_COMPLETION_CB pFnCallback, void* pCallbackData); //send request to endpoint 0
 
-//wait on result. will enable interrupt, not aviable in interrupt handler
+//wait on result.
 uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer);
 
 //start transfer and return immediately. pBuffer are copied so is free to release
 uint8_t USB_Transfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer, uint16_t length, HCD_COMPLETION_CB pFnCallback, void* pCallbackData);
 
-//wait on result. will enable interrupt, not aviable in interrupt handler
+//wait on result.
 uint8_t USB_SyncTransfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer, uint16_t length, uint16_t* txlen);
 
 void* USB_FindEndpoint(USB_Device* pDevice, USB_EndpointDesc* pDesc);

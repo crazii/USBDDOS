@@ -429,6 +429,8 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     {
         do { DPMI_StoreD(addr, forcebits|PortSuspend); delay(5); } while(!(DPMI_LoadD(addr)&PortSuspend));
     }
+    else if(!(status&USB_PORT_SUSPEND) && (current&PortSuspend))
+        while((DPMI_LoadD(addr)&PortSuspend)) { DPMI_StoreD(addr, forcebits); delay(5); };
 
     if((status&USB_PORT_CONNECT_CHANGE))
     {

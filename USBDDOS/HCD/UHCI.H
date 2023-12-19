@@ -106,6 +106,10 @@
 //Suspend R/W
 #define SUSPEND            BIT12
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct UHCI_TransferDescriptor;
 typedef struct UHCI_TransferDescriptor UHCI_TD;
 
@@ -252,5 +256,9 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 
 uint8_t UHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

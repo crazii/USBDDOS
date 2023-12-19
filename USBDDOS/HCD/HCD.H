@@ -8,6 +8,10 @@
 
 #define USB_MAX_HC_TYPE 3   //only to support uhci, ohci, ehci
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct HCD_HostControllerInterface;
 typedef struct HCD_HostControllerInterface HCD_Interface;
 struct HCD_RequestBlock;
@@ -128,6 +132,7 @@ HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir,
 //invoke callback and remove the request entry
 BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode);
 
+//the initial state of all ports on a hub device should be disabled, @see USB_EnumerateDevices
 typedef struct HCD_HUB
 {
     const char* name;
@@ -142,5 +147,9 @@ typedef struct HCD_HUB
 }HCD_HUB;
 
 extern const HCD_HUB HCD_ROOT_HUB_Prototype; //root hub prototype, copy it and set 'pHCI & bNumPorts' and it's done.
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

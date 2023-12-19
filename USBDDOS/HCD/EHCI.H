@@ -4,6 +4,10 @@
 
 //Enhanced Host Controller Interface Specification for Universal Serial Bus (ehci-specification-for-usb)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define EHCI_PI 0x20    //PCI programming interface
 
 //EHCI register offsets (USBBASE)
@@ -591,5 +595,9 @@ uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, ui
 
 uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //_EHCI_H_

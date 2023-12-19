@@ -4,6 +4,7 @@
 
 #define USB_REQ_TYPE_HUB      (USB_REQTYPE_CLASS)
 #define USB_REQ_TYPE_HUBPORT  (USB_REQTYPE_CLASS |  USB_REQREC_ENDPOINT | USB_REQREC_INTERFACE)
+#define USB_DT_HUB 0x29
 
 typedef struct USB_HubDescriptor
 {
@@ -63,6 +64,22 @@ typedef struct USB_HubDescriptor
 #define PSC_SUSPEND BIT2
 #define PSC_OVERCURRENT BIT3
 #define PSC_RESET BIT4
+
+//indicattor, wIndex high byte
+#define PORT_INDICATOR_AUTO 0
+#define PORT_INDICATOR_AMBER 1
+#define PORT_INDICATOR_GREEN 2
+#define PORT_INDICATOR_OFF 3
+
+typedef struct
+{
+    USB_HubDesc desc;
+    uint8_t statusEP; //IN, INTR
+}USB_HUB_DriverData;
+
+BOOL USB_HUB_InitDevice(USB_Device* pDevice);
+
+BOOL USB_HUB_DeinitDevice(USB_Device* pDevice);
 
 
 #endif
