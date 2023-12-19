@@ -169,6 +169,29 @@ typedef struct USB_ConfigurationDescriptor
     USB_InterfaceDesc* pInterfaces;
 }USB_ConfigDesc;
 
+typedef struct USB_DeviceQualiferDescriptor
+{
+    uint8_t     bLength;
+    uint8_t     bDescriptorType;
+    uint16_t    wbcdUSB;
+    uint8_t     bDeviceClass;
+    uint8_t     bDeviceSubClass;
+    uint8_t     bDeviceProtocol;
+    uint8_t     bMaxPacketSize; //ep0 max packet size
+    uint8_t     bNumConfigurations;
+}USB_QualifierDesc;
+
+typedef struct USB_OtherSpeedDescriptor
+{
+    uint8_t     bLength;
+    uint8_t     bDescriptorType;
+    uint16_t    wTotalLength;
+    uint8_t     bNumInterfaces;
+    uint8_t     bConfigValue;
+    uint8_t     bmAttributes;
+    uint8_t     bMaxPower;
+}USB_OtherSpeedDesc;
+
 typedef struct
 {
     uint8_t     bmRequestType;
