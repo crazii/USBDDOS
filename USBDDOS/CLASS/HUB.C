@@ -4,11 +4,12 @@
 #include <malloc.h>
 #include <ctype.h>
 #include <conio.h>
+#include <dos.h>
 #include "USBDDOS/CLASS/HUB.H"
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/DBGUTIL.H"
 
-static BOOL USB_HUB_SetPortFeature(USB_Device* pDevice, uint8_t port, int16_t feature)
+static BOOL USB_HUB_SetPortFeature(USB_Device* pDevice, uint8_t port, uint16_t feature)
 {
     USB_HUB_DriverData* pDriverData = (USB_HUB_DriverData*)pDevice->pDriverData;
     if(port > pDriverData->desc.bNbrPorts)
@@ -18,7 +19,7 @@ static BOOL USB_HUB_SetPortFeature(USB_Device* pDevice, uint8_t port, int16_t fe
     return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
 }
 
-static BOOL USB_HUB_ClearPortFeature(USB_Device* pDevice, uint8_t port, int16_t feature)
+static BOOL USB_HUB_ClearPortFeature(USB_Device* pDevice, uint8_t port, uint16_t feature)
 {
     USB_HUB_DriverData* pDriverData = (USB_HUB_DriverData*)pDevice->pDriverData;
     if(port > pDriverData->desc.bNbrPorts)
@@ -44,13 +45,13 @@ static uint32_t USB_HUB_GetPortStatus(USB_Device* pDevice, uint8_t port)
 
 static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
 {
-    if(!pHub || !pHub->pDevice)
+    if(!pHub || !pHub->pDevice || !HC2USB(pHub->pDevice)->pDriverData)
     {
         assert(FALSE);
         return FALSE;
     }
     uint32_t current = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
-    uint32_t currentchange = current&0xFFFF;
+    //uint32_t currentchange = current&0xFFFF;
     current = current >> 16;
     BOOL result = TRUE;
 
@@ -79,7 +80,7 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
 
 static uint16_t HUB_GetPortStatus(HCD_HUB* pHub, uint8_t port)
 {
-    if(!pHub || !pHub->pDevice)
+    if(!pHub || !pHub->pDevice || !HC2USB(pHub->pDevice)->pDriverData)
     {
         assert(FALSE);
         return 0;
@@ -116,7 +117,7 @@ static uint16_t HUB_GetPortStatus(HCD_HUB* pHub, uint8_t port)
 
 BOOL USB_HUB_InitDevice(USB_Device* pDevice)
 {
-    if(pDevice->bNumEndpoints != 1) //TODO: verify (11.23.1)
+    if(pDevice->bNumEndpoints != 1) //TODO: verify (usb2.0: 11.23.1)
         return FALSE;
 
     USB_HubDesc desc;
@@ -133,9 +134,6 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     pData->statusEP = pDevice->pEndpointDesc[0]->bEndpointAddress;
     pDevice->pDriverData = pData;
 
-    //transfer status ?
-    //USB_Transfer(pDevice, pDevice->pEndpointDesc[0], )
-
     //powerup & disable all ports
     {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
         USB_HUB_SetPortFeature(pDevice, i, PORT_POWER);}
@@ -143,9 +141,12 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
         USB_HUB_ClearPortFeature(pDevice, i, PORT_ENABLE);}
 
+    //transfer status ? (we don't support PnP yet)
+    //USB_Transfer(pDevice, pDevice->pEndpointDesc[0], )
+
     HCD_HUB hub = 
     {
-        "HUB", pDevice->HCDDevice.pHCI, &pDevice->HCDDevice, pDevice->HCDDevice.bAddress, 0,
+        "HUB", pDevice->HCDDevice.pHCI, &pDevice->HCDDevice, pDevice->HCDDevice.bAddress, desc.bNbrPorts,
         &HUB_GetPortStatus,
         &HUB_SetPortStatus,
     };
@@ -154,6 +155,10 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
 
 BOOL USB_HUB_DeinitDevice(USB_Device* pDevice)
 {
+    USB_HUB_DriverData* pData = (USB_HUB_DriverData*)pDevice->pDriverData;
+    if(pData)
+        free(pData);
+    pDevice->pDriverData = NULL;
     //TODO: remove hub from usb?
     return TRUE;
 }

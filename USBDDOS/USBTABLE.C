@@ -19,6 +19,7 @@
 #include "USBDDOS/CLASS/CDC.H"
 #include "USBDDOS/CLASS/MSC.H"
 #include "USBDDOS/CLASS/HID.H"
+#include "USBDDOS/CLASS/HUB.H"
 
 #if defined(__BC__) //exceed 64K code
 #define USE_CDC 0
@@ -27,6 +28,7 @@
 #endif
 #define USE_MSC 1
 #define USE_HID 1
+#define USE_HUB 1
 
 USB_Table USBT = 
 {
@@ -94,7 +96,11 @@ USB_Table USBT =
         0, 0,
         #endif
         //USBC_HUBCLASS         0x9
+        #if USE_HUB
+        USB_HUB_InitDevice, USB_HUB_DeinitDevice,
+        #else
         0,0,
+        #endif
         //USBC_CDCDATA          0xA
         0,0,
         //USBC_SMARTCARD        0xB

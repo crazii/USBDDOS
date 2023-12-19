@@ -22,6 +22,7 @@ INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
 
 
 EXE_dependencies =  \
+ hub.obj \
  ehci.obj \
  dpmi_bc.obj \
  dpmi.obj \
@@ -43,6 +44,7 @@ EXE_dependencies =  \
 .\output\usbddos.exe: usbddos.cfg $(EXE_dependencies)
   $(TLINK) /v/x/c/P-/L$(LIBPATH) @&&|
 c0s.obj+
+.\output\hub.obj+
 .\output\ehci.obj+
 .\output\dpmi_bc.obj+
 .\output\dpmi.obj+
@@ -68,6 +70,9 @@ cs.lib
 
 
 #		*Individual File Dependencies*
+hub.obj: usbddos.cfg ..\usbddos\class\hub.c 
+	$(CC) -c ..\usbddos\class\hub.c
+
 ehci.obj: usbddos.cfg ..\usbddos\hcd\ehci.c 
 	$(CC) -c ..\usbddos\hcd\ehci.c
 
