@@ -215,11 +215,9 @@ typedef struct OHCI_EndpointDescriptor
 #endif
 }OHCI_ED;
 
-#if defined(__DJ2__)
 _Static_assert(sizeof(OHCI_ED) == 32, "size missmatch");
 _Static_assert(sizeof(OHCI_TD) == 32, "size missmatch");
 _Static_assert(sizeof(OHCI_ISO_TD) == 32, "size missmatch");
-#endif
 
 typedef struct
 {

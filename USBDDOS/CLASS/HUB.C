@@ -117,16 +117,20 @@ static uint16_t HUB_GetPortStatus(HCD_HUB* pHub, uint8_t port)
 
 BOOL USB_HUB_InitDevice(USB_Device* pDevice)
 {
+    _LOG("HUB endpoint count: %d\n", pDevice->bNumEndpoints);
     if(pDevice->bNumEndpoints != 1) //TODO: verify (usb2.0: 11.23.1)
         return FALSE;
 
     USB_HubDesc desc;
-    USB_Request req = {USB_REQ_TYPE_HUB, USB_REQ_GET_DESCRIPTOR, USB_DT_HUB<<8, 0, sizeof(desc)};
+    USB_Request req = {USB_REQ_READ|USB_REQ_TYPE_HUB, USB_REQ_GET_DESCRIPTOR, USB_DT_HUB<<8, 0, sizeof(desc)};
     void* dma = DPMI_DMAMalloc(sizeof(desc), 4);
     uint8_t err = USB_SyncSendRequest(pDevice, &req, dma);
     memcpy(&desc, dma, sizeof(desc));
     if(err != 0)
+    {
+        _LOG("HUB get hub descriptor failed. %x", err);
         return FALSE;
+    }
 
     USB_HUB_DriverData* pData = (USB_HUB_DriverData*)malloc(sizeof(USB_HUB_DriverData));
     memset(pData, 0, sizeof(*pData));

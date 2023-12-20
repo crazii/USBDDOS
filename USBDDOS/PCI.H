@@ -172,8 +172,10 @@ typedef union
     uint8_t Offset[256];
 }PCI_DEVICE;
 
-//command register
+//command register (word)
 #define PCI_REGISTER_CMD 0x04
+//status register (word)
+#define PCI_REGISTER_STS 0x06
 typedef union
 {
     uint16_t reg16;

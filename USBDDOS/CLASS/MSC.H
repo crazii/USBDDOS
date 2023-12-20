@@ -67,9 +67,7 @@ typedef struct USB_MSC_CommandBlockWrapper
 
     uint8_t CBWCB[16]; //command block. significant bytes first
 }USB_MSC_CBW;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_CBW) == 31, "incorrect size");
-#endif
 
 //CSW
 typedef struct USB_MSC_CommandStatusWrapper
@@ -112,9 +110,7 @@ typedef struct USB_MSC_InquiryCommand
     uint8_t reserved2;
     uint8_t PAD[6]; //zero
 }USB_MSC_INQUIRY_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_INQUIRY_CMD) == 12, "incorrect size");
-#endif
 
 typedef struct USB_MSC_InquiryData
 {
@@ -129,9 +125,7 @@ typedef struct USB_MSC_InquiryData
     uint8_t ProductID[16];
     uint8_t ProductRevisionLevel[4];
 }USB_MSC_INQUIRY_DATA;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_INQUIRY_DATA) == 36, "incorrect size");
-#endif
 
 ///READ(10)
 typedef struct USB_MSC_ReadCommand //read(10) command
@@ -145,9 +139,7 @@ typedef struct USB_MSC_ReadCommand //read(10) command
     uint8_t reserved2;
     uint8_t PAD[2];   //padding, need set to 0
 }USB_MSC_READ_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_READ_CMD) == 12, "incorrect size");
-#endif
 
 ///REQUEST SENSE
 typedef USB_MSC_INQUIRY_CMD USB_MSC_REQSENSE_CMD; //opcode = USB_MSC_SBC_REQSENSE
@@ -185,9 +177,7 @@ typedef struct USB_MSC_ModeSenseCommand
     uint8_t reserved;
     uint8_t PAD[2];
 }USB_MSC_MODESENSE_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_MODESENSE_CMD) == 12, "incorrect size");
-#endif
 
 ///READ CAPACITY
 typedef USB_MSC_INQUIRY_CMD USB_MSC_READCAP_CMD; //opcode = USB_MSC_SBC_READ_CAP, AllocationLength = 0
@@ -212,9 +202,7 @@ typedef struct USB_MSC_ReadTOCCommand
     uint8_t FormatB : 2;
     uint8_t PAD[2];
 }USB_MSC_READTOC_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_READTOC_CMD) == 12, "incorrect size");
-#endif
 
 typedef struct USB_MSC_ReadTOCData
 {
@@ -227,9 +215,7 @@ typedef struct USB_MSC_ReadTOCData
     uint8_t reserved2;
     uint32_t LBA;   //LBA of FirstTNInLastSession
 }USB_MSC_READTOC_DATA;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_READTOC_DATA) == 12, "incorrect size");
-#endif
 
 ///FORMAT UNIT
 typedef struct USB_MSC_FormatUnitCommand
@@ -244,9 +230,7 @@ typedef struct USB_MSC_FormatUnitCommand
     uint8_t reserved0;
     uint8_t PAD[6];
 }USB_MSC_FORMATUNIT_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_FORMATUNIT_CMD) == 12, "incorrect size");
-#endif
 
 ///VERIFY
 typedef struct USB_MSC_VerifyCommand
@@ -262,9 +246,7 @@ typedef struct USB_MSC_VerifyCommand
     uint8_t reserved3;
     uint8_t PAD[2];
 }USB_MSC_VERIFY_CMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(USB_MSC_VERIFY_CMD) == 12, "incorrect size");
-#endif
 
 ///WRITE(10)
 typedef USB_MSC_READ_CMD USB_MSC_WRITE_CMD; //opcode = USB_MSC_SBC_WRITE10

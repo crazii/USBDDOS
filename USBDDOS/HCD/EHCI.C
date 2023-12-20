@@ -124,7 +124,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH) | (Typ_QH<<Typ_Shift);
     #if 0
     pHCData->BulkQH.HorizLink.Bm.T = 1;
-    #else //only circle queue + 'H' bit (EHCI spec 4.8.3) works on tested hardware (ECHI rev 0.95), although it works well in VirtualBox. this saves mem bandwidth anyways
+    #else //only circle queue + 'H' bit (EHCI spec 4.8.3) works on tested hardware (ECHI rev 0.95), although the above works well in VirtualBox. this saves mem bandwidth anyways
     pHCData->BulkQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->ControlQH) | (Typ_QH<<Typ_Shift);
     pHCData->ControlQH.Caps.HeadofReclamation = 1;
     #endif
@@ -211,6 +211,8 @@ BOOL EHCI_ISR(HCD_Interface* pHCI)
     {
         DPMI_StoreD(pHCData->OPBase+USBSTS, HostSysError);//ACK & clear
         sts &= ~HostSysError;
+        //_LOG("EHCI PCI sts: %x", PCI_ReadWord(pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function, PCI_REGISTER_STS));
+        //TODO: need a HCRest
         EHCI_RunStop(pHCI, TRUE);
     }
 

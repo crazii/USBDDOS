@@ -26,8 +26,8 @@ typedef short int16_t;
 typedef unsigned short uint16_t;
 typedef long int32_t;
 typedef unsigned long uint32_t;
-typedef long long int64_t;
-typedef unsigned long long uint64_t;
+//typedef long long int64_t; //compiled, but not correct
+//typedef unsigned long long uint64_t;
 
 typedef int16_t intptr_t;   //only use tiny or small model. far pointer not supported by this type.
 typedef uint16_t uintptr_t;
@@ -213,8 +213,15 @@ extern uint8_t _AL;
 #define FP_OFF(x) ((uintptr_t)(x))
 #define MK_FP(x,y) (NULL)
 
+#define _Static_assert(e, m) extern int static_assert_xxxx
+
 #endif //compiler specific preprossor directive
 
+#if !defined(__DJ2__)
+#ifndef _Static_assert
+#define _Static_assert(e,m) extern char static_assert##__LINE__[e ? 1 : -1]
+#endif
+#endif
 
 //general preprossor directive
 

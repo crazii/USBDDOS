@@ -19,8 +19,8 @@ extern "C" {
 #define HCSP_PORTROUTE 0x0C //8, companion port route description
 typedef struct _EHCI_CAPS //helper structs
 {
-    uint8_t Size; //sizeof EHCI cap (USBBASE+size)=operational regs
-    uint8_t Reserved;
+    uint16_t Size : 8; //sizeof EHCI cap (USBBASE+size)=operational regs
+    uint16_t Reserved : 8;
     uint16_t hciVersion; //2 byte BCD
     union
     {
@@ -43,7 +43,7 @@ typedef struct _EHCI_CAPS //helper structs
     {
         struct
         {
-            uint16_t Address64 : 1;
+            uint16_t Address64 : 1; //!need 64bit structures (https://forum.osdev.org/viewtopic.php?f=1&t=20255)
             uint16_t ProgrammableFrameList : 1;
             uint16_t AsyncSchedulePark : 1;
             uint16_t hccReserved2 : 1;
@@ -53,11 +53,13 @@ typedef struct _EHCI_CAPS //helper structs
         }hccParamsBm;
         uint32_t hccParams;
     };
+    #if defined(__BC__)
+    uint32_t hcspPortRoute[2];
+    #else
     uint64_t hcspPortRoute;
+    #endif
 }EHCI_CAPS;
-#if defined( __DJ2__)
 _Static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
-#endif
 
 #ifdef _EHCI_IMPL //avoid defines polution
 
@@ -172,9 +174,7 @@ typedef union _EHCI_USBCMD
         uint8_t Reserved1;
     }Bm;
 }EHCI_USBCMD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
-#endif
 
 
 //USBSTS
@@ -252,9 +252,7 @@ typedef union FLElementPointer //frame list element pointer
         uint16_t Hw : 16; //28 bit ptr by spec (but spec require it reference 32bytes aligned object, so we use 27bit)
     }Bm;
 }EHCI_FLEP;
-#if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_FLEP)==4, "incorrect size/alignment");
-#endif
 
 //iTD
 typedef struct IsoTransferDescriptor
@@ -307,10 +305,14 @@ typedef struct IsoTransferDescriptor
         }BP3to6;*/
     }BufferPages[7];
 
+    uint32_t ExtendedBufferPages[7]; //64:32 bits of 64bit addressing, not used
+
+    struct
+    {
+        uint32_t Padding;
+    }EXT;
 }EHCI_iTD;
-#if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_iTD)==64, "incorrect size/alignment");
-#endif
+_Static_assert(sizeof(EHCI_iTD)==96, "incorrect size/alignment");
 
 typedef struct SplitIsoTransferDescriptor
 {
@@ -350,7 +352,7 @@ typedef struct SplitIsoTransferDescriptor
             uint8_t DataBufferErr : 1;
             uint8_t ERR : 1;
             uint8_t Active : 1;
-        };
+        }StatusBm;
 
         uint8_t CProgMask;
         uint16_t Length : 10; //bytes to transfer (1023/3FF max)
@@ -368,7 +370,7 @@ typedef struct SplitIsoTransferDescriptor
 
     struct siBufferPage1
     {
-        uint16_t TCount : 2; //transaction count
+        uint16_t TCount : 3; //transaction count
         uint16_t TP : 2; //transaction position
         uint16_t ReservedBP1 : 7;
         uint16_t BufferPointerLw : 4;
@@ -377,11 +379,14 @@ typedef struct SplitIsoTransferDescriptor
 
     EHCI_FLEP BackLink; //Typ must be zero. Tbit as invalid bit
 
-    uint32_t Padding;
+    uint32_t ExtendedBufferPages[2];
+
+    struct
+    {
+        uint32_t Padding[7];
+    }EXT;
 }EHCI_siTD;
-#if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_siTD)==32, "incorrect size/alignment");
-#endif
+_Static_assert(sizeof(EHCI_siTD)==64, "incorrect size/alignment");
 
 #define PID_OUT 0
 #define PID_IN  1
@@ -416,9 +421,7 @@ typedef struct QueueToken
     uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max (EHCI_qTD_MaxSize)
     uint16_t DataToggle : 1;
 }EHCI_QToken;
-#if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_QToken)==4, "incorrect size/alignment");
-#endif
 
 //qTD
 typedef struct QueueElementTD
@@ -439,21 +442,21 @@ typedef struct QueueElementTD
         }Bm;
     }BufferPages[5];
 
+    uint32_t ExtendedBufferPages[5];
+
     struct
     {
         struct QueueElementTD* Prev;
         struct QueueElementTD* Next;
         HCD_Request* Request;
 #if defined(__BC__)
-        uint16_t Unused[13];
+        uint16_t Unused[3];
 #else
-        uint32_t Unused[5];
+        //uint32_t Unused[5];
 #endif
     }EXT;
 }EHCI_qTD;
-#if defined(__DJ2__)
 _Static_assert(sizeof(EHCI_qTD)==64, "incorrect size/alignment");
-#endif
 
 #define EPS_LOW  1
 #define EPS_FULL 0
@@ -530,6 +533,8 @@ typedef struct QueueHead
         //page 3&4 low 12 bits reserved
     }BufferPointers[5];
 
+    uint32_t ExtendedBufferPages[5];
+
     //extra data & padding, used by driver
     struct
     {
@@ -538,15 +543,13 @@ typedef struct QueueHead
         uint8_t Interval : 4;
         uint8_t PaddingBIT : 2;
 #if defined(__BC__)
-        uint8_t Padding8[13];
+        uint8_t Padding8[25];
 #else
-        uint8_t Padding8[11];
+        uint8_t Padding8[23];
 #endif
     }EXT;
 }EHCI_QH;
-#if defined(__DJ2__)
-_Static_assert(sizeof(EHCI_QH)==64, "incorrect size/alignment");
-#endif
+_Static_assert(sizeof(EHCI_QH)==96, "incorrect size/alignment");
 
 //FSTN: periodic frame span traversal node
 typedef struct
