@@ -133,7 +133,7 @@ typedef union
 
 typedef struct
 {
-    USB_HID_DESC* Descirptors;
+    USB_HID_DESC* Descriptors;
     void* pDataEP[2]; //interrupt in/out
     uint8_t bEPAddr[2];
     uint8_t bInterface;

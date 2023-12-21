@@ -255,9 +255,7 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
     };
     uint8_t unused; //padding
 }DOS_BPB;
-#if defined(__DJ2__)
 _Static_assert(sizeof(DOS_BPB) == 80, "incorrect size");
-#endif
 
 #define DOS_DDHA_32BIT_ADDRESSING   0x0002
 #define DOS_DDHA_OPENCLOSE          0x0800
@@ -272,9 +270,7 @@ typedef struct DOS_DeviceDriverHeader
     uint8_t Drives; //supported drive count. TODO: mount multiple partitions? USB disk can have multiple partitions but usually only 1.
     uint8_t Signature[7];
 }DOS_DDH;
-#if defined(__DJ2__)
 _Static_assert(sizeof(DOS_DDH) == 18, "incorrect size");
-#endif
 
 //https://faydoc.tripod.com/structures/13/1395.htm
 //https://stanislavs.org/helppc/drive_parameter_table.html
@@ -300,9 +296,7 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint32_t FreeClusters; //DOS7.0+: 4 bytes (teseted out)
     char cwd[63]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
 }DOS_DPB;
-#if defined(__DJ2__)
 _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
-#endif
 
 //#define DOS_CDS_FLAGS_USED      0xC0
 #define DOS_CDS_FLAGS_PHYSICAL  0x4000
@@ -321,9 +315,7 @@ typedef struct DOS_CurrentDirectoryStructure
     uint32_t IFS; //IFS driver or redirector block
     uint16_t IFSData;
 }DOS_CDS;
-#if defined(__DJ2__)
 _Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS stores it in arrays
-#endif
 
 //https://github.com/microsoft/MS-DOS/blob/master/v2.0/source/DEVDRIV.txt
 //https://faydoc.tripod.com/structures/25/2597.htm
@@ -441,10 +433,8 @@ static void USB_MSC_DOS_DriverINT()
     {
         HCD_Interface* pHCI = USBT.HC_List+j;
 
-        for(int i = 0; i < HCD_MAX_DEVICE_COUNT; ++i)
+        for(uint8_t i = 0; i < pHCI->bDevCount; ++i)
         {
-            if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
-                continue;
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
             if(dev->Desc.bDeviceClass == USBC_MASSSTORAGE && dev->bStatus == DS_Ready)
             {
@@ -462,9 +452,11 @@ static void USB_MSC_DOS_DriverINT()
     DOS_DRS request;
     DPMI_CopyLinear(DPMI_PTR2L(&request), DPMI_FP2L(ReqFarPtr), sizeof(request));
     request.Header.Status = DOS_DRSS_DONEBIT;
+    //_LOG("MSC DR %d ", request.Header.Cmd);
 
     if(pDevice == NULL)
     {
+        //_LOG("MSC device not found ");
         request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
         if(request.Header.Cmd == DOS_DRSCMD_MEDIACHECK)
             request.MediaCheck.Returned = 0xFF;
@@ -475,6 +467,7 @@ static void USB_MSC_DOS_DriverINT()
     {
         case DOS_DRSCMD_MEDIACHECK:
         {
+            #if 0
             HCD_HUB* pHub = pDevice->HCDDevice.pHub;
             uint16_t PortStatus = pHub->GetPortStatus(pHub, pDevice->HCDDevice.bHubPort);
             if((PortStatus&USB_PORT_ATTACHED) && (PortStatus&USB_PORT_ENABLE) && !(PortStatus&USB_PORT_CONNECT_CHANGE))
@@ -484,6 +477,11 @@ static void USB_MSC_DOS_DriverINT()
                 //request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
                 request.MediaCheck.Returned = 0xFF;
             }
+            #else
+            USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
+            request.MediaCheck.Returned = pDriverData->Overriden ? 0xFF : 1;
+            pDriverData->Overriden = 0;
+            #endif
             break;
         }
         case DOS_DRSCMD_BUILD_BPB:
@@ -505,7 +503,7 @@ static void USB_MSC_DOS_DriverINT()
             #if !defined(__BC__)
             uint32_t step = count;
             #else  //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
-            //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
+            //_LOG("sbrk: %x, SP: %x, stack: %u ", FP_OFF(sbrk(0)), _SP, stackavail());
             uint32_t step = max(16*1024/pDriverData->BlockSize,1);
             #endif
             uint32_t off = 0;
@@ -561,6 +559,7 @@ static void USB_MSC_DOS_DriverINT()
 
             if(request.Header.Status == DOS_DRSS_DONEBIT && request.Header.Cmd == DOS_DRSCMD_WRITEVERIFY)
             {
+                //_LOG("write verify. ");
                 {
                     USB_MSC_VERIFY_CMD cmd;
                     memset(&cmd, 0, sizeof(cmd));
@@ -862,6 +861,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
     assert(pDriverData->DOSDriverMem == 0);
     pDriverData->DOSDriverMem = DrvMem;
+    pDriverData->Overriden = overrided;
     if(overrided)
         printf("USB Disk \'%s %s\': BIOS driver overrided, remounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
     else
@@ -884,10 +884,8 @@ BOOL USB_MSC_DOS_Install()
     {
         HCD_Interface* pHCI = USBT.HC_List+j;
 
-        for(int i = 0; i < HCD_MAX_DEVICE_COUNT; ++i)
+        for(uint8_t i = 0; i < pHCI->bDevCount; ++i)
         {
-            if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
-                continue;
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
             if(dev->Desc.bDeviceClass == USBC_MASSSTORAGE && dev->bStatus == DS_Ready)
                 count += USB_MSC_DOS_InstallDevice(dev) ? 1 : 0;

@@ -50,11 +50,10 @@ BOOL HCD_DeinitController(HCD_Interface* pHCI)
 
 BOOL HCD_InitDevice(HCD_HUB* pHub, HCD_Device* pDevice, uint8_t port, uint16_t portStatus)
 {
-    if(pDevice == NULL || pHub->pHCI->bDevCount >= HCD_MAX_DEVICE_COUNT || port >= pHub->pHCI->bNumPorts || pHub->pHCI->DeviceList[port] != NULL)
+    if(pDevice == NULL || pHub->pHCI->bDevCount >= HCD_MAX_DEVICE_COUNT)
         return FALSE;
     memset(pDevice, 0, sizeof(HCD_Device));
-    pHub->pHCI->DeviceList[port] = pDevice;
-    ++pHub->pHCI->bDevCount;
+    pHub->pHCI->DeviceList[pHub->pHCI->bDevCount++] = pDevice;
 
     pDevice->pHCI = pHub->pHCI;
     pDevice->pHub = pHub;
@@ -78,7 +77,9 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 {
     if(!HCD_IS_DEVICE_VALID(pDevice))
         return FALSE;
-    if(pDevice->pHCI->DeviceList[pDevice->bHubPort] != pDevice || pDevice->pHCI->bDevCount == 0)
+    int i = 0;
+    while(i < pDevice->pHCI->bDevCount && pDevice->pHCI->DeviceList[i] != pDevice) ++i;
+    if(i == pDevice->pHCI->bDevCount)
     {
         assert(FALSE);
         return FALSE;
@@ -86,15 +87,17 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 
     assert(pDevice->pRequest == NULL);
 
-    BOOL result = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
+    BOOL result = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_RESET);
+    assert(result);
+    result = result && pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
     assert(result);
     result = result && pDevice->pHCI->pHCDMethod->RemoveDevice(pDevice);
     assert(result);
 
     if(result)
     {
-        pDevice->pHCI->DeviceList[pDevice->bHubPort] = NULL;
-        --pDevice->pHCI->bDevCount;
+        memmove(&pDevice->pHCI->DeviceList[i],&pDevice->pHCI->DeviceList[i+1],(pDevice->pHCI->bDevCount-i-1)*sizeof(HCD_Device*));
+        pDevice->pHCI->DeviceList[--pDevice->pHCI->bDevCount] = NULL;
         pDevice->pHCData = NULL;
         pDevice->pHCI = NULL;
     }
@@ -158,6 +161,7 @@ BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode
     if(!req)
     {
         STIL();
+        _LOG("req %x device req: %x ", pRequest, pRequest->pDevice->pRequest);
         assert(FALSE);
         return FALSE;
     }

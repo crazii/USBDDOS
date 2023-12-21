@@ -205,8 +205,9 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
                 if(*(desc+1) == USB_DT_HID)
                 {
                     uint8_t length = *desc;
-                    DrvIntface->Descirptors = (USB_HID_DESC*)malloc(length); //variable length, need malloc
-                    memcpy(DrvIntface->Descirptors, desc, length);
+                    assert(DrvIntface->Descriptors == NULL);
+                    DrvIntface->Descriptors = (USB_HID_DESC*)malloc(length); //variable length, need malloc
+                    memcpy(DrvIntface->Descriptors, desc, length);
                 }
                 desc += *desc;
             }
@@ -230,10 +231,10 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
     DPMI_DMAFree(pDescBuffer);
 
     #if DEBUG
-    if(pDriverData->Interface[0].Descirptors)
-        DBG_DumpB((uint8_t*)pDriverData->Interface[0].Descirptors, pDriverData->Interface[0].Descirptors->bLength, NULL);
-    if(pDriverData->Interface[1].Descirptors)
-        DBG_DumpB((uint8_t*)pDriverData->Interface[1].Descirptors, pDriverData->Interface[1].Descirptors->bLength, NULL);
+    if(pDriverData->Interface[0].Descriptors)
+        DBG_DumpB((uint8_t*)pDriverData->Interface[0].Descriptors, pDriverData->Interface[0].Descriptors->bLength, NULL);
+    if(pDriverData->Interface[1].Descriptors)
+        DBG_DumpB((uint8_t*)pDriverData->Interface[1].Descriptors, pDriverData->Interface[1].Descriptors->bLength, NULL);
     #endif
     if(valid > 0)
         pDevice->pDriverData = pDriverData;
@@ -252,26 +253,25 @@ BOOL USB_HID_DOS_Install()
     {
         HCD_Interface* pHCI = USBT.HC_List+j;
 
-        for(int i = 0; i < HCD_MAX_DEVICE_COUNT; ++i)
+        for(uint8_t i = 0; i < pHCI->bDevCount; ++i)
         {
-            if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
-                continue;
             USB_Device* pDevice = HC2USB(pHCI->DeviceList[i]);
             if(pDevice->Desc.bDeviceClass == USBC_HID && pDevice->bStatus == DS_Ready)
             {
+                _LOG("HC: %d %x, DEV: %d %x\n",j,pHCI,i,pDevice);
                 ++count;
                 USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
 
-                if(pDriverData->Interface[USB_HID_KEYBOARD].Descirptors != NULL)
+                if(pDriverData->Interface[USB_HID_KEYBOARD].Descriptors != NULL)
                     USB_HID_Keyboard_SetupLED(pDevice); //initial setup of LED. not working for tested keyboard, still dunno why
 
                 _LOG("HID: start driver.\n");
                 //start input, aynsc (interrupt)
                 for(int i = 0; i < 2; ++i)
                 {
-                    if(pDriverData->Interface[i].Descirptors && pDriverData->Interface[i].pDataEP[HCD_TXR])
+                    if(pDriverData->Interface[i].Descriptors && pDriverData->Interface[i].pDataEP[HCD_TXR])
                     {
-                        printf("Found USB %s: %s\n", i == USB_HID_KEYBOARD ? "keyboard" : "mouse", pDevice->sProduct);
+                        printf("Found USB %s: %s %s\n", i == USB_HID_KEYBOARD ? "keyboard" : "mouse", pDevice->sManufacture, pDevice->sProduct);
                         USB_Transfer(pDevice, pDriverData->Interface[i].pDataEP[HCD_TXR], pDriverData->Interface[i].Data[0].Buffer, sizeof(USB_HID_Data), &USB_HID_InputCallback, (void*)i);
                     }
                 }
@@ -291,10 +291,10 @@ BOOL USB_HID_DeinitDevice(USB_Device* pDevice)
     USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
     if(pDriverData)
     {
-        if(pDriverData->Interface[USB_HID_KEYBOARD].Descirptors)
-            free(pDriverData->Interface[USB_HID_KEYBOARD].Descirptors);
-        if(pDriverData->Interface[USB_HID_MOUSE].Descirptors)
-            free(pDriverData->Interface[USB_HID_MOUSE].Descirptors);
+        if(pDriverData->Interface[USB_HID_KEYBOARD].Descriptors)
+            free(pDriverData->Interface[USB_HID_KEYBOARD].Descriptors);
+        if(pDriverData->Interface[USB_HID_MOUSE].Descriptors)
+            free(pDriverData->Interface[USB_HID_MOUSE].Descriptors);
         free(pDriverData);
     }
     pDevice->pDriverData = NULL;

@@ -16,10 +16,8 @@ int main()
     {
         HCD_Interface* pHCI = USBT.HC_List+j;
 
-        for(int i = 0; i < HCD_MAX_DEVICE_COUNT; ++i)
+        for(uint8_t i = 0; i < pHCI->bDevCount; ++i)
         {
-            if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
-                continue; //PnP: unplugged gaps
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
             if(dev->bStatus)
 

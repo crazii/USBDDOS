@@ -65,10 +65,8 @@ int retrowave_init_dos_cdc(RetroWaveContext *ctx) {
     {
         HCD_Interface* pHCI = USBT.HC_List+j;
 
-        for(int i = 0; i < HCD_MAX_DEVICE_COUNT; ++i)
+        for(uint8_t i = 0; i < pHCI->bDevCount; ++i)
         {
-            if(!HCD_IS_DEVICE_VALID(pHCI->DeviceList[i]))
-                continue;
             USB_Device* dev = HC2USB(pHCI->DeviceList[i]);
             if((dev->Desc.widVendor == RETROWAVE_VENDOR_EXPRESS && dev->Desc.widProduct == RETROWAVE_DEVID_EXPRESS)
             || (dev->Desc.widVendor == RETROWAVE_VENDOR_LITE && dev->Desc.widProduct == RETROWAVE_DEVID_LITE)

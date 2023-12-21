@@ -464,7 +464,7 @@ BOOL EHCI_RemoveDevice(HCD_Device* pDevice)
     //EHCI_DetachQH(&pDeviceData->ControlQH, &pHCData->ControlQH, &pHCData->ControlTail);
     //USB_TFree(pDeviceData->ControlQH.EXT.Tail);
     DPMI_DMAFree(pDeviceData);
-    return FALSE;
+    return TRUE;
 }
 
 void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, uint8_t bTransferType, uint16_t MaxPacketSize, uint8_t bInterval)
@@ -763,6 +763,9 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         assert(pTD->EXT.Request);
         EHCI_qTD* pNext = pTD->EXT.Next;
         uint8_t errmask = (uint8_t)(pTD->Token.Status&EHCI_QTK_ERRORS); //workaround -Wconversion bug
+        if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
+            errmask &= (uint8_t)~1U;
+
         error |= errmask;
         if(!pTD->Token.StatusBm.Active || (error && (pTD->EXT.Request == pReq || pReq == NULL))) //stop after first inactive request
         {
@@ -779,9 +782,6 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
             /*pTD = pNext;*/break;
     }
 
-    if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
-        error &= (uint8_t)~1U;
-
     if(pTD && error)
     {
         assert(!pTD->Token.StatusBm.Active && pTD == pQH->EXT.Tail || pTD->Token.StatusBm.Active);
@@ -792,11 +792,12 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
     {
         pTD = pList;
         pList = pList->EXT.Next;
-        if((pTD->Token.IOC || (pTD->Token.Status&EHCI_QTK_ERRORS)) && !pTD->Token.StatusBm.Active)
+        uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
+        if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
+            error &= (uint8_t)~1U;
+
+        if((pTD->Token.IOC || error) && !pTD->Token.StatusBm.Active)
         {
-            uint8_t error = (pTD->Token.Status&EHCI_QTK_ERRORS);
-            if(pQH->Caps.EndpointSpd == EPS_HIGH) //P_ERROR is ping state for high speed ep
-                error &= (uint8_t)~1U;
             ///*if(error)*/_LOG("CB %x %d %d %x CBE ", error, pTD->EXT.Request->size, pTD->Token.Length, pTD);
             //_LOG("req: %08x TD: %08x ", pTD->EXT.Request, pTD);
             HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);

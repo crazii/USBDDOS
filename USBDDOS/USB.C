@@ -289,7 +289,10 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     memset(pDevice, 0, sizeof(USB_Device));
 
     if( !HCD_InitDevice(pHub, &pDevice->HCDDevice, portIndex, portStatus) )
+    {
+        _LOG("USB HCD_InitDevice Failed.\n");
         return FALSE;
+    }
     pDevice->bStatus = DS_Default;
     pDevice->pDeviceBuffer = (uint8_t*)DPMI_DMAMalloc(USB_DEVBUFFER_SIZE, 4);
     pDevice->pSetup = (uint8_t*)DPMI_DMAMalloc(8,4);
@@ -314,40 +317,44 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
             assert(pDevice->bStatus == DS_Configured);
             break;
         }
-        pHub->SetPortStatus(pHub, portIndex, USB_PORT_DISABLE); //disable it to continue enumeration on next port
+        //pHub->SetPortStatus(pHub, portIndex, USB_PORT_DISABLE); //disable it to continue enumeration on next port - RemoveDevice will do it
     }
     // install device driver
     if(pDevice->bStatus == DS_Configured)
     {
+        uint8_t bClass = pDevice->Desc.bDeviceClass;
         #if DEBUG
         USB_ShowDeviceInfo(pDevice);
+        #else
+        _LOG("USB: Device class:%x, installing drivers\n", bClass);
         #endif
-        _LOG("USB: config endpoints\n");
-        USB_ConfigEndpoints(pDevice);
-
-        uint8_t bClass = pDevice->Desc.bDeviceClass;
-        _LOG("USB: Device class:%d, install drivers\n", bClass);
-        BOOL DriverInstalled = FALSE;
-        if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL)
+        //early skip configuring endpoints if we don't have driver for the class
+        if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL
+        /*|| TODO: check vendor specific driver*/)
         {
-            DriverInstalled = USBT.ClassDrivers[bClass].InitDevice(pDevice);
-        }
+            _LOG("USB: config endpoints\n");
+            USB_ConfigEndpoints(pDevice);
 
-        if(!DriverInstalled)
-        {
-            //try vendor specific driver
-            //not implemented
-        }
+            BOOL DriverInstalled = FALSE;
+            if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL)
+                DriverInstalled = USBT.ClassDrivers[bClass].InitDevice(pDevice);
 
-        if(DriverInstalled)
-        {
-            pDevice->bStatus = DS_Ready;
-            return TRUE;
+            if(!DriverInstalled)
+                //try vendor specific driver
+                //not implemented
+                {}
+            pDevice->bStatus = DriverInstalled ? DS_Ready : pDevice->bStatus;
+
+            if(DriverInstalled)
+                return TRUE;
         }
+        else
+            _LOG("No driver found for device (class %x), skip\n", bClass);
+
     }
-    
+
     printf("Error initializing device at port: %d.\n", portIndex);
-    USB_RemoveDevice(pDevice);
+    USB_RemoveDevice(pDevice); //this will disable the hub port
     return FALSE;
 }
 
@@ -357,7 +364,8 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
         return FALSE;
 
     uint8_t bClass = pDevice->Desc.bDeviceClass;
-    USBT.ClassDrivers[bClass].DeinitDevice(pDevice);
+    if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL)
+        USBT.ClassDrivers[bClass].DeinitDevice(pDevice);
 
     for(int e = 0; e < pDevice->bNumEndpoints; ++e)
         pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pEndpoints[e]);
@@ -612,7 +620,9 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
         {
             ++InterfaceIndex;
             EndpointIndex = -1;
-            assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces);
+            //assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces); //why would it happen? bad descriptor in device?
+            if(InterfaceIndex >= pDevice->pConfigList[ConfigIndex].bNumInterfaces)
+                continue;
 
             USB_InterfaceDesc *pInterfaceDesc = (USB_InterfaceDesc*)(pBuffer + i);
             pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex] = *(USB_InterfaceDesc*)(pBuffer + i);
@@ -767,7 +777,7 @@ static void USB_EnumerateDevices()
                 BOOL stablized = !(pHub->GetPortStatus(pHub, i)&USB_PORT_CONNECT_CHANGE);
                 if(!stablized)
                     continue;
-                
+
                 _LOG("Enumerate device at port %d.\n",i);
                 USB_InitDevice(pHub, i, status);
             }
@@ -872,7 +882,8 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     _LOG("USB: config descirptor total length: %d\n", TotalLength);
     uint8_t* DescBuffer = Buffer;
     if(TotalLength > USB_DEVBUFFER_SIZE)
-        DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 8);
+        DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 4);
+    memset(DescBuffer, 0, TotalLength);
 
     Request5.wLength = TotalLength;
     result = USB_SyncSendRequest(pDevice, &Request5, DescBuffer);
@@ -920,7 +931,7 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 
     USB_InterfaceDesc* pCurrentInterface = pDevice->pConfigList[pDevice->bCurrentConfig].pInterfaces;
     int currentEP = 0;
-    for(int8_t i = 0; i < bNumEndpoints; ++i)
+    for(uint8_t i = 0; i < bNumEndpoints; ++i)
     {
         USB_EndpointDesc* epd = &pCurrentInterface->pEndpoints[currentEP];
         void* ep = pDevice->HCDDevice.pHCI->pHCDMethod->CreateEndpoint(&pDevice->HCDDevice, epd->bEndpointAddressBits.Num,
@@ -929,7 +940,7 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
             epd->wMaxPacketSizeFlags.Size,
             epd->bInterval);    //create EP
         assert(ep);
-        _LOG("Endpoint %02x created: %08x\n", epd->bEndpointAddress, ep);
+        _LOG("Class %x Endpoint %02x created: %08x [%u/%u]\n", pDevice->Desc.bDeviceClass, epd->bEndpointAddress, ep, i+1, bNumEndpoints);
         pDevice->pEndpoints[i] = ep;
         pDevice->pEndpointDesc[i] = epd;
 
