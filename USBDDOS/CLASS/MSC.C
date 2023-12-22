@@ -183,9 +183,9 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     || csw.dCSWDataResidue != 0 || error)
     {
         USB_ClearHalt(pDevice, pDriverData->bEPAddr[1]);
-        _LOG("MSC CSW: %x, %x, %x, %x\n", csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
+        _LOG("MSC CSW: %lx, %lx, %lx, %x\n", csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
         _LOG("MSC CSW Failed: %x, %d, %d\n", error, sizeof(USB_MSC_CSW), len);
-        _LOG("MSC CBW length: %d\n", cbw.dCBWDataTransferLength);
+        _LOG("MSC CBW length: %ld\n", cbw.dCBWDataTransferLength);
         return FALSE;
     }
     return TRUE;
@@ -504,7 +504,7 @@ static void USB_MSC_DOS_DriverINT()
             uint32_t step = count;
             #else  //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
             //_LOG("sbrk: %x, SP: %x, stack: %u ", FP_OFF(sbrk(0)), _SP, stackavail());
-            uint32_t step = max(16*1024/pDriverData->BlockSize,1);
+            uint32_t step = max(8*1024/pDriverData->BlockSize,1);
             #endif
             uint32_t off = 0;
             while(count > 0)
@@ -538,7 +538,7 @@ static void USB_MSC_DOS_DriverINT()
             #if !defined(__BC__)
             uint32_t step = count;
             #else //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
-            uint32_t step = max(16*1024/pDriverData->BlockSize,1);
+            uint32_t step = max(8*1024/pDriverData->BlockSize,1);
             #endif
             uint32_t off = 0;
             while(count > 0)

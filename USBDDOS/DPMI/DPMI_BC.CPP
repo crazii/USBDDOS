@@ -317,7 +317,7 @@ void* DPMI_L2PTR(uint32_t addr)
     if(DPMI_PM)
     {
         if(!(addr >= DPMI_HimemDS && addr <= DPMI_HimemDS+0xFFFFL))
-            printf("%08lx ", addr);
+            _LOG("%08lx ", addr);
         assert(addr >= DPMI_HimemDS && addr <= DPMI_HimemDS+0xFFFFL);
         //printf("%08lx %04x ", addr, (void*)(uint16_t)(addr - DPMI_HimemDS));
         return (void*)(uint16_t)(addr - DPMI_HimemDS);

@@ -17,6 +17,11 @@
 #define EHCI_EP_GETQH(pVoid) (EHCI_QH*)(((uintptr_t)(pVoid))&~0xFUL)
 #define EHCI_EP_GETADDR(pVoid) (((uintptr_t)(pVoid))&0xFUL)
 
+static uint8_t EHCI_HighSpeedSMask1to8[4] = //1,2,4,8
+{
+    0xFFU, 0x55U, 0x11U, 0x01U
+};
+
 static uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
 static BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status);
 static BOOL EHCI_InitDevice(HCD_Device* pDevice);
@@ -124,7 +129,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     pHCData->ControlQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->BulkQH) | (Typ_QH<<Typ_Shift);
     #if 0
     pHCData->BulkQH.HorizLink.Bm.T = 1;
-    #else //only circle queue + 'H' bit (EHCI spec 4.8.3) works on tested hardware (ECHI rev 0.95), although the above works well in VirtualBox. this saves mem bandwidth anyways
+    #else //only circle queue + 'H' bit (EHCI spec 4.8.3) works on tested hardware (EHCI rev 0.95), although the above works well in VirtualBox. this saves mem bandwidth anyways
     pHCData->BulkQH.HorizLink.Ptr = DPMI_PTR2P(&pHCData->ControlQH) | (Typ_QH<<Typ_Shift);
     pHCData->ControlQH.Caps.HeadofReclamation = 1;
     #endif
@@ -219,7 +224,7 @@ BOOL EHCI_ISR(HCD_Interface* pHCI)
     //process QH & qTDs
     EHCI_ISR_QH(pHCI, &pHCData->ControlQH, pHCData->ControlTail);
     EHCI_ISR_QH(pHCI, &pHCData->BulkQH, pHCData->BulkTail);
-    for(int i = 0 ; i < 11; ++i)
+    for(int i = 0 ; i < EHCI_INTR_COUNT; ++i)
         EHCI_ISR_QH(pHCI, &pHCData->InterruptQH[i], pHCData->InterruptTail[i]);
 
     //process iTDs & siTDs TODO:
@@ -481,7 +486,8 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     }
     assert(EPAddr <= 0xF);
     assert(bTransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR || bInterval >= 1);
-    uint16_t EPS = (pDevice->bSpeed==USB_PORT_Low_Speed_Device) ? EPS_LOW : (pDevice->bSpeed==USB_PORT_Full_Speed_Device) ? EPS_FULL : EPS_HIGH;    
+    bInterval = max(bInterval, 1); //just for safety
+    uint16_t EPS = (pDevice->bSpeed==USB_PORT_Low_Speed_Device) ? EPS_LOW : (pDevice->bSpeed==USB_PORT_Full_Speed_Device) ? EPS_FULL : EPS_HIGH;
 
     EHCI_QH* pQH = EPAddr == 0 ? &pDeviceData->ControlQH : (EHCI_QH*)DPMI_DMAMalloc(sizeof(EHCI_QH), EHCI_ALIGN);
     memset(pQH, 0, sizeof(*pQH));
@@ -493,13 +499,18 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Caps.NakCounterRL = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_BULK) ? 0xF : 0;
 
     pQH->Caps2.Mult = 1;
-    pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? 0xF : 0;
-    if(pQH->Caps.EndpointSpd != EPS_HIGH)
+    pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? (bInterval<=4?EHCI_HighSpeedSMask1to8[bInterval-1]:0x1) : 0;
+    if(EPS != EPS_HIGH)
     {
-        pQH->Caps2.PortNum_1x = pDevice->bHubPort&0x3FU;
+        pQH->Caps2.PortNum_1x = (pDevice->bHubPort+1)&0x3FU; //1 based for hub device
         pQH->Caps2.HubAddr_1x = pDevice->pHub->bHubAddress&0x7FU;
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
-            pQH->Caps2.uFrameCMask_1x = 0x1U; //8 micro frames (1ms)
+        {
+            pQH->Caps2.uFrameSMask = 0x1; //0th (bit0) micro frame: start-split
+            pQH->Caps2.uFrameCMask_1x = 0xE; //1,2,3 micro frames for INTR: complete-split
+        }
+        else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
+            pQH->Caps.ControlEP_1x = 1U;
     }
     pQH->Token.PID = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL) ? PID_SETUP : dir&0x1U; //TODO: is this necessary?
 
@@ -507,8 +518,6 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
 
     if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL)
     {
-        if(pQH->Caps.EndpointSpd != EPS_HIGH)
-            pQH->Caps.ControlEP_1x = 1U;
         EHCI_InitQH(pQH, pHCData->ControlTail);
         pHCData->ControlTail = pQH;
     }
@@ -519,7 +528,10 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     }
     else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
     {
-        bInterval = min(bInterval, 11); //clamp [1~16] to [1~11]
+        if(EPS == EPS_HIGH)
+            bInterval = min(bInterval<=4?1:bInterval-4, EHCI_INTR_COUNT); //pack [1~4] to [1] and clamp [1~16] to [1~11]
+        else
+            bInterval = min(bInterval, EHCI_INTR_COUNT);
         pQH->EXT.Interval = bInterval&0xFU;
         //EHCI_QH* head = &pHCData->InterruptQH[bInterval-1];
         EHCI_QH** tail = &pHCData->InterruptTail[bInterval-1];
@@ -610,7 +622,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
             flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
     }
     {//scope for BC
-        for(int i = 0; i < 11; ++i)
+        for(int i = 0; i < EHCI_INTR_COUNT; ++i)
         {
             pHCData->InterruptQH[i].Token.StatusBm.Halted = 1;
             pHCData->InterruptQH[i].HorizLink.Ptr = (Typ_QH<<Typ_Shift) | Tbit;
@@ -619,7 +631,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
     }
     int offset = 0;
     {//scope for BC
-        for(int i = 10; i >= 3; --i)
+        for(int i = EHCI_INTR_COUNT-1; i >= 3; --i)
         {
             int step = 1<<i;
             for(int j = offset++; j < 1024; j+=step)
@@ -644,7 +656,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
             }
         }
     }
-    
+
     DPMI_CopyLinear(pHCData->dwPeroidicListBase, DPMI_PTR2L(flep), 4096);
     free(flep);
     DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, FrameList); //physical addr
@@ -799,7 +811,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
         if((pTD->Token.IOC || error) && !pTD->Token.StatusBm.Active)
         {
             ///*if(error)*/_LOG("CB %x %d %d %x CBE ", error, pTD->EXT.Request->size, pTD->Token.Length, pTD);
-            //_LOG("req: %08x TD: %08x ", pTD->EXT.Request, pTD);
+            //_LOG("CB %x ", HC2USB(pTD->EXT.Request->pDevice)->Desc.bDeviceClass);
             HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);
         }
         //_LOG("Free TD: %lx ", pTD);

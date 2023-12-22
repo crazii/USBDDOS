@@ -258,7 +258,6 @@ BOOL USB_HID_DOS_Install()
             USB_Device* pDevice = HC2USB(pHCI->DeviceList[i]);
             if(pDevice->Desc.bDeviceClass == USBC_HID && pDevice->bStatus == DS_Ready)
             {
-                _LOG("HC: %d %x, DEV: %d %x\n",j,pHCI,i,pDevice);
                 ++count;
                 USB_HID_DriverData* pDriverData = (USB_HID_DriverData*)pDevice->pDriverData;
 

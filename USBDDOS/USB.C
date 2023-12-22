@@ -168,8 +168,6 @@ void USB_Shutdown(void)
             continue;
         _LOG("CPUFLAGS: %04x\n", CPU_FLAGS()); //make sure interrupt is on (IF set)
         assert(CPU_FLAGS()&CPU_IFLAG);
-        while(pDevice->HCDDevice.pRequest != NULL) //waiting on interrupt to handle pending request
-            USB_IDLE_WAIT();
         _LOG("Removing device at address: %d\n", address+1);
         USB_RemoveDevice(pDevice);
     }
@@ -287,7 +285,7 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     pDevice = &USBT.Devices[address];
     address = (uint8_t)(address + 1); //1 based
     memset(pDevice, 0, sizeof(USB_Device));
-
+    //_LOG("HCD_InitDevice\n");
     if( !HCD_InitDevice(pHub, &pDevice->HCDDevice, portIndex, portStatus) )
     {
         _LOG("USB HCD_InitDevice Failed.\n");
@@ -362,6 +360,8 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
 {
     if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice))
         return FALSE;
+    while(pDevice->HCDDevice.pRequest != NULL) //waiting on interrupt to handle pending request
+        USB_IDLE_WAIT();
 
     uint8_t bClass = pDevice->Desc.bDeviceClass;
     if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL)
@@ -777,6 +777,7 @@ static void USB_EnumerateDevices()
                 BOOL stablized = !(pHub->GetPortStatus(pHub, i)&USB_PORT_CONNECT_CHANGE);
                 if(!stablized)
                     continue;
+                delay(10);
 
                 _LOG("Enumerate device at port %d.\n",i);
                 USB_InitDevice(pHub, i, status);

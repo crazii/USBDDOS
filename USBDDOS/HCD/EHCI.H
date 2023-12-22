@@ -484,8 +484,8 @@ typedef struct QueueHead
     //Endpoint capabilities/characteristics 2
     struct EndpointCC2
     {
-        uint16_t uFrameSMask : 8;
-        uint16_t uFrameCMask_1x : 8; //periodic only
+        uint8_t uFrameSMask;
+        uint8_t uFrameCMask_1x; //periodic only
         uint16_t HubAddr_1x : 7;
         uint16_t PortNum_1x : 7;
         uint16_t Mult : 2; //high bandwith pipe multiplier (valid: 1~3)
@@ -561,20 +561,22 @@ typedef struct
 #define EHCI_ALIGN 32
 
 //USBDDOS specific
+#define EHCI_INTR_COUNT 8
 
 typedef struct EHCI_HostControllerDriverData
 {
     //aligment
     EHCI_QH ControlQH;
     EHCI_QH BulkQH;
-    EHCI_QH InterruptQH[11]; //2^(0~10), the bInterval of INTR(/ISO) endpoint for USB2.0 ranges from 1~16, in 2^(bInterval-1) micro frames (125us)
+    EHCI_QH InterruptQH[EHCI_INTR_COUNT]; //2^(0~10), the bInterval of INTR(/ISO) endpoint for USB2.0 ranges from 1~16, in 2^(bInterval-1) micro frames (125us)
+                            //element 0 is for 2^(0~3)
 
     //no aligment
     EHCI_CAPS Caps;
     uint32_t OPBase; //operational regs base
     EHCI_QH* ControlTail;
     EHCI_QH* BulkTail;
-    EHCI_QH* InterruptTail[11];
+    EHCI_QH* InterruptTail[EHCI_INTR_COUNT];
     uint32_t dwPeroidicListBase;   //memory address.
     uint16_t wPeroidicListHandle;  //xms handle
 }EHCI_HCData;
