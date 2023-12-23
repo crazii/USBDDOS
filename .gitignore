@@ -1,0 +1,6 @@
+.vscode
+*.o
+*.obj
+Make/output/*.CFG
+usbddos.exe
+usbddosp.exe

@@ -1,0 +1,122 @@
+.AUTODEPEND
+.silent
+
+!ifndef DBG
+DBG = 0
+!endif
+
+.PATH.obj = .\output
+
+CFLAGS_FILE = .\output\BC.CFG
+
+# Translator Definitions
+CC = bcc +$(CFLAGS_FILE)
+TASM = TASM
+TLIB = tlib
+TLINK = tlink
+LIBPATH = C:\BORLANDC\LIB
+INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
+
+# Implicit Rules
+{..\}.c.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+{..\USBDDOS\}.c.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+{..\USBDDOS\CLASS\}.c.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+{..\USBDDOS\HCD\}.c.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+{..\USBDDOS\DPMI\}.c.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+{..\USBDDOS\DPMI\}.cpp.obj:
+  @echo $<
+  @$(CC) -c {$< }
+
+#List Macros
+TARGET = output\usbddos.exe
+
+EXE_dependencies =  \
+ hub.obj \
+ ehci.obj \
+ dpmi_bc.obj \
+ dpmi.obj \
+ xms.obj \
+ pci.obj \
+ pic.obj \
+ usb.obj \
+ usballoc.obj \
+ usbtable.obj \
+ dbgutil.obj \
+ hcd.obj \
+ ohci.obj \
+ uhci.obj \
+ main.obj \
+ msc.obj \
+ hid.obj
+
+# Explicit Rules
+$(TARGET): $(CFLAGS_FILE) $(EXE_dependencies)
+  $(TLINK) /v/x/c/P-/L$(LIBPATH) @&&|
+c0s.obj+
+.\output\hub.obj+
+.\output\ehci.obj+
+.\output\dpmi_bc.obj+
+.\output\dpmi.obj+
+.\output\xms.obj+
+.\output\pci.obj+
+.\output\pic.obj+
+.\output\usb.obj+
+.\output\usballoc.obj+
+.\output\usbtable.obj+
+.\output\dbgutil.obj+
+.\output\hcd.obj+
+.\output\ohci.obj+
+.\output\uhci.obj+
+.\output\main.obj+
+.\output\msc.obj+
+.\output\hid.obj
+.\output\usbddos
+# no map file
+fp87.lib+
+maths.lib+
+cs.lib
+|
+
+# Compiler Configuration File
+$(CFLAGS_FILE): Makefile.BC
+  copy &&|
+-3
+-f287
+-O
+-Oe
+-Ob
+-Z
+-k-
+-rd
+-d
+-B
+-Tt
+-vi-
+-wpro
+-weas
+-wpre
+-n.\OUTPUT
+-I$(INCLUDEPATH)
+-L$(LIBPATH)
+-DDEBUG=$(DBG);NDEBUG
+-P
+| $@
+
+clean:
+  del output\*.obj
+  del $(CFLAGS_FILE)
