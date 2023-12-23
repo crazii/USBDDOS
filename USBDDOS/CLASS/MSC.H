@@ -259,7 +259,6 @@ typedef struct
 {
     uint8_t bInterface;
     uint8_t MaxLUN;
-    uint8_t Overriden;
     uint32_t MaxLBA;
     uint32_t BlockSize;
     uint16_t SizeGB;

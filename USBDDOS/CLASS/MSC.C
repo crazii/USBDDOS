@@ -267,7 +267,7 @@ typedef struct DOS_DeviceDriverHeader
 {
     uint32_t NextDDH;
     uint16_t Attribs; //http://www.delorie.com/djgpp/doc/rbinter/it/48/16.html
-    uint16_t StrategyEntryPoint; //newar ptr. segment is the header (far ptr)'s segment
+    uint16_t StrategyEntryPoint; //near ptr. segment is the header (far ptr)'s segment
     uint16_t IntEntryPoint; //near ptr
     uint8_t Drives; //supported drive count. TODO: mount multiple partitions? USB disk can have multiple partitions but usually only 1.
     uint8_t Signature[7];
@@ -300,8 +300,8 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
 }DOS_DPB;
 _Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 
-//#define DOS_CDS_FLAGS_USED      0xC0
-#define DOS_CDS_FLAGS_PHYSICAL  0x4000
+//#define DOS_CDS_FLAGS_USED        0xC0
+#define DOS_CDS_FLAGS_PHYSICAL      0x4000
 #define DOS_CDS_FLAGS_REMOTE_MSCDEX 0x80  //Remote drive hidden from redirector's assign-list and exempt from network connection make/break commands. set for CD-ROM drives by MSCDEX
 
 //http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm#Table1643
@@ -318,6 +318,47 @@ typedef struct DOS_CurrentDirectoryStructure
     uint16_t IFSData;
 }DOS_CDS;
 _Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS stores it in arrays
+
+
+//Ralf Brown's Interrupt List, INT 21h,AH=52H
+#define DOS_DISKBUFFER_DIRTY (1<<6)
+
+typedef struct DOS_DiskBuffer
+{
+    uint16_t next; //offset only, forward pr (circlular chain)
+    uint16_t prev; //offset only, backward ptr
+    uint8_t drive; //0=A,1=B,2=C
+    uint8_t flags; //DOS_DISKBUFFER_*
+    uint32_t sector; //logical sector number
+    uint8_t nwcopies; //number of copies to write
+    uint16_t offset; //offset in sectors between copies
+    uint32_t DPB;
+    uint16_t remote_size;
+    uint8_t reserved;
+    //actual data afterwards
+}DOS_DiskBuffer;
+
+//we need the buffer head link, and the lookahead link for remounting
+typedef struct DOS_DiskBufferInfo
+{
+    uint32_t head; //LRU to DOS_DiskBuffer
+    uint16_t dirty_count;
+    uint32_t lookahead; //lookahead ptr to DOS_DiskBuffer
+    uint16_t lookaheadsec; //lookahead sectors or 0 (y in BUFFERS=x,y)
+    uint8_t location; //0=conventional, 1=HMA
+    uint32_t workspace; //workspace ptr to conventional mem
+    uint8_t reserved[3];
+    uint16_t unknown;
+    uint8_t flags;
+    uint8_t tmp;
+    uint8_t counter;
+    uint8_t flags2;
+    uint16_t unpackoffset;
+    uint8_t flags3; //bit0: UMB MCB linked
+    uint16_t min_memory; //minimum mem (in paragraph) required by program
+    uint16_t UMB_MCB; //segment of UMB MCB or 0xFFFF
+    uint16_t alloc_start;
+}DOS_DBI;
 
 //https://github.com/microsoft/MS-DOS/blob/master/v2.0/source/DEVDRIV.txt
 //https://faydoc.tripod.com/structures/25/2597.htm
@@ -387,6 +428,7 @@ typedef struct DOS_DriverRequestStruct
 
 //"List of Lists" offsets
 #define DOS_LOL_DPB_PTR             0x00    //DPB list far ptr, 4 bytes
+#define DOS_LOL_DISK_BUFFERS        0x12    //disk buffer info record far pointer, 4bytes
 #define DOS_LOL_CDS_PTR             0x16    //CDS list far ptr, 4 bytes
 #define DOS_LOL_BLOCK_DEVICE_COUNT  0x20    //installed device count, 1 byte
 #define DOS_LOL_DRIVE_COUNT         0x21    //drive count (and CDS count), 1 byte
@@ -456,9 +498,15 @@ static void USB_MSC_DOS_DriverINT()
     request.Header.Status = DOS_DRSS_DONEBIT;
     //_LOG("MSC DR %d ", request.Header.Cmd);
 
-    if(pDevice == NULL)
+    BOOL DeviceChanged = FALSE;
+    if(pDevice != NULL)
     {
-        //_LOG("MSC device not found ");
+        HCD_HUB* pHub = pDevice->HCDDevice.pHub;
+        uint16_t PortStatus = pHub->GetPortStatus(pHub, pDevice->HCDDevice.bHubPort);
+        DeviceChanged = !(PortStatus&USB_PORT_ATTACHED) || !(PortStatus&USB_PORT_ENABLE) || (PortStatus&USB_PORT_CONNECT_CHANGE);
+    }
+    if(pDevice == NULL || DeviceChanged)
+    {
         request.Header.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
         if(request.Header.Cmd == DOS_DRSCMD_MEDIACHECK)
             request.MediaCheck.Returned = 0xFF;
@@ -469,22 +517,7 @@ static void USB_MSC_DOS_DriverINT()
     {
         case DOS_DRSCMD_MEDIACHECK:
         {
-            #if 0
-            HCD_HUB* pHub = pDevice->HCDDevice.pHub;
-            uint16_t PortStatus = pHub->GetPortStatus(pHub, pDevice->HCDDevice.bHubPort);
-            if((PortStatus&USB_PORT_ATTACHED) && (PortStatus&USB_PORT_ENABLE) && !(PortStatus&USB_PORT_CONNECT_CHANGE))
-                request.MediaCheck.Returned = 1;
-            else
-            {
-                //request.Status = DOS_DRSS_ERRORBIT | DOS_DRSS_DEV_NOT_READY;
-                request.MediaCheck.Returned = 0xFF;
-            }
-            #else
-            USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
-            request.MediaCheck.Returned = pDriverData->Overriden ? 0xFF : 1;
-            //pDriverData->Overriden = 0;
-            //request.MediaCheck.Returned = 1;
-            #endif
+            request.MediaCheck.Returned = 1;
             break;
         }
         case DOS_DRSCMD_BUILD_BPB:
@@ -507,7 +540,7 @@ static void USB_MSC_DOS_DriverINT()
             uint32_t step = count;
             #else  //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
             //_LOG("sbrk: %x, SP: %x, stack: %u ", FP_OFF(sbrk(0)), _SP, stackavail());
-            uint32_t step = max(8*1024/pDriverData->BlockSize,1);
+            uint32_t step = max(16*1024/pDriverData->BlockSize,1);
             #endif
             uint32_t off = 0;
             while(count > 0)
@@ -541,7 +574,7 @@ static void USB_MSC_DOS_DriverINT()
             #if !defined(__BC__)
             uint32_t step = count;
             #else //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
-            uint32_t step = max(8*1024/pDriverData->BlockSize,1);
+            uint32_t step = max(16*1024/pDriverData->BlockSize,1);
             #endif
             uint32_t off = 0;
             while(count > 0)
@@ -720,7 +753,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     uint32_t CDSFarPtr = *(uint32_t*)&buf[DOS_LOL_CDS_PTR];
     DPMI_CopyLinear(DPMI_PTR2L(cds), DPMI_FP2L(CDSFarPtr), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
     uint8_t CDSIndex; //find an empty entry in CDS list
-    BOOL overrided = FALSE;
+    BOOL overriden = FALSE;
     for(CDSIndex = 2; CDSIndex < DriveCount; ++CDSIndex) //start from C:
     {
         //_LOG("CDS Flags %d: %x ", CDSIndex, cds[CDSIndex].flags);
@@ -732,7 +765,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
             //compare BPB becausse it contains serial number which should be identical for disk/partition
             if(DPMI_CompareLinear(DPMI_PTR2L(MSC_BPBs+CDSIndex), DPMI_PTR2L(&TSRData.bpb), sizeof(TSRData.bpb.DOS20) + sizeof(TSRData.bpb.DOS331) + sizeof(TSRData.bpb.DOS40)) == 0)
             {
-                overrided = TRUE;
+                overriden = TRUE;
                 break;
             }
         }
@@ -749,17 +782,49 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         return FALSE;
     }
 
-    if(!overrided)
+    if(!overriden)
     {
         memset(&cds[CDSIndex], 0, sizeof(DOS_CDS));
         memcpy(cds[CDSIndex].path, "A:\\", 4);
         cds[CDSIndex].path[0] = (char)(cds[CDSIndex].path[0] + CDSIndex);
         cds[CDSIndex].Flags |= /*DOS_CDS_FLAGS_USED | */DOS_CDS_FLAGS_PHYSICAL;
         cds[CDSIndex].FFFFFFFFh = 0xFFFFFFFF;
-        cds[CDSIndex].SlashPos = 2;        
+        cds[CDSIndex].SlashPos = 2;
+
+        cds[CDSIndex].DPBptr = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
+        DPMI_CopyLinear(DPMI_FP2L(CDSFarPtr) + CDSIndex*sizeof(DOS_CDS), DPMI_PTR2L(cds) + CDSIndex*sizeof(DOS_CDS), sizeof(DOS_CDS)); //cds write back to dos mem
     }
-    cds[CDSIndex].DPBptr = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
-    DPMI_CopyLinear(DPMI_FP2L(CDSFarPtr) + CDSIndex*sizeof(DOS_CDS), DPMI_PTR2L(cds) + CDSIndex*sizeof(DOS_CDS), sizeof(DOS_CDS)); //cds write back to dos mem
+    else //update disk buffers
+    {
+        #if 0 //'DIR /S' still not working properly after update buffers
+        DOS_DBI dbi;
+        DPMI_CopyLinear(DPMI_PTR2L(&dbi), DPMI_FP2L(*(uint32_t*)&buf[DOS_LOL_DISK_BUFFERS]), sizeof(dbi));
+        uint32_t bufptr = dbi.head;
+        DOS_DiskBuffer dbuf;
+        uint32_t dpb = DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb));
+        uint32_t end = bufptr; //circular chain since DOS 5.0
+
+        #define ALT_BUFFER_DPB() do {\
+            DPMI_CopyLinear(DPMI_PTR2L(&dbuf), DPMI_FP2L(bufptr), sizeof(dbuf));\
+            bufptr = (bufptr&0xFFFF0000UL) | ((uint32_t)dbuf.next); \
+            if(dbuf.drive != CDSIndex) \
+                continue; \
+            _LOG("f: %x, d: %x sc: %lx nc: %d ", dbuf.flags, dbuf.drive, dbuf.sector, dbuf.nwcopies);\
+            DPMI_StoreD(DPMI_FP2L(bufptr) + offsetof(DOS_DiskBuffer, DPB), dpb);\
+        }while(bufptr != end)
+
+        ALT_BUFFER_DPB();
+        end = bufptr = dbi.lookahead;
+        ALT_BUFFER_DPB();
+
+        #undef ALT_BUFFER_DPB
+        #endif
+
+        //This is another way around: whereever the old DPB is referenced (maybe disk buffer, FCB or system file table), we don't update the referenced pointer,
+        //we replace the driver header in old DPB once and for all
+        //and this works
+        DPMI_StoreD(DPMI_FP2L(cds[CDSIndex].DPBptr)+offsetof(DOS_DPB,DriverHeader), DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh)));
+    }
 
     //write tsr mem
     TSRData.dpb.Drive = CDSIndex;
@@ -818,7 +883,6 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     }
     DPMI_CallRealModeINT(0x21, &reg);
     DPMI_StoreD(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb.FreeClusters)), FreeClusters); //this will boost initial DIR speed for calc free clusters
-    //DPMI_StoreB(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, bpb.DOS20.MediaDesc)), 0xFA);            //TSRData.bpb.DOS20.MediaDesc = 0xFA; //alter the media descriptor to force DOS rebuild DBP
 
     //alter driver chain
     {
@@ -827,6 +891,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         DPMI_StoreD(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh.NextDDH)), next);//TSRData.ddh.NextDDH = next;
     }
     //DPB chain
+    if(!overriden)
     {
         uint32_t DPBFarPtr = *(uint32_t*)&buf[DOS_LOL_DPB_PTR];
         uint32_t NextDPB = DPBFarPtr;
@@ -850,7 +915,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     #endif
 
     //write back DOS lists
-    if(!overrided)
+    if(!overriden)
         ++buf[DOS_LOL_BLOCK_DEVICE_COUNT];
     memset(&reg, 0, sizeof(reg));
     reg.h.ah = 0x52;
@@ -865,8 +930,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
     assert(pDriverData->DOSDriverMem == 0);
     pDriverData->DOSDriverMem = DrvMem;
-    pDriverData->Overriden = overrided;
-    if(overrided)
+    if(overriden)
         printf("USB Disk \'%s %s\': BIOS driver overrided, remounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
     else
         printf("USB Disk \'%s %s\' mounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
