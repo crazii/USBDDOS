@@ -279,6 +279,7 @@ int main(int argc, char* argv[])
             assert(uninstalled);
         }
         #endif
+        unused(uninstalled);
     }
 #endif
     return 0;

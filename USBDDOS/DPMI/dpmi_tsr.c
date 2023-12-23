@@ -133,7 +133,7 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
     
     uint32_t offset = *poffset;
     uint32_t size = *psize;
-    assert(offset == ProgramOffset);
+    assert(offset == ProgramOffset);unused(offset);
     
     //TODO: shrink stack as we may not need too much space?
     //TODO: custom keep of code & data like DOS TSR. we can do the TSR init on exit (we still need physical addr for driver before TSR)

@@ -7,7 +7,7 @@
 #include "USBDDOS/DPMI/DPMI.H"
 #include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
-
+#if 0
 // ref: OHCI_Specification_Rev.1.0a
 
 // configs
@@ -846,3 +846,4 @@ OHCI_ED** OHCI_GetEDFromInterval(OHCI_HCData* pHCDData, uint8_t interval)
     else
         return &pHCDData->ED32msTail;
 }
+#endif

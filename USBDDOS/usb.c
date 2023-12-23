@@ -763,7 +763,7 @@ static void USB_EnumerateDevices()
     {
         HCD_HUB* pHub = &USBT.HUB_List[j];
         HCD_Interface* pHCI = pHub->pHCI;
-        _LOG("Enumerate device for %s %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHub->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function);
+        _LOG("Enumerate device for %s %s on Bus:Dev:Func %02d:%02d:%02d\n", pHCI->pType->name, pHub->name, pHCI->PCIAddr.Bus, pHCI->PCIAddr.Device, pHCI->PCIAddr.Function); unused(pHCI);
 
         for(uint8_t i = 0; i < pHub->bNumPorts; ++i)
         {

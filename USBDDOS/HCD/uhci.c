@@ -9,7 +9,7 @@
 #include "USBDDOS/DPMI/XMS.H"
 #include "USBDDOS/USBALLOC.H"
 #include "USBDDOS/DBGUTIL.H"
-
+#if 0
 // reference spec: Universal Host Controller Interface (UHCI)
 // Universal Serial Bus Specification 2.0
 
@@ -858,3 +858,4 @@ UHCI_QH* UHCI_GetQHFromInterval(UHCI_HCData* pHCData, uint8_t interval)
     else
         return &pHCData->QH8ms;
 }
+#endif

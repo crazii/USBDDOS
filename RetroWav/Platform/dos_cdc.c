@@ -40,6 +40,7 @@ static void io_callback(void *userp, uint32_t data_rate, const void *tx_buf, voi
     
     uint32_t apacked_len = retrowave_protocol_serial_pack(tx_buf, len, packed_data);
     assert(apacked_len == packed_len);
+    unused(apacked_len);
 
     uint8_t result = USB_CDC_Transfer(device, HCD_TXW, packed_data, (uint16_t)packed_len, io_finish_callback, ctx->ctx);
     //uint16_t written = 0;

@@ -82,7 +82,7 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, ea
 
 //looks ugly. only if we can work preprocessing with raw string literals (R"()")
 //raw string can work with preprocessor using gcc -E or cpp in the triditional way. need a special pass for file with asm
-#define _ASM_BEGIN asm __volatile__(".intel_syntax noprefix\n\t" 
+#define _ASM_BEGIN __asm__ __volatile__(".intel_syntax noprefix\n\t" 
 #define _ASM_END ".att_syntax noprefix");
 #define _ASM(...) #__VA_ARGS__"\n\t"
 #define _ASMLBL _ASM
@@ -98,11 +98,11 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, ea
 #define _ASM_BEGIN32 _ASM_BEGIN
 #define _ASM_END32 _ASM_END
 
-#define NOP() asm __volatile__("nop")
-#define CLI() asm __volatile__("cli")
-#define STI() asm __volatile__("sti")
-static inline uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; asm("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
-static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint32_t flags = 0; asm("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
+#define NOP() __asm__ __volatile__("nop")
+#define CLI() __asm__ __volatile__("cli")
+#define STI() __asm__ __volatile__("sti")
+static inline uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; __asm__("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
+static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint32_t flags = 0; __asm__("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
 static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
 
 #define memcpy_c2d memcpy
