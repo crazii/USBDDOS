@@ -164,6 +164,7 @@ uint32_t DPMI_UnmapMemory(uint32_t linearaddr);
 //use this function if you want map between virtual addr and physical addr, meant for driver/device MMIO
 //malloc is recommended for normal memory allocation.
 void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment);
+void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment); //no crossing page boundary
 void DPMI_DMAFree(void* ptr);
 
 //allocate DOS conventional memory (below 640K)

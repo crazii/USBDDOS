@@ -239,9 +239,9 @@ extern uint8_t _AL;
 #define unused(x) (void)x
 
 //align down
-#define align(x,a) ((uint32_t)((x)+(a)-1)&(uint32_t)(~((a)-1)))
+#define align(x,a) ((uint32_t)((x)+(a)-1)&(uint32_t)(~((uint32_t)(a)-1)))
 //align up
-#define alignup(x,a) ((uint32_t)((x))&(uint32_t)(~((a)-1)))
+#define alignup(x,a) ((uint32_t)((x))&(uint32_t)(~((uint32_t)(a)-1)))
 
 typedef enum {FALSE, TRUE}BOOLEAN;
 typedef int BOOL;

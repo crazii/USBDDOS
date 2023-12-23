@@ -497,6 +497,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             for(uint32_t j = start; j < end; ++j)
             {
                 PTE pte = PTE_INIT(addr + (j<<12L)); //1:1 map
+                //pte.bits.disable_cache = 1;
                 //_LOG("PTE: %ld,  %08lx => %08lx\n", j, *(uint32_t far*)(pt+j), *(uint32_t*)&pte);
                 pt[j] = pte;
             }
@@ -516,13 +517,43 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
     CLIS();
     alignment = max(alignment,4);
     uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
-    uint16_t addr = DPMI_PTR2L(ptr);
+    uint32_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = align(addr, alignment) - addr;
     void* aligned = ptr + offset;
     ((uint16_t*)aligned)[-1] = offset + 2;
     STIL();
     return aligned;
 }
+
+void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
+{
+    CLIS();
+    alignment = max(alignment,4);
+    uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
+    uint32_t addr = DPMI_PTR2L(ptr);
+    uint16_t offset = align(addr, alignment) - addr;
+    //_LOG("%lx %lx %lx", DPMI_HimemDS, addr, align(addr,alignment));
+
+    unsigned int extra = 0;
+    while(((align(addr,alignment)+extra)&~0xFFFUL) != ((align(addr,alignment)+extra+size-1)&~0xFFFUL))
+    {
+        //_LOG("*** PAGE BOUNDARY *** ");
+        //_LOG("%lx %d %d ", align(addr,alignment), size, alignment);
+        free(ptr-2);
+        extra += align(size,alignment);
+        ptr = (uint8_t*)malloc(size + extra + alignment + 2) + 2;
+        addr = DPMI_PTR2L(ptr);
+        offset = align(addr, alignment) - addr + extra;
+        //_LOG("%lx ", align(addr,alignment)+extra);
+        //_LOG("%lx %lx ", ((align(addr,alignment)+extra)&~0xFFFUL), ((align(addr,alignment)+extra+size-1)&~0xFFFUL));
+    };
+
+    void* aligned = ptr + offset;
+    ((uint16_t*)aligned)[-1] = offset + 2;
+    STIL();
+    return aligned;
+}
+
 
 void DPMI_DMAFree(void* ptr)
 {

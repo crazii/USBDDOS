@@ -350,9 +350,44 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
     STIL();
     assert(align((uintptr_t)uptr, alignment) == (uintptr_t)uptr);
     return uptr;
-    #else
+    #else//DEBUG
     return mspace_memalign(XMS_Space, alignment, size);
-    #endif
+    #endif//DEBUG
+}
+
+void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment/* = 4*/)
+{
+    #if DEBUG
+    CLIS();
+    XMS_Allocated += size;
+    uint8_t* ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+8) + 8;
+    uintptr_t addr = (uintptr_t)ptr;
+    uint32_t offset = align(addr, alignment) - addr;
+    uint32_t* uptr = (uint32_t*)(ptr + offset);
+    uptr[-1] = size;
+    uptr[-2] = offset + 8;
+    STIL();
+    assert(align((uintptr_t)uptr, alignment) == (uintptr_t)uptr);
+    return uptr;
+    #else//DEBUG
+
+    #define TRY 64
+    void* tries[TRY] = {0};
+    tries[0] = mspace_memalign(XMS_Space, alignment, size);
+    int i = 0;
+    while(i<TRY && ((align((uintptr_t)tries[i],alignment))&~0xFFFUL) != ((align((uintptr_t)tries[i],alignment)+size-1)&~0xFFFUL))
+        tries[++i] = mspace_memalign(XMS_Space, alignment, size);
+    if(i == TRY)
+    {
+        assert(FALSE);
+        return NULL;
+    }
+    for(int j = 0; j < i; ++j)
+        mspace_free(XMS_Space, tries[j]);
+    return tries[i];
+    #undef TRY
+
+    #endif//DEBUG
 }
 
 void DPMI_DMAFree(void* ptr)

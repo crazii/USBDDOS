@@ -176,15 +176,17 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
 
     //CSW
     len = 0;
-    error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[1], dma, sizeof(USB_MSC_CSW), &len);
+    size = sizeof(USB_MSC_CSW);
+    memset(dma, 0, size);
+    error = USB_SyncTransfer(pDevice, pDriverData->pDataEP[1], dma, size, &len);
     USB_MSC_CSW csw = *(USB_MSC_CSW*)dma;
     DPMI_DMAFree(dma);
-    if(len != sizeof(USB_MSC_CSW) || csw.dCSWSignature != USB_MSC_CSW_SIGNATURE || csw.dCSWTag != cbw.dCBWTag
-    || csw.dCSWDataResidue != 0 || error)
+    if(error || len != size || csw.dCSWSignature != USB_MSC_CSW_SIGNATURE || csw.dCSWTag != cbw.dCBWTag
+    || csw.dCSWDataResidue != 0)
     {
         USB_ClearHalt(pDevice, pDriverData->bEPAddr[1]);
         _LOG("MSC CSW: %lx, %lx, %lx, %x\n", csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
-        _LOG("MSC CSW Failed: %x, %d, %d\n", error, sizeof(USB_MSC_CSW), len);
+        _LOG("MSC CSW Failed: %x, %d, %d\n", error, size, len);
         _LOG("MSC CBW length: %ld\n", cbw.dCBWDataTransferLength);
         return FALSE;
     }
@@ -480,7 +482,8 @@ static void USB_MSC_DOS_DriverINT()
             #else
             USB_MSC_DriverData* pDriverData = (USB_MSC_DriverData*)pDevice->pDriverData;
             request.MediaCheck.Returned = pDriverData->Overriden ? 0xFF : 1;
-            pDriverData->Overriden = 0;
+            //pDriverData->Overriden = 0;
+            //request.MediaCheck.Returned = 1;
             #endif
             break;
         }
@@ -608,7 +611,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     USB_MSC_DOS_TSRDATA TSRData;
     memset(&TSRData, 0, sizeof(TSRData));
     {
-        DOS_DDH ddh = {0xFFFFFFFF, DOS_DDHA_32BIT_ADDRESSING|DOS_DDHA_OPENCLOSE, offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes), offsetof(USB_MSC_DOS_TSRDATA, INT_opcodes), 1, };
+        DOS_DDH ddh = {0xFFFFFFFF, DOS_DDHA_32BIT_ADDRESSING/*|DOS_DDHA_OPENCLOSE*/, offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes), offsetof(USB_MSC_DOS_TSRDATA, INT_opcodes), 1, };
         memcpy(ddh.Signature, "USBDDOS", 7);
         TSRData.ddh = ddh;
     }
@@ -815,6 +818,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     }
     DPMI_CallRealModeINT(0x21, &reg);
     DPMI_StoreD(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, dpb.FreeClusters)), FreeClusters); //this will boost initial DIR speed for calc free clusters
+    //DPMI_StoreB(DPMI_SEGOFF2L(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, bpb.DOS20.MediaDesc)), 0xFA);            //TSRData.bpb.DOS20.MediaDesc = 0xFA; //alter the media descriptor to force DOS rebuild DBP
 
     //alter driver chain
     {
@@ -844,7 +848,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     _LOG("ENTRY POINTS:\n");
     DBG_DumpLB(DPMI_SEGOFF2L(DrvMem,offsetof(USB_MSC_DOS_TSRDATA, STG_opcodes)), 11+10, NULL);
     #endif
-    
+
     //write back DOS lists
     if(!overrided)
         ++buf[DOS_LOL_BLOCK_DEVICE_COUNT];

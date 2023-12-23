@@ -22,6 +22,10 @@ static uint8_t EHCI_HighSpeedSMask1to8[4] = //1,2,4,8
     0xFFU, 0x55U, 0x11U, 0x01U
 };
 
+//EHCI spec (charpter 3) require structures NOT to span across page boundary
+#define DPMI_DMAMalloc DPMI_DMAMallocNCPB
+#define USB_TAlloc DPMI_DMAMallocNCPB
+
 static uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
 static BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status);
 static BOOL EHCI_InitDevice(HCD_Device* pDevice);
@@ -306,6 +310,7 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     EHCI_BuildqTD(pSetupTD, length ? pDataTD : pStatusTD, stt, pRequest, setup8);
     pQH->EXT.Tail = pEnd;
     // start transfer
+    pQH->BufferPointers[2].Page2.SBytes = 0; //spec required
     pSetupTD->Token.StatusBm.Active = 1;
     STIL();
     uint8_t error = 0;
@@ -359,6 +364,7 @@ uint8_t EHCI_DataTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, u
         pQH->EXT.Tail = pNewTail;
     }
     //start transfer
+    pQH->BufferPointers[2].Page2.SBytes = 0; //spec required
     pHead->Token.StatusBm.Active = 1;
     STIL();
     uint8_t error = 0;
@@ -779,7 +785,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
             errmask &= (uint8_t)~1U;
 
         error |= errmask;
-        if(!pTD->Token.StatusBm.Active || (error && (pTD->EXT.Request == pReq || pReq == NULL))) //stop after first inactive request
+        if(!pTD->Token.StatusBm.Active || (error && (pTD->EXT.Request == pReq))) //stop after first inactive request
         {
             assert(pTD->EXT.Prev == NULL); //prev should be inactive in queue
             //remove from list
@@ -810,7 +816,7 @@ void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
 
         if((pTD->Token.IOC || error) && !pTD->Token.StatusBm.Active)
         {
-            ///*if(error)*/_LOG("CB %x %d %d %x CBE ", error, pTD->EXT.Request->size, pTD->Token.Length, pTD);
+            ///*if(error)*/_LOG("CB %x %d CBE ", error, pTD->EXT.Request->size);
             //_LOG("CB %x ", HC2USB(pTD->EXT.Request->pDevice)->Desc.bDeviceClass);
             HCD_InvokeCallBack(pTD->EXT.Request, (uint16_t)(pTD->EXT.Request->size - pTD->Token.Length), error);
         }

@@ -166,6 +166,8 @@ void USB_Shutdown(void)
         USB_Device* pDevice = &USBT.Devices[address];
         if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice))
             continue;
+        while(pDevice->HCDDevice.pRequest != NULL) //waiting on interrupt to handle pending request
+            USB_IDLE_WAIT();
         _LOG("CPUFLAGS: %04x\n", CPU_FLAGS()); //make sure interrupt is on (IF set)
         assert(CPU_FLAGS()&CPU_IFLAG);
         _LOG("Removing device at address: %d\n", address+1);
@@ -360,8 +362,7 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
 {
     if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice))
         return FALSE;
-    while(pDevice->HCDDevice.pRequest != NULL) //waiting on interrupt to handle pending request
-        USB_IDLE_WAIT();
+    assert(pDevice->HCDDevice.pRequest == NULL);
 
     uint8_t bClass = pDevice->Desc.bDeviceClass;
     if(bClass < USBC_MAX_DRIVER && USBT.ClassDrivers[bClass].InitDevice != NULL)
@@ -554,7 +555,6 @@ uint8_t USB_GetConfigDescriptor(USB_Device* pDevice, uint8_t* buffer, uint16_t l
 
     USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length)};
     uint8_t result = USB_SyncSendRequest(pDevice, &Request, buffer);
-    _LOG("USB_GetConfigDescritpor: %d\n", result);
     assert(result == 0);
     return result;
 }
