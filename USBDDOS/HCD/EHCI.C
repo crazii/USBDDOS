@@ -24,6 +24,9 @@ static uint8_t EHCI_HighSpeedSMask1to8[4] = //1,2,4,8
 
 //EHCI spec (charpter 3) require structures NOT to span across page boundary
 #define DPMI_DMAMalloc DPMI_DMAMallocNCPB
+#ifdef USB_TAlloc
+#undef USB_TAlloc
+#endif
 #define USB_TAlloc DPMI_DMAMallocNCPB
 
 static uint16_t EHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
@@ -508,7 +511,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? (bInterval<=4?EHCI_HighSpeedSMask1to8[bInterval-1]:0x1) : 0;
     if(EPS != EPS_HIGH)
     {
-        pQH->Caps2.PortNum_1x = (pDevice->bHubPort+1)&0x3FU; //1 based for hub device
+        pQH->Caps2.PortNum_1x = (pDevice->bHubPort+1U)&0x3FU; //1 based for hub device
         pQH->Caps2.HubAddr_1x = pDevice->pHub->bHubAddress&0x7FU;
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
         {
@@ -535,7 +538,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
     {
         if(EPS == EPS_HIGH)
-            bInterval = min(bInterval<=4?1:bInterval-4, EHCI_INTR_COUNT); //pack [1~4] to [1] and clamp [1~16] to [1~11]
+            bInterval = (uint8_t)min(bInterval<=4?1:bInterval-4, EHCI_INTR_COUNT); //pack [1~4] to [1] and clamp [1~16] to [1~11]
         else
             bInterval = min(bInterval, EHCI_INTR_COUNT);
         pQH->EXT.Interval = bInterval&0xFU;

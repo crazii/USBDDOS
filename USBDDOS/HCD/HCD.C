@@ -77,7 +77,7 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 {
     if(!HCD_IS_DEVICE_VALID(pDevice))
         return FALSE;
-    int i = 0;
+    unsigned int i = 0;
     while(i < pDevice->pHCI->bDevCount && pDevice->pHCI->DeviceList[i] != pDevice) ++i;
     if(i == pDevice->pHCI->bDevCount)
     {
