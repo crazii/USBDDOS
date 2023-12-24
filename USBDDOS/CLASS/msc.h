@@ -14,7 +14,7 @@
 //USB2.0 disk (unknown vendor)  64G,FAT32, BPB in FAT32 VBR
 //HP x306w                      64G,FAT32, BPB in FAT32 VBR
 
-#include "USBDDOS/USB.H"
+#include "USBDDOS/usb.h"
 
 #define USB_REQ_TYPE_MSC    (USB_REQTYPE_CLASS | USB_REQREC_INTERFACE)
 

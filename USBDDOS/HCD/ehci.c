@@ -5,11 +5,11 @@
 #include <string.h>
 #include <assert.h>
 #define _EHCI_IMPL
-#include "USBDDOS/HCD/EHCI.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DPMI/XMS.H"
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/HCD/ehci.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/DPMI/xms.h"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 
 #define EHCI_INTERRUPTS (/*INTonAsyncAdvanceEN|*/INTHostSysErrorEN|INTPortChangeEN|USBERRINTEN|USBINTEN)
 

@@ -5,9 +5,9 @@
 #include <stdio.h>
 #include <dos.h>
 #include <process.h>
-#include "USBDDOS/DPMI/DPMI.h"
-#include "USBDDOS/PIC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/pic.h"
+#include "USBDDOS/dbgutil.h"
 
 typedef enum
 {
@@ -16,6 +16,7 @@ typedef enum
     PM_VCPI = 2,   //vcpi
 }DPMI_PM_MODE;
 
+#if defined(__BC__)
 enum
 {
     SEL_4G = 1,
@@ -36,6 +37,23 @@ enum
 
     SEL_TOTAL,
 };
+#else
+#define SEL_4G 1
+#define SEL_SYS_DS 2
+#define SEL_CS 3
+#define SEL_DS 4
+#define SEL_0x28 5
+#define SEL_HIMEM_CS 6
+#define SEL_HIMEM_DS 7
+#define SEL_RMCB_CS 8
+#define SEL_RMCB_DS 9
+#define SEL_VCPI_CS 10
+#define SEL_VCPI_1 11
+#define SEL_VCPI_2 12
+#define SEL_LDT 13
+#define SEL_TSS 14
+#define SEL_TOTAL 15
+#endif
 
 //default descriptors
 static const uint32_t DPMI_CodeDesc[2] = {0x0000FFFF, 0x000F9A00};

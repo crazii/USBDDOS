@@ -5,9 +5,9 @@
 #include <ctype.h>
 #include <conio.h>
 #include <dos.h>
-#include "USBDDOS/CLASS/HUB.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/CLASS/hub.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/dbgutil.h"
 
 typedef union USB_HUB_PortStatus
 {

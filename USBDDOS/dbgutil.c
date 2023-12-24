@@ -6,9 +6,9 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <dos.h>
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/USB.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/usb.h"
+#include "USBDDOS/dbgutil.h"
 
 #if defined(__BC__)
 extern BOOL DPMI_IsInProtectedMode();

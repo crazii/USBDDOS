@@ -1,4 +1,4 @@
-#include "USBDDOS/DPMI/DPMI.h"
+#include "USBDDOS/DPMI/dpmi.h"
 #if defined(__BC__) || 1
 //don't use DPMI on Boarland C, instead use 16bit protected mode and keep the code and data near (no far calls/far data).
 //note: the inline assember won't reconginze 386 instructions and registers, code need compiled with -B flag (compile via assembly) in BC31
@@ -10,7 +10,7 @@
 #include <conio.h>
 #include <stdlib.h>
 #include <dos.h>
-#if !defined(_WIN32) && !defined(__linux__) //make editor happy
+#if !defined(_WIN32) && !defined(__linux__) && !defined(__WC__)//make editor happy
 #include <alloc.h>
 #endif
 #include <malloc.h>
@@ -18,8 +18,8 @@
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
-#include "USBDDOS/DPMI/XMS.H"
-#include "USBDDOS/DPMI/DPMI_BC.H"
+#include "USBDDOS/DPMI/xms.h"
+#include "USBDDOS/DPMI/dpmi_bc.h"
 
 static BOOL DPMI_InitProtectedMode()
 {

@@ -1,6 +1,6 @@
 #ifndef _CDC_H_
 #define _CDC_H_
-#include "USBDDOS/USB.H"
+#include "USBDDOS/usb.h"
 
 //USB Communication device class driver
 //https://www.usb.org/document-library/class-definitions-communication-devices-12

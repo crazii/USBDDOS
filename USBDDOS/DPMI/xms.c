@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "USBDDOS/DPMI/XMS.H"
-#include "USBDDOS/DPMI/DPMI.H"
+#include "USBDDOS/DPMI/xms.h"
+#include "USBDDOS/DPMI/dpmi.h"
 
 static DPMI_REG XMSReg = {0};
 

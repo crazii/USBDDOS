@@ -4,10 +4,10 @@
 #include <malloc.h>
 #include <ctype.h>
 #include <conio.h>
-#include "USBDDOS/CLASS/HID.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/PIC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/CLASS/hid.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/pic.h"
+#include "USBDDOS/dbgutil.h"
 
 //usb keycodes to scan codes and ascii
 //ref: USB HID to PS/2 Scan Code Translation Table

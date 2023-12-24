@@ -1,6 +1,6 @@
 #ifndef _UHCI_H_
 #define _UHCI_H_
-#include "USBDDOS/HCD/HCD.H"
+#include "USBDDOS/HCD/hcd.h"
 
 //PCI configuration sapce
 #define USBBASE     0x20    //0x20~0x23, IO Space Base Address register (PCI BAR4)

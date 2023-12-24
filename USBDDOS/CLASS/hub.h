@@ -1,6 +1,6 @@
 #ifndef _HUB_H_
 #define _HUB_H_
-#include "USBDDOS/USB.H"
+#include "USBDDOS/usb.h"
 
 #define USB_REQ_TYPE_HUB      (USB_REQTYPE_CLASS)
 #define USB_REQ_TYPE_HUBPORT  (USB_REQTYPE_CLASS |  USB_REQREC_ENDPOINT | USB_REQREC_INTERFACE)

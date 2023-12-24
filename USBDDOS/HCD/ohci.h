@@ -1,6 +1,6 @@
 #ifndef _OHCI_H_
 #define _OHCI_H_
-#include "USBDDOS/HCD/HCD.H"
+#include "USBDDOS/HCD/hcd.h"
 
 //pci configuration space
 #define OHCI_REGISTER_BAR       0x10    //BAR_OHCI (BAR0)

@@ -46,7 +46,7 @@
 #if !defined(__BORLANDC__)
 #include <stdint.h>
 #else
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 #endif
 #include <math.h>
 

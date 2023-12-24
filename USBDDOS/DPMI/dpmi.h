@@ -1,6 +1,6 @@
 #ifndef _DPMI_H_
 #define _DPMI_H_
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 
 //a DPMI wrapper for different compilers. Borland C++, DJGPP, WatCom etc.
 //the porpose of this file is to hide all __dpmi* or int 31h calls from outside

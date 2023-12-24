@@ -3,11 +3,11 @@
 #include <dos.h>
 #include <string.h>
 #include <assert.h>
-#include "USBDDOS/USB.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/PIC.H"
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/usb.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/pic.h"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 
 #define USB_PCI_SBC_CLASS   0x0C  //PCI serial bus controller
 #define USB_SUBCLASS        03    //PCI class ID 0Ch, sub class id 03h

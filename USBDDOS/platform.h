@@ -133,13 +133,33 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define _ASM_BEGIN32 _ASM_BEGIN 
 #define _ASM_END32 _ASM_END
 
-#define NOP() __asm nop
-#define CLI() __asm cli
-#define STI() __asm sti
-static uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; __asm {bsf eax, x; mov i, eax} return i;} //386+
-static uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {pushf; pop ax;} return _AX; }
-static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
+#define NOP() __asm {nop}
+#define CLI() __asm {cli}
+#define STI() __asm {sti}
 
+#pragma aux PLTFM_BSF = \
+"bsf eax, ebx" \
+parm [ebx] \
+value[eax]
+
+static uint16_t _DS_ASM();
+#pragma aux _DS_ASM = \
+"mov ax, ds" \
+value[ax]
+#define _DS _DS_ASM()
+
+static uint16_t _AX_ASM();
+#pragma aux _AX_ASM = \
+value[ax]
+#define _AX _AX_ASM()
+
+
+static uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint16_t x; __asm {
+    pushf
+    pop ax
+    mov x, ax
+} return x;}
+static inline uint16_t PLTFM_CPU_FLAGS() { typedef uint16_t (*VFN)(void); volatile VFN vfn = &PLTFM_CPU_FLAGS_ASM; return vfn();} //prevent optimization, need get FLAGS every time
 #define memcpy_c2d memcpy
 
 #else //stub
@@ -243,7 +263,7 @@ extern uint8_t _AL;
 //align up
 #define alignup(x,a) ((uint32_t)((x))&(uint32_t)(~((uint32_t)(a)-1)))
 
-typedef enum {FALSE, TRUE}BOOLEAN;
+typedef enum {FALSE, TRUE} BOOLEAN;
 typedef int BOOL;
 
 #undef min

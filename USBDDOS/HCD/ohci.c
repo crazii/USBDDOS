@@ -3,10 +3,10 @@
 #include <memory.h>
 #include <assert.h>
 #include <string.h>
-#include "USBDDOS/HCD/OHCI.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/HCD/ohci.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 #if 0
 // ref: OHCI_Specification_Rev.1.0a
 

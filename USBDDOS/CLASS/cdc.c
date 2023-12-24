@@ -2,9 +2,9 @@
 #include <string.h>
 #include <assert.h>
 #include <malloc.h>
-#include "USBDDOS/CLASS/CDC.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/CLASS/cdc.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/dbgutil.h"
 
 static uint8_t USB_CDC_LineCoding(USB_Device* pDevice, USB_CDC_LINE_CODING* LineCoding, BOOL Read)
 {

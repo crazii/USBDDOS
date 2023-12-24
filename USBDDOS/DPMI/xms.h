@@ -1,6 +1,6 @@
 #ifndef _DPMI_XMS_H_
 #define _DPMI_XMS_H_
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 
 #ifdef __cplusplus
 extern "C"

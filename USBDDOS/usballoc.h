@@ -1,6 +1,6 @@
 #ifndef _USBALLOC_H_
 #define _USBALLOC_H_
-#include "USBDDOS/DPMI/DPMI.H"
+#include "USBDDOS/DPMI/dpmi.h"
 
 #ifdef __cplusplus
 extern "C" {

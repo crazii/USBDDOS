@@ -1,9 +1,9 @@
 #include <string.h>
 #include <assert.h>
-#include "USBDDOS/HCD/HCD.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/HCD/hcd.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 
 static uint16_t HCD_RootHub_GetPortStatus(struct HCD_HUB* pHub, uint8_t port)
 {

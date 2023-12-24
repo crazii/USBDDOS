@@ -3,10 +3,10 @@
 #include <dos.h>
 #include <assert.h>
 #include <string.h>
-#include "USBDDOS/USB.H"
-#include "USBDDOS/CLASS/MSC.H"
-#include "USBDDOS/CLASS/HID.H"
-#include "USBDDOS/DBGUTIL.h"
+#include "USBDDOS/usb.h"
+#include "USBDDOS/CLASS/msc.h"
+#include "USBDDOS/CLASS/hid.h"
+#include "USBDDOS/dbgutil.h"
 
 #if defined(__BC__)
 #define ENABLE_RETROWAVE 0 //code exceed 64K
@@ -16,10 +16,10 @@
 
 #if ENABLE_RETROWAVE
 #include "RetroWav/RetroWav.h"
-#include "RetroWav/Platform/DOS_CDC.h"
+#include "RetroWav/Platform/dos_cdc.h"
 #include "RetroWav/Board/OPL3.h"
-#include "EMM.h"
-#include "HDPMIPT.H"
+#include "emm.h"
+#include "hdpmipt.h"
 
 #define OPL_PRIMARY 0
 #define OPL_SECONDARY 1

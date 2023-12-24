@@ -1,4 +1,4 @@
-#include "USBDDOS/DPMI/DPMI.H"
+#include "USBDDOS/DPMI/dpmi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -20,8 +20,8 @@
 #include <file.h>
 #include <go32.h>
 #include <stubinfo.h>
-#include "coff.h"
-#include "USBDDOS/DBGUTIL.H"
+#include "djgpp/coff.h"
+#include "USBDDOS/dbgutil.h"
 
 #pragma GCC diagnostic ignored "-Wpedantic"
 #define NEW_BASE_ALIGNMENT (64*1024UL)

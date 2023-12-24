@@ -1,6 +1,6 @@
 #if defined(__WC__)
-#include "USBDDOS/DPMI/DPMI.h"
-#include "USBDDOS/DPMI/XMS.H"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/DPMI/xms.h"
 #include <conio.h>
 #include <stdlib.h>
 //#include <dos.h>

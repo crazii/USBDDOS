@@ -1,6 +1,6 @@
 #include <assert.h>
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 
 #if USBALLOC_ENABLE
 

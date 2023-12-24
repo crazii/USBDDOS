@@ -1,6 +1,6 @@
 #ifndef _PCI_H
 #define _PCI_H_
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 
 #if defined(__DJ2__)
 #include <pc.h>

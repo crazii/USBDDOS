@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <DOS.h>
-#include "USB.H"
-#include "DPMI/DPMI.h"
+#include "usb.h"
+#include "DPMI/dpmi.h"
 
 #define RETROWAVE_VENDOR 0x04d8
 #define RETROWAVE_DEVID 0x000a

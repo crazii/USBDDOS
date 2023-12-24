@@ -4,11 +4,11 @@
 #include <conio.h>
 #include <string.h>
 #include <assert.h>
-#include "USBDDOS/HCD/UHCI.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DPMI/XMS.H"
-#include "USBDDOS/USBALLOC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/HCD/uhci.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/DPMI/xms.h"
+#include "USBDDOS/usballoc.h"
+#include "USBDDOS/dbgutil.h"
 #if 0
 // reference spec: Universal Host Controller Interface (UHCI)
 // Universal Serial Bus Specification 2.0

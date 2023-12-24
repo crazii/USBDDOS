@@ -1,4 +1,4 @@
-#include "USBDDOS/DPMI/DPMI.h"
+#include "USBDDOS/DPMI/dpmi.h"
 #if defined(__DJ2__)
 #include <conio.h>
 #include <stdlib.h>
@@ -10,8 +10,8 @@
 #include <assert.h>
 #include <signal.h>
 #include <stdio.h>
-#include "USBDDOS/DPMI/XMS.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/DPMI/xms.h"
+#include "USBDDOS/dbgutil.h"
 
 extern DPMI_ADDRESSING DPMI_Addressing;
 

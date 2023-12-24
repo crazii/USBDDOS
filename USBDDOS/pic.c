@@ -1,7 +1,7 @@
 #include <dos.h>
 #include <conio.h>
-#include "USBDDOS/PIC.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/pic.h"
+#include "USBDDOS/dbgutil.h"
 //reference: https://wiki.osdev.org/PIC
 
 //master PIC

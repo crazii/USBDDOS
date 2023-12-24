@@ -11,15 +11,15 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/USB.H"
-#include "USBDDOS/HCD/OHCI.H"
-#include "USBDDOS/HCD/UHCI.H"
-#include "USBDDOS/HCD/EHCI.H"
-#include "USBDDOS/CLASS/CDC.H"
-#include "USBDDOS/CLASS/MSC.H"
-#include "USBDDOS/CLASS/HID.H"
-#include "USBDDOS/CLASS/HUB.H"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/usb.h"
+#include "USBDDOS/HCD/ohci.h"
+#include "USBDDOS/HCD/uhci.h"
+#include "USBDDOS/HCD/ehci.h"
+#include "USBDDOS/CLASS/cdc.h"
+#include "USBDDOS/CLASS/msc.h"
+#include "USBDDOS/CLASS/hid.h"
+#include "USBDDOS/CLASS/hub.h"
 
 #if defined(__BC__) //exceed 64K code
 #define USE_CDC 0

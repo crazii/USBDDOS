@@ -1,7 +1,7 @@
 
 #ifndef _USBD_H_
 #define _USBD_H_
-#include "USBDDOS/HCD/HCD.H"
+#include "USBDDOS/HCD/hcd.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,7 +1,7 @@
 #ifndef _EMM_H_
 #define _EMM_H_ 1
-#include "USBDDOS/PLATFORM.H"
-#include "USBDDOS/DPMI/DPMI.H"
+#include "USBDDOS/platform.h"
+#include "USBDDOS/DPMI/dpmi.h"
 
 #ifdef __cplusplus
 extern "C"

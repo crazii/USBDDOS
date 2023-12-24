@@ -1,8 +1,8 @@
 #ifndef _HCD_H_
 #define _HCD_H_ 1
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 #include "USBDDOS/USBCFG.H"
-#include "USBDDOS/PCI.h"
+#include "USBDDOS/pci.h"
 
 //host controler driver generic
 

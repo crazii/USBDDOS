@@ -1,6 +1,6 @@
 #ifndef _EHCI_H_
 #define _EHCI_H_
-#include "USBDDOS/HCD/HCD.H"
+#include "USBDDOS/HCD/hcd.h"
 
 //Enhanced Host Controller Interface Specification for Universal Serial Bus (ehci-specification-for-usb)
 
@@ -53,7 +53,7 @@ typedef struct _EHCI_CAPS //helper structs
         }hccParamsBm;
         uint32_t hccParams;
     };
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     uint32_t hcspPortRoute[2];
     #else
     uint64_t hcspPortRoute;

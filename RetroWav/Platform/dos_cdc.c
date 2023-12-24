@@ -1,9 +1,9 @@
 #include <assert.h>
-#include "RetroWav/Platform/DOS_CDC.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/CLASS/CDC.H"
-#include "USBDDOS/USB.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "RetroWav/Platform/dos_cdc.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/CLASS/cdc.h"
+#include "USBDDOS/usb.h"
+#include "USBDDOS/dbgutil.h"
 
 #if _LOG_ENABLE || defined(__BC__)
 static const char log_tag[] = "retrowave platform dos_cdc";

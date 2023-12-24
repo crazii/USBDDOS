@@ -17,7 +17,7 @@
 
 //tested mouse with WarcraftII, movement go wild soon after in game. need more test & bugfix - now it works
 
-#include "USBDDOS/USB.H"
+#include "USBDDOS/usb.h"
 
 #define USB_REQ_TYPE_HID    (USB_REQTYPE_CLASS | USB_REQREC_INTERFACE)
 

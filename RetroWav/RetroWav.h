@@ -51,7 +51,7 @@
 #if !defined(__BORLANDC__)
 #include <inttypes.h>
 #else
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 #endif
 
 #ifdef __cplusplus

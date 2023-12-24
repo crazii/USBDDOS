@@ -1,11 +1,11 @@
-#include "HDPMIPT.H"
+#include "hdpmipt.h"
 
 #if defined(__DJ2__)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/dbgutil.h"
 
 #define HDPMIPT_SWITCH_STACK 1
 

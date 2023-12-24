@@ -1,7 +1,7 @@
 #include <string.h>
 #include <assert.h>
 #include <dos.h>
-#include "USBDDOS/PCI.H"
+#include "USBDDOS/pci.h"
 
 #define PCI_ADDR  0x0CF8
 #define PCI_DATA  0x0CFC
@@ -168,8 +168,8 @@ uint32_t PCI_Sizing(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg)
 }
 
 
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/dbgutil.h"
 typedef struct
 {
     uint16_t size;

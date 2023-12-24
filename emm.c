@@ -3,7 +3,7 @@
 #include <dos.h>
 #include <fcntl.h>
 #include <assert.h>
-#include "USBDDOS/PLATFORM.H"
+#include "USBDDOS/platform.h"
 
 #if defined(__DJ2__)
 #include <sys/ioctl.h>
@@ -18,8 +18,8 @@
 #endif
 
 #include <stdio.h>
-#include "EMM.h"
-#include "USBDDOS/DBGUTIL.H"
+#include "emm.h"
+#include "USBDDOS/dbgutil.h"
 
 #define EMM_IOTRAP_DIRECT_INT 0
 

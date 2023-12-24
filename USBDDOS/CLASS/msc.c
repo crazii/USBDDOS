@@ -3,9 +3,9 @@
 #include <assert.h>
 #include <malloc.h>
 #include <dos.h>
-#include "USBDDOS/CLASS/MSC.H"
-#include "USBDDOS/DPMI/DPMI.H"
-#include "USBDDOS/DBGUTIL.H"
+#include "USBDDOS/CLASS/msc.h"
+#include "USBDDOS/DPMI/dpmi.h"
+#include "USBDDOS/dbgutil.h"
 
 static BOOL USB_MSC_ReadSector(USB_Device* pDevice, uint32_t sector, uint16_t count, void* buf, size_t size);
 
