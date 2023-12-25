@@ -1,8 +1,8 @@
 .AUTODEPEND
 #.silent
 
-!ifndef DBG
-DBG = 0
+!ifndef DEBUG
+DEBUG = 0
 !endif
 
 .PATH.obj = output
@@ -41,9 +41,9 @@ INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
 #List Macros
 TARGET = output\usbddos.exe
 
-EXE_dependencies =  \
- hub.obj \
- ehci.obj \
+all: $(TARGET)
+
+EXE_dependencies = \
  dpmi_bc.obj \
  dpmi.obj \
  xms.obj \
@@ -56,15 +56,26 @@ EXE_dependencies =  \
  hcd.obj \
  ohci.obj \
  uhci.obj \
- main.obj \
+ ehci.obj \
  msc.obj \
- hid.obj
+ hid.obj \
+ hub.obj \
+ main.obj
 
 # Explicit Rules
 $(TARGET): $(CFLAGS_FILE) $(LINKRESP_FILE) $(EXE_dependencies)
   @cd output
-  $(TLINK) /v/x/c/P-/L$(LIBPATH) @$(LINKRESP_FILE:output\=) c0s.obj,$(@F),,fp87.lib+maths.lib+cs.lib
+  $(TLINK) /v/x/c/P-/L$(LIBPATH) @$(LINKRESP_FILE:output\=),$(@F),,fp87.lib+maths.lib+cs.lib
   @cd ..
+
+#add dummy obj so that OBJS.CFG will generated propery. and then only EXE_dependencies need to be modifed on adding new files
+_endummy.obj: output\_endummy.c
+  $(CC) -c output\_endummy.c
+
+_endummy.c:
+  @echo extern int x; > output\_endummy.c
+
+$(EXE_dependencies): $(CFLAGS_FILE)
 
 # Compiler Configuration File
 $(CFLAGS_FILE): Makefile.BC
@@ -87,16 +98,19 @@ $(CFLAGS_FILE): Makefile.BC
 -n.\OUTPUT
 -I$(INCLUDEPATH)
 -L$(LIBPATH)
--DDEBUG=$(DBG);NDEBUG
+-DDEBUG=$(DEBUG);NDEBUG
 -P
 | $@
 
-$(LINKRESP_FILE): Makefile.BC
+$(LINKRESP_FILE): Makefile.BC _endummy.obj
   copy &&|
+c0s.obj+
 $(EXE_dependencies:.obj=.obj+)
+_endummy.obj
 | $@
 
 clean:
   @del output\*.obj
+  @del output\_endummy.c
   @del $(CFLAGS_FILE)
   @del $(LINKRESP_FILE)
