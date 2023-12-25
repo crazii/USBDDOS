@@ -21,7 +21,7 @@
 #include "USBDDOS/CLASS/hid.h"
 #include "USBDDOS/CLASS/hub.h"
 
-#if defined(__BC__) //exceed 64K code
+#if defined(__BC__) || defined(__WC__) //exceed 64K code
 #define USE_CDC 0
 #else
 #define USE_CDC 1

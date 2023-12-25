@@ -7,11 +7,11 @@
 #define PCI_DATA  0x0CFC
 #define ENABLE_BIT 0x80000000
 
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
 uint32_t inpd(uint16_t port)
 {
     uint32_t val;
-    asm {
+    __asm {
         mov dx, port
         in eax, dx
         mov val, eax
@@ -21,7 +21,7 @@ uint32_t inpd(uint16_t port)
 
 void outpd(uint16_t port, uint32_t val)
 {
-    asm {
+    __asm {
         mov   dx, port
         mov   eax, val
         out   dx, eax

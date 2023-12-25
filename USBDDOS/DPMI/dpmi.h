@@ -85,7 +85,7 @@ extern "C"
 {
 #endif
 
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
 
 //convert a linear (virtual) addr to physical addr (current segment)
 //only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
@@ -117,23 +117,6 @@ uint32_t DPMI_P2L(uint32_t paddr);
 uint32_t DPMI_PTR2L(void* ptr);
 
 void* DPMI_L2PTR(uint32_t addr);
-
-#elif defined(__WC__)
-
-//flat mode for Watcom, on real mode or v86 mode.
-//since ds,cs segment base is 0 on DOS/4GW
-//we can directly access linear address as near pointer (PTR==L)
-
-//convert a linear (virtual) addr to physical addr
-#define DPMI_L2P(addr) (addr)   /*temporary implementation*/
-
-//convert a physical addr to linear addr
-#define DPMI_P2L(addr) (addr)   /*temporary implementation*/
-
-//convert a ptr to linear (page mapped) addr
-#define DPMI_PTR2L(ptr) ((uint32_t)ptr)
-
-#define DPMI_L2PTR(addr) ((void*)(addr))
 
 #else //stub
 
@@ -196,40 +179,6 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
 void DPMI_Init(void);
 //void DPMI_Shutdown(void); auto called atexit
 
-#if defined(__WC__)
-
-//linear memory access
-#define DPMI_LoadB(addr) (*((volatile uint8_t*)(addr)))
-#define DPMI_StoreB(addr, val) do { *((volatile uint8_t*)(addr)) = (val); } while(0)
-#define DPMI_MaskB(addr, mand, mor) do\
-{    uint8_t val = *((volatile uint8_t*)(addr));\
-    val &= mand;\
-    val |= mor;\
-    *((volatile uint8_t*)addr) = val;\
-}while(0)
-
-#define DPMI_LoadW(addr) (*((volatile uint16_t*)(addr)))
-#define DPMI_StoreW(addr, val) do{ *((volatile uint16_t*)(addr)) = (val); }while(0);
-#define DPMI_MaskW(addr, mand, mor) do\
-{\
-    uint16_t val = *((volatile uint16_t*)(addr));\
-    val &= mand;\
-    val |= mor;\
-    *((volatile uint16_t*)(addr)) = val;\
-}while(0)
-
-#define DPMI_LoadD(addr) (*((volatile uint32_t*)(addr)))
-#define DPMI_StoreD(addr, val) do { *((volatile uint32_t*)(addr)) = (val); } while(0)
-#define DPMI_MaskD(addr, mand, mor) do\
-{\
-    uint32_t val = *((volatile uint32_t*)(addr));\
-    val &= mand;\
-    val |= mor;\
-    *((volatile uint32_t*)(addr)) = val;\
-}while(0)
-
-#else
-
 //linear memory access
 uint8_t DPMI_LoadB(uint32_t addr);
 void DPMI_StoreB(uint32_t addr, uint8_t val);
@@ -242,8 +191,6 @@ void DPMI_MaskW(uint32_t addr, uint16_t mand, uint16_t mor);
 uint32_t DPMI_LoadD(uint32_t addr);
 void DPMI_StoreD(uint32_t addr, uint32_t val);
 void DPMI_MaskD(uint32_t addr, uint32_t mand, uint32_t mor);
-
-#endif
 
 void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size);
 void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size);

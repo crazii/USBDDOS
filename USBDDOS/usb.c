@@ -24,13 +24,21 @@ _ASM(hlt)\
 _ASM(popf) \
 _ASM_END } while(0)
 
+#elif defined(__WC__)
+
+static void USB_IDLE_WAIT() { 
+    __asm {
+        pushf; sti; nop; popf;
+    }
+}
+
 #else
 
 #define USB_IDLE_WAIT() do {\
 _ASM_BEGIN \
 _ASM(pushf) \
 _ASM(sti) \
-_ASM(nop)/*_ASM(push ax) _ASM(mov ax, 0x1680) _ASM(int 0x2F) _ASM(pop ax)*/\
+_ASM(nop) \
 _ASM(popf) \
 _ASM_END } while(0)
 

@@ -2,5 +2,6 @@
 *.o
 *.obj
 Make/output/*.CFG
+Make/output/*.log
 usbddos.exe
 usbddosp.exe

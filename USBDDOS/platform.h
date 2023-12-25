@@ -137,10 +137,13 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define CLI() __asm {cli}
 #define STI() __asm {sti}
 
-#pragma aux PLTFM_BSF = \
-"bsf eax, ebx" \
-parm [ebx] \
-value[eax]
+static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r;
+    __asm {
+        bsf eax, x
+        mov r, eax
+    }
+    return r;
+}
 
 static uint16_t _DS_ASM();
 #pragma aux _DS_ASM = \
@@ -153,14 +156,27 @@ static uint16_t _AX_ASM();
 value[ax]
 #define _AX _AX_ASM()
 
+static uint16_t _CS_ASM();
+#pragma aux _CS_ASM = \
+"mov ax, cs" \
+value[ax]
+#define _CS _CS_ASM()
 
-static uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint16_t x; __asm {
-    pushf
-    pop ax
-    mov x, ax
-} return x;}
+static uint8_t _AL_ASM();
+#pragma aux _AL_ASM = \
+value[al]
+#define _AL _AL_ASM()
+
+static uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {
+    pushf; pop ax;
+} return _AX;}
 static inline uint16_t PLTFM_CPU_FLAGS() { typedef uint16_t (*VFN)(void); volatile VFN vfn = &PLTFM_CPU_FLAGS_ASM; return vfn();} //prevent optimization, need get FLAGS every time
-#define memcpy_c2d memcpy
+
+#define memcpy_c2d(src, dest, size) do{\
+    void far* fdest = MK_FP(_DS, FP_OFF(src));\
+    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+    _fmemcpy(fdest, fsrc, size);\
+}while(0)
 
 #else //stub
 #if !defined(_WIN32) && !defined(__linux__)   //make editor happy

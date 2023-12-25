@@ -1,5 +1,5 @@
 #include "USBDDOS/DPMI/dpmi.h"
-#if defined(__BC__) || 1
+#if 1
 //don't use DPMI on Boarland C, instead use 16bit protected mode and keep the code and data near (no far calls/far data).
 //note: the inline assember won't reconginze 386 instructions and registers, code need compiled with -B flag (compile via assembly) in BC31
 //
@@ -121,16 +121,16 @@ static void DPMI_SetupIDT()
     if(DPMI_V86)
     {
         _ASM_BEGIN //Get 8259A Interrupt Vector Mappings
-        _ASM(push ax)
-        _ASM(push bx)
-        _ASM(push cx)
-        _ASM2(mov ax, 0xDE0A)
-        _ASM(int 0x67)
-        _ASM2(mov MasterVec, bx)
-        _ASM2(mov SlaveVec, cx)
-        _ASM(pop cx)
-        _ASM(pop bx)
-        _ASM(pop ax)
+            _ASM(push ax)
+            _ASM(push bx)
+            _ASM(push cx)
+            _ASM2(mov ax, 0xDE0A)
+            _ASM(int 0x67)
+            _ASM2(mov MasterVec, bx)
+            _ASM2(mov SlaveVec, cx)
+            _ASM(pop cx)
+            _ASM(pop bx)
+            _ASM(pop ax)
         _ASM_END
 
         if(MasterVec != DPMI_Temp->RealModeIRQ0Vec) //if already remapped, just use it
@@ -249,8 +249,15 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM2(les bx, DPMI_Rmcb)
         _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and interrupt should not be enabled on it)
         _ASM(jne TranslationSkipSaveSP)
+#if defined(__BC__)
         _ASM2(mov bp, es:[bx.PM_SP]);
         _ASM2(mov es:[bx.PM_SP], ax); //if real mode interrupt reflect to pm, it will use this sp pointer
+#else
+        _ASM(add bx, .PM_SP)
+        _ASM2(mov bp, es:[bx]);
+        _ASM2(mov es:[bx], ax);
+        _ASM(sub bx, .PM_SP)
+#endif
     _ASMLBL(TranslationSkipSaveSP:)
         _ASM(push dx)
         _ASM(push ax)
@@ -258,12 +265,25 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
 
         //return frame
         _ASM(push cs)
+#if defined(__BC__)
         _ASM(push offset TranslationDone)
+#else
+        _ASM(call hack)
+        _ASM(jmp TranslationDone)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(push bp)
+        _ASM(mov bp, sp)
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(add bx, word ptr[bx+1])
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(pop bp)
+#endif
         //push parameter for translation
         _ASM(push cx) //note: pascal param left to right order
         _ASM2(shr ecx, 16)
         _ASM(push cx)
         _ASM(push 0)
+#if defined(__BC__)
         //chained call switch pm (return of translation)
         _ASM(push word ptr es:[bx.RM_SEG]);
         _ASM(push word ptr es:[bx.SwitchPM]);
@@ -273,6 +293,24 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         //chained call switch rm
         _ASM(push SEL_RMCB_CS*8)
         _ASM(push word ptr es:[bx.SwitchRM]);
+#else
+        _ASM(add bx, .RM_SEG)
+        _ASM(push word ptr es:[bx]);
+        _ASM(sub bx, .RM_SEG)
+        _ASM(add bx, .SwitchPM)
+        _ASM(push word ptr es:[bx]);
+        _ASM(sub bx, .SwitchPM)
+        _ASM(add bx, .RM_SEG)
+        _ASM(push word ptr es:[bx]);
+        _ASM(sub bx, .RM_SEG)
+        _ASM(add bx, .Translation)
+        _ASM(push word ptr es:[bx]);
+        _ASM(sub bx, .Translation)
+        _ASM(push SEL_RMCB_CS*8)
+        _ASM(add bx, .SwitchRM)
+        _ASM(push word ptr es:[bx]);
+        _ASM(sub bx, .SwitchRM)
+#endif
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM(retf)
@@ -283,7 +321,13 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(pop dx) //old ss
         _ASM2(cmp dx, SEL_HIMEM_DS*8)
         _ASM(jne TranslationSkipSaveSP2)
+#if defined(__BC__)
         _ASM2(mov ss:[bx.PM_SP], bp);
+#else
+        _ASM(add bx, .PM_SP)
+        _ASM2(mov ss:[bx], bp);
+        _ASM(sub bx, .PM_SP)
+#endif
     _ASMLBL(TranslationSkipSaveSP2:)
 
         _ASM2(mov bx, sp)
@@ -296,7 +340,6 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
     _fmemcpy(reg, stackREG, sizeof(DPMI_REG));
     DPMI_Rmcb->TranslationSP += sizeof(DPMI_REG) + DPMI_RMCB_TRASNLATION_STACK_SIZE;
 }
-
 
 static void DPMI_Shutdown(void);
 
@@ -331,6 +374,10 @@ void* DPMI_L2PTR(uint32_t addr)
 
 void DPMI_Init(void)
 {
+    #if defined(__WC__)
+    _DATA = _DS;
+    #endif
+
     //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());//small model: static data : heap : stack
     atexit(&DPMI_Shutdown);
 
@@ -464,10 +511,14 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             CLIS();
             PTE pteold = DPMI_LoadPTE(DPMI_4MPageTableLAddr, 1023);
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &ptetmp);
-            _ASM_BEGIN _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax) _ASM_END //flush TLB. TODO: invlpg(486+)
+            _ASM_BEGIN
+                _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax)
+            _ASM_END //flush TLB. TODO: invlpg(486+)
             DPMI_SetLinear(4L*1024L*1023L, 0, 4096); //clear mapped tb
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &pteold);
-            _ASM_BEGIN _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax) _ASM_END //flush TLB. TODO: invlpg(486+)
+            _ASM_BEGIN
+                _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax)
+            _ASM_END //flush TLB. TODO: invlpg(486+)
             STIL();
         }
 
@@ -477,7 +528,9 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             CLIS();
             PTE pteold = DPMI_LoadPTE(DPMI_4MPageTableLAddr, 1023);
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &ptetmp);
-            _ASM_BEGIN _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax) _ASM_END //flush TLB. TODO: invlpg(486+)
+            _ASM_BEGIN
+                _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax)
+            _ASM_END //flush TLB. TODO: invlpg(486+)
             for(uint32_t j = start; j < end; ++j)
             {
                 PTE pte = PTE_INIT(addr + (j<<12L)); //1:1 map
@@ -486,7 +539,9 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
                 DPMI_StorePTE(4L*1024L*1023L, j, &pte);
             }
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &pteold);
-            _ASM_BEGIN _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax) _ASM_END //flush TLB. TODO: invlpg(486+)
+            _ASM_BEGIN
+                _ASM(push eax) _ASM2(mov eax, cr3) _ASM2(mov cr3, eax) _ASM(pop eax)
+            _ASM_END //flush TLB. TODO: invlpg(486+)
             STIL();
         }
         else
@@ -752,8 +807,18 @@ BOOL DPMI_TSR(void)
     return FALSE;
 }
 
+#if defined(__BC__)
+#define __LIBCALL _Cdecl _FARFUNC
+#else
+#define __LIBCALL _WCRTLINK
+#endif
+
+#if defined(__WC__)
+namespace std {
+#endif
+
 //PM to RM translation for debug output
-int _Cdecl _FARFUNC puts(const char* str)
+int __LIBCALL puts(const char* str)
 {
     if(str == NULL)
         return 0;
@@ -774,7 +839,7 @@ int _Cdecl _FARFUNC puts(const char* str)
     return 0;
 }
 
-int _Cdecl _FARFUNC printf(const char* fmt, ...)
+int __LIBCALL printf(const char* fmt, ...)
 {
     static int recursion_gard = 0;
     if(!recursion_gard) //avoid reentrance in mode switching
@@ -807,7 +872,7 @@ int _Cdecl _FARFUNC printf(const char* fmt, ...)
     return 0;
 }
 
-void _Cdecl _FARFUNC delay(unsigned millisec)
+void __LIBCALL delay(unsigned millisec)
 {
     uint32_t usec = (uint32_t)millisec*1000L;
     DPMI_REG r = {0};
@@ -818,7 +883,7 @@ void _Cdecl _FARFUNC delay(unsigned millisec)
 }
 
 #if !defined(NDEBUG)
-void _Cdecl _FARFUNC __assertfail(char _FAR* __msg,
+void __LIBCALL __assertfail(char _FAR* __msg,
                                   char _FAR* __cond,
                                   char _FAR* __file,
                                   int __line)
@@ -839,6 +904,10 @@ void _Cdecl _FARFUNC __assertfail(char _FAR* __msg,
     else
         while(1);
 }
+#endif
+
+#if defined(__WC__)
+}//namespace std
 #endif
 
 //internal used, for debug

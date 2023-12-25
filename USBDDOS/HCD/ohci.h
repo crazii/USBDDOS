@@ -143,7 +143,7 @@ typedef struct OHCI_TransferDescriptor
 
     //extension. the OHCI spec only need the alignment as 16
     void* Unused[2];
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
     uint16_t padding[4];
 #endif
     OHCI_TD* pNext; //Match the location of ISO TD
@@ -172,7 +172,7 @@ typedef struct OHCI_IsochronousTransferDescriptor
     uint32_t BufferEnd;
 
     uint16_t Offset[OHCI_MAX_ISO_FRAME]; //max frames data by the spec
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
     uint16_t padding[2];
 #endif
     OHCI_TD* pNext;
@@ -210,7 +210,7 @@ typedef struct OHCI_EndpointDescriptor
         OHCI_ISO_TD* pISOTail;  //tail ISO TD
     };
     void* Unused[2];
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
     uint16_t padding[4];
 #endif
 }OHCI_ED;

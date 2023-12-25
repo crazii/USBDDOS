@@ -54,7 +54,7 @@ typedef struct _EHCI_CAPS //helper structs
         uint32_t hccParams;
     };
     #if defined(__BC__) || defined(__WC__)
-    uint32_t hcspPortRoute[2];
+    uint16_t hcspPortRoute[4];
     #else
     uint64_t hcspPortRoute;
     #endif
@@ -449,7 +449,7 @@ typedef struct QueueElementTD
         struct QueueElementTD* Prev;
         struct QueueElementTD* Next;
         HCD_Request* Request;
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
         uint16_t Unused[3];
 #else
         //uint32_t Unused[5];
@@ -542,7 +542,7 @@ typedef struct QueueHead
         uint8_t TransferType : 2;
         uint8_t Interval : 4;
         uint8_t PaddingBIT : 2;
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
         uint8_t Padding8[25];
 #else
         uint8_t Padding8[23];

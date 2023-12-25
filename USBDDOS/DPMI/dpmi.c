@@ -127,7 +127,7 @@ void DPMI_MaskD(uint32_t addr, uint32_t mand, uint32_t mor)
 }
 #endif
 
-#if defined(__DJ2__) || defined(__WC__)
+#if defined(__DJ2__)
 void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size) //TODO: use memcpy directly
 {
     uint32_t size4 = size >> 2;
@@ -217,7 +217,7 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
     return result;
 }
 
-#elif defined(__BC__)//BC doesn't support linear addr, but TASM does, use asm
+#elif defined(__BC__) || defined(__WC__)//BC doesn't support linear addr, but TASM does, use asm
 
 //note: cdecl ABI: eax, edx, ecx caller preserved.
 
@@ -344,9 +344,13 @@ void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size)
         and ecx, 0xFFFFFFFC
         and edx, 0x3
         xor ebx, ebx
+#if defined(__BC__)
     }
+#endif
 loop4b:
+#if defined(__BC__)
     __asm {
+#endif
         mov eax, dword ptr ds:[esi+ebx]
         mov dword ptr ds:[edi+ebx], eax
         add ebx, 4
@@ -358,17 +362,26 @@ loop4b:
         add esi, ebx
         add edi, ebx
         xor ebx, ebx
+#if defined(__BC__)
     }
+#endif
 loop1b:
+#if defined(__BC__)
     __asm {
+#endif
+
         mov al, byte ptr ds:[esi+ebx]
         mov byte ptr ds:[edi+ebx], al
         inc ebx
         cmp ebx, edx
         jne loop1b
+#if defined(__BC__)
     }
+#endif
 end:
+#if defined(__BC__)
     __asm {
+#endif
         pop ebx
         pop edi
         pop esi
@@ -394,9 +407,13 @@ void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size)
         and ecx, 0xFFFFFFFC
         and edx, 0x3
         xor ebx, ebx
+#if defined(__BC__)
     }
+#endif
 loop4b:
+#if defined(__BC__)
     __asm {
+#endif        
         mov dword ptr ds:[edi+ebx], eax
         add ebx, 4
         cmp ebx, ecx
@@ -406,16 +423,24 @@ loop4b:
         jz end
         add edi, ebx
         xor ebx, ebx
+#if defined(__BC__)
     }
+#endif
 loop1b:
+#if defined(__BC__)
     __asm {
+#endif
         mov byte ptr ds:[edi+ebx], al
         inc ebx
         cmp ebx, edx
         jne loop1b
+#if defined(__BC__)
     }
+#endif
 end:
+#if defined(__BC__)
     __asm {
+#endif
         pop ebx
         pop edi
     }
@@ -437,9 +462,13 @@ int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
         and ecx, 0xFFFFFFFC
         and edx, 0x3
         xor ebx, ebx
+#if defined(__BC__)
     }
+#endif
 loop4b:
+#if defined(__BC__)
     __asm {
+#endif
         mov eax, dword ptr ds:[edi+ebx]
         sub eax, dword ptr ds:[esi+ebx]
         jne not_equal4 //perform byte wide test on 4 bytes
@@ -453,31 +482,49 @@ loop4b:
         add edi, ebx
         xor ebx, ebx
         jmp loop1b
+#if defined(__BC__)
     }
 not_equal4:
     __asm mov edx, 4
 loop1b:
     __asm {
+#else
+not_equal4:
+    mov edx, 4
+loop1b:
+#endif
         mov al, byte ptr ds:[edi+ebx]
         sub al, byte ptr ds:[esi+ebx]
         jne not_qual
         inc ebx
         cmp ebx, edx
         jne loop1b
+#if defined(__BC__)
     }
+#endif
 equal:
+#if defined(__BC__)
     __asm {
+#endif
         xor eax, eax //equal
         jmp _return
+#if defined(__BC__)
     }
-not_qual:    
+#endif
+not_qual:
+#if defined(__BC__)
     __asm {
+#endif
         mov eax, 1
         ja _return //use unsigned char compare, compatible to memcmp()
         not eax
+#if defined(__BC__)
     }
+#endif
 _return:
+#if defined(__BC__)
     __asm {
+#endif
         pop ebx
         pop edi
         pop esi

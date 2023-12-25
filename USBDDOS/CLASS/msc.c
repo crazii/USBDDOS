@@ -536,7 +536,7 @@ static void USB_MSC_DOS_DriverINT()
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
             start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             uint32_t count = request.ReadWrite.Count;
-            #if !defined(__BC__)
+            #if !defined(__BC__) && !defined(__WC__)
             uint32_t step = count;
             #else  //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
             //_LOG("sbrk: %x, SP: %x, stack: %u ", FP_OFF(sbrk(0)), _SP, stackavail());
@@ -571,7 +571,7 @@ static void USB_MSC_DOS_DriverINT()
             uint32_t start = request.ReadWrite.Start == 0xFFFF ? request.ReadWrite.Start32 : (uint32_t)request.ReadWrite.Start;
             start += DPMI_LoadD(DPMI_SEGOFF2L(cs, offsetof(USB_MSC_DOS_TSRDATA, StartSector)));
             uint32_t count = request.ReadWrite.Count;
-            #if !defined(__BC__)
+            #if !defined(__BC__) && !defined(__WC__)
             uint32_t step = count;
             #else //__BC__ //use small buffers & multiple transfers to minimize memory usage, otherwise 32K data will exhaust
             uint32_t step = max(16*1024/pDriverData->BlockSize,1);

@@ -47,7 +47,7 @@
 
 //CBW & CSW are transported via data (bulk) transfer. CBW(OUT) -> data(IN/OUT) -> CSW(IN)
 
-#if defined(__DJ2__)
+#if defined(__DJ2__) || defined(__WC__)
 #pragma pack(1)
 #endif
 

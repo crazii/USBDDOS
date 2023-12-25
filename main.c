@@ -8,7 +8,7 @@
 #include "USBDDOS/CLASS/hid.h"
 #include "USBDDOS/dbgutil.h"
 
-#if defined(__BC__)
+#if defined(__BC__) || defined(__WC__)
 #define ENABLE_RETROWAVE 0 //code exceed 64K
 #else
 #define ENABLE_RETROWAVE 1

@@ -232,6 +232,7 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
     outp(0x64, 0xff);\
 } while(0)
 
+#if defined(__BC__)
 #pragma option -k-
 static BOOL DPMI_IsV86() //should call before init pm
 {
@@ -242,6 +243,17 @@ static BOOL DPMI_IsV86() //should call before init pm
     return _AX;
 }
 #pragma option -k
+#elif defined(__WC__)//!__BC__ this branch is used to skip unsure warning on watcom
+static BOOL DPMI_IsV86();
+#pragma aux DPMI_IsV86 = \
+"smsw ax" \
+"and ax, 1" \
+value[ax]
+#endif
+
+#if defined(__WC__)
+static uint16_t _DATA;
+#endif
 
 //////////////////////////////////////////////////////////////////////////////
 //direct (raw) mode
@@ -262,7 +274,18 @@ static void far DPMI_DirectProtectedMode()
         _ASM(lgdt fword ptr ds:[.RMCB_Gdtr+2]); //2: extra padding
         _ASM(lidt fword ptr ds:[.RMCB_Idtr+2]);
         _ASM(push SEL_RMCB_CS*8)
+#if defined(__BC__)
         _ASM2(mov ax, offset reload_cs)
+#else
+        _ASM(call hack)
+        _ASM(jmp reload_cs)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop ax)
+        _ASM(push bx)
+        _ASM(mov bx, ax)
+        _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(pop bx)
+#endif
         _ASM2(sub ax, offset DPMI_DirectProtectedMode)
         _ASM2(add ax, ds:[.SwitchPM]);
         _ASM(push ax)
@@ -294,7 +317,7 @@ static void far DPMI_DirectProtectedMode()
     _ASM_END
 }
 #pragma option -k-
-static void DPMI_DirectProtectedModeEnd() {}
+static void __NAKED DPMI_DirectProtectedModeEnd() {}
 #pragma option -k
 
 static void far DPMI_DirectRealMode()
@@ -321,7 +344,18 @@ static void far DPMI_DirectRealMode()
         _ASM(lgdt fword ptr nullgdt+2)
         _ASM(lidt fword ptr ds:[.RMCB_OldIDTR+2]);
         _ASM(push word ptr ds:[.RM_SEG]);
+#if defined(__BC__)
         _ASM2(mov ax, offset reload_cs2)
+#else
+        _ASM(call hack)
+        _ASM(jmp reload_cs2)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop ax)
+        _ASM(push bx)
+        _ASM(mov bx, ax)
+        _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(pop bx)
+#endif
         _ASM2(sub ax, offset DPMI_DirectRealMode)
         _ASM2(add ax, ds:[.SwitchRM]);
         _ASM(push ax)
@@ -342,7 +376,7 @@ static void far DPMI_DirectRealMode()
     _ASM_END
 }
 #pragma option -k-
-static void DPMI_DirectRealModeEnd() {}
+static void __NAKED DPMI_DirectRealModeEnd() {}
 #pragma option -k
 
 //////////////////////////////////////////////////////////////////////////////
@@ -431,7 +465,7 @@ static BOOL DPMI_InitVCPI()
     if(DPMI_Temp->VCPIInterface)
         return TRUE;
 
-    volatile BOOL VCPIPresent = FALSE;
+    volatile short VCPIPresent = FALSE;
 
     _ASM_BEGIN //check vcpi
         _ASM(push ax)
@@ -537,7 +571,9 @@ static BOOL DPMI_InitVCPI()
 
 static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
 {
-    _ASM_BEGIN _ASM(push ebx) _ASM_END
+    _ASM_BEGIN 
+        _ASM(push ebx)
+    _ASM_END
 
     DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be FP_SEG(rmcb) or rmcb->RM_SEG.
     DPMI_VCPIClientStruct ClientStruct; //= {0}; will call BC helper function but we cannot do that
@@ -556,10 +592,25 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
         _ASM(cli)
 
         _ASM2(xor ecx, ecx)
+#if defined(__BC__)
         _ASM2(mov cx, offset VCPI_PMDone) //mov ebx, offset _VCPI_PMDone //linking error
+#else
+        _ASM(call hack)
+        _ASM(jmp VCPI_PMDone)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop cx)
+        _ASM(push bx)
+        _ASM(mov bx, cx)
+        _ASM(add cx, word ptr cs:[bx+1])
+        _ASM(pop bx)
+#endif
         _ASM2(sub cx, offset DPMI_VCPIProtectedMode)
         _ASM2(add cx, ds:[.SwitchPM]);
+        #if defined(__BC__)
         _ASM2(mov dword ptr ClientStruct.EIP, ecx)
+        #else
+        _ASM2(mov dword ptr ss:[.ClientStruct.EIP], ecx);
+        #endif
         _ASM2(mov esi, ClientStructLAddr)
         _ASM2(mov cx, sp) //save SP to CX
         _ASM2(mov ax, 0xDE0C)
@@ -598,7 +649,7 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
     _ASM_END
 }
 #pragma option -k-
-static void DPMI_VCPIProtectedModeEnd() {}
+static void __NAKED DPMI_VCPIProtectedModeEnd() {}
 #pragma option -k
 
 static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,cs=SEL_RMCB_CS*8
@@ -633,7 +684,18 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
         _ASM(push eax)    //CS
         _ASM2(mov ax, ds)
         _ASM2(mov es, ax)
+#if defined(__BC__)
         _ASM2(mov ax, offset VCPI_to_real) //mov eax, offset back_to_real //link err
+#else
+        _ASM(call hack)
+        _ASM(jmp VCPI_to_real)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop ax)
+        _ASM(push bx)
+        _ASM(mov bx, ax)
+        _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(pop bx)
+#endif
         _ASM2(sub ax, offset DPMI_VCPIRealMode)
         _ASM2(add ax, es:[.SwitchRM]);
         _ASM(push eax)    //EIP
@@ -653,7 +715,7 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
     _ASM_END
 }
 #pragma option -k-
-static void DPMI_VCPIRealModeEnd() {}
+static void __NAKED DPMI_VCPIRealModeEnd() {}
 #pragma option -k
 
 //////////////////////////////////////////////////////////////////////////////
@@ -673,11 +735,36 @@ static int16_t DPMI_SwitchProtectedMode(uint32_t LinearDS)
         _ASM(push bp)
         _ASM2(mov bp, sp)
         _ASM2(lss bx, DPMI_Rmcb);
+#if defined(__BC__)
         _ASM2(mov sp, ss:[bx.RM_SP]);
+#else
+        _ASM2(add bx, .RM_SP)
+        _ASM2(mov sp, word ptr ss:[bx]);
+        _ASM2(sub bx, .RM_SP)
+#endif
+
         _ASM(push SEL_CS*8)
+#if defined(__BC__)
         _ASM(push offset SwitchPMDone)
+#else
+        _ASM(call hack)
+        _ASM(jmp SwitchPMDone)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(push bp)
+        _ASM(mov bp, sp)
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(add bx, word ptr cs:[bx+1]);
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(pop bp)
+#endif
         _ASM(push ss)
+#if defined(__BC__)
         _ASM(push word ptr ss:[bx.SwitchPM]);
+#else
+        _ASM(add bx, .SwitchPM);
+        _ASM(push word ptr ss:[bx]);
+        _ASM(sub bx, .SwitchPM);
+#endif
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM(retf)
@@ -738,12 +825,42 @@ static void DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM(push bp)
         _ASM2(mov bp, sp)
         _ASM2(lss bx, DPMI_Rmcb);
+
+#if defined(__BC__)
         _ASM2(mov ss:[bx.PM_SP], sp);
         _ASM2(mov sp, ss:[bx.RM_SP]);
+#else
+        _ASM2(add bx, .PM_SP)
+        _ASM2(mov ss:[bx], sp);
+        
+        _ASM2(sub bx, .PM_SP)
+        _ASM2(add bx, .RM_SP)
+        _ASM2(mov sp, ss:[bx]);
+        _ASM2(sub bx, .RM_SP)
+#endif
+
         _ASM(push _TEXT)
+#if defined(__BC__)
         _ASM(push offset SwitchRMDone)
+#else
+        _ASM(call hack)
+        _ASM(jmp SwitchRMDone)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(push bp)
+        _ASM(mov bp, sp)
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(add bx, word ptr cs:[bx+1]);
+        _ASM(xchg bx, word ptr ss:[bp+2]);
+        _ASM(pop bp)
+#endif
         _ASM(push SEL_RMCB_CS*8)
+#if defined(__BC__)
         _ASM(push word ptr ss:[bx.SwitchRM]);
+#else
+        _ASM(add bx, .SwitchRM)
+        _ASM(push word ptr ss:[bx]);
+        _ASM(sub bx, .SwitchRM)
+#endif
         _ASM2(mov ax, ss)
         _ASM2(mov ds, ax)
         _ASM(retf)
@@ -771,16 +888,20 @@ static void DPMI_SwitchRealMode(uint32_t LinearDS)
 static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 
 #pragma option -k-
-static void DPMI_NullINTHandler()
+static void __NAKED DPMI_NullINTHandler()
 {
-    _ASM_BEGIN _ASM(iret) _ASM_END
+    _ASM_BEGIN 
+        _ASM(iret)
+    _ASM_END
 }
-static void DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
+static void __NAKED DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
 {
+    unused(RETURN_ADDR);unused(error);unused(ip);unused(cs);unused(flags);
     _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
 }
 #pragma option -k
 
+#if defined(__BC__)
 #define DPMI_EXCEPT(n) static void DPMI_ExceptionHandler##n()\
 {\
     _ASM_BEGIN _ASM(cli) _ASM(call DPMI_DumpExcept) _ASM_END \
@@ -788,6 +909,20 @@ static void DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, 
     if(!DPMI_TSRed) exit(1);\
     else while(1);\
 }
+#else //workaround WC compiling bugs
+static void __NAKED DumpExcept() 
+{
+    __asm cli
+    __asm jmp DPMI_DumpExcept
+}
+#define DPMI_EXCEPT(n) static void __NAKED DPMI_ExceptionHandler##n() \
+{\
+    DumpExcept(); \
+    printf("Exception: %02x\n", n); \
+    if(!DPMI_TSRed) exit(1); \
+    else while(1); \
+}
+#endif
 
 #pragma option -k-
 DPMI_EXCEPT(0x00)
@@ -809,7 +944,7 @@ DPMI_EXCEPT(0x0E)
 
 #define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExceptionHandler##n)
 
-static void DPMI_HWIRQHandlerInternal()
+static void __NAKED DPMI_HWIRQHandlerInternal()
 {
     uint8_t irq = PIC_GetIRQ();
     //if(irq < 16)
@@ -827,7 +962,7 @@ static void DPMI_HWIRQHandlerInternal()
 }
 
 #pragma option -k-
-static void DPMI_HWIRQHandler()
+static void __NAKED DPMI_HWIRQHandler()
 {
     //test if it is a normal INT or exception.
     _ASM_BEGIN
@@ -842,18 +977,22 @@ static void DPMI_HWIRQHandler()
         _ASM(je NormalINT)
     _ASMLBL(Except:)
         _ASM(pop bp)
-        _ASM(call DPMI_ExceptionHandler0x09) //TOD: call the right handler
+        _ASM(call DPMI_ExceptionHandler0x09) //TODO: call the right handler
     _ASMLBL(NormalINT:)
         _ASM(pop bp)
     _ASM_END
 
-    _ASM_BEGIN _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs) _ASM_END
-    _ASM_BEGIN _ASM2(mov bp, sp) _ASM2(and word ptr [bp+40], 0xBFFF) _ASM_END //remove NT flag for flags or iret will do a task return
-    _ASM_BEGIN _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax) _ASM_END
+    _ASM_BEGIN 
+        _ASM(pushf) _ASM(cli) _ASM(pushad) _ASM(push ds) _ASM(push es) _ASM(push fs) _ASM(push gs)
+        _ASM2(mov bp, sp) _ASM2(and word ptr [bp+40], 0xBFFF) //remove NT flag for flags or iret will do a task return
+        _ASM2(mov ax, SEL_HIMEM_DS*8) _ASM2(mov ds, ax) _ASM2(mov es, ax)
+    _ASM_END
 
     DPMI_HWIRQHandlerInternal();
 
-    _ASM_BEGIN _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(iret) _ASM_END
+    _ASM_BEGIN
+        _ASM(pop gs) _ASM(pop fs) _ASM(pop es) _ASM(pop ds) _ASM(popad) _ASM(popf) _ASM(iret)
+    _ASM_END
 }
 #pragma option -k
 
@@ -865,13 +1004,13 @@ static const int DPMI_REG_Size = sizeof(DPMI_REG);
 #pragma option -k-
 #define DPMI_RMCB_TEST 0
 #if DPMI_RMCB_TEST
-static void DPMI_RmcbLog()
+static void __NAKED DPMI_RmcbLog()
 {
     _LOG("RMCB TEST");
     _ASM_BEGIN _ASM(retf) _ASM_END
 }
 #endif
-static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
+static void __NAKED DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
 {
     _ASM_BEGIN
         //save IRET frame to register
@@ -889,7 +1028,7 @@ static void DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses no
         _ASM(retf)
     _ASM_END
 }
-static void DPMI_RMCBCommonEntry() //commen entry for call back
+static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
 {
     _ASM_BEGIN
         //_ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di - use EDI,ESI to avoid the problem
@@ -954,7 +1093,7 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
 
         _ASM2(movzx edi, bx) //pm ss:[bx] to linear
         _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);
-        _ASM2(mov ecx, DPMI_REG_Size)
+        _ASM2(mov ecx, dword ptr DPMI_REG_Size)
         _ASM(push ds) _ASM(push esi) _ASM(push es) _ASM(push edi) _ASM(push ecx) //popped by DPMI_RMCbIRet
         _ASM(cld)
         _ASM2(rep movs byte ptr es:[edi], byte ptr ds:[esi]);
@@ -962,7 +1101,18 @@ static void DPMI_RMCBCommonEntry() //commen entry for call back
         //call target pm function
         _ASM(pushf) //push return address. assume target is IRET
         _ASM(push cs)
+#if defined(__BC__)
         _ASM2(mov ax, offset RMCB_PmReturn)
+#else
+        _ASM(call hack)
+        _ASM(jmp RMCB_PmReturn)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop ax)
+        _ASM(push bx)
+        _ASM(mov bx, ax)
+        _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(pop bx)
+#endif
         _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
         _ASM2(add ax, fs:[.CommonEntry]);
         _ASM(push ax)
@@ -1025,7 +1175,7 @@ static void DPMI_RMCBCommonEntryEnd() {}
 #pragma option -k
 
 #pragma option -k-
-static void DPMI_RMCBEntryIRET() //keep it as small as possible
+static void __NAKED DPMI_RMCBEntryIRET() //keep it as small as possible
 {
     _ASM_BEGIN
         _ASM(call word ptr cs:[.CommonEntry]); //word ptr=near, dword ptr=far cs16:off16, fword=far cs16:off32
@@ -1039,8 +1189,8 @@ static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintpt
 //input: BX as DPMI_REG PTR (seems BC doesn't need type override)
 //output: full register set loaded from ptr, inclluding EBX itself
 //SS:ESP excluded. load ds at last.
-#define DPMI_LoadRealModeRegsPtr() do {\
-    _ASM_BEGIN\
+#if defined(__BC__)
+#define DPMI_LoadRealModeRegsPtr() \
         _ASM(push word ptr ds:[bx.w.ds])\
         \
         _ASM(push word ptr ds:[bx.w.flags])\
@@ -1059,14 +1209,11 @@ static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintpt
         _ASM2(mov edi, dword ptr ds:[bx.d.edi])\
         \
         _ASM2(mov ebx, dword ptr ds:[bx.d.ebx])\
-        _ASM(pop ds)\
-    _ASM_END \
-} while(0)
+        _ASM(pop ds)
 
 //input: DS:BX as DPMI_REG ptr
 //output: full register set stored to the ptr, except DS, EBX
-#define DPMI_StoreRealModeRegsPtr() do {\
-    _ASM_BEGIN \
+#define DPMI_StoreRealModeRegsPtr() \
         _ASM(push gs)\
         _ASM(push fs)\
         _ASM(pop word ptr ds:[bx.w.fs])\
@@ -1080,9 +1227,87 @@ static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintpt
         _ASM2(mov dword ptr ds:[bx.d.edx], edx)\
         _ASM2(mov dword ptr ds:[bx.d.ebp], ebp)\
         _ASM2(mov dword ptr ds:[bx.d.esi], esi)\
-        _ASM2(mov dword ptr ds:[bx.d.edi], edi)\
-    _ASM_END \
-} while(0)
+        _ASM2(mov dword ptr ds:[bx.d.edi], edi)
+#else
+#define DPMI_LoadRealModeRegsPtr() \
+    add bx, .w.ds;\
+    push word ptr ds:[bx];\
+    sub bx, .w.ds;\
+    add bx, .w.flags;\
+    push word ptr ds:[bx];\
+    sub bx, .w.flags;\
+    popf;\
+    add bx, .w.gs;\
+    mov ax, word ptr ds:[bx];\
+    sub bx, .w.gs;\
+    mov gs, ax;\
+    add bx, .w.fs;\
+    mov ax, word ptr ds:[bx];\
+    sub bx, .w.fs;\
+    mov fs, ax;\
+    add bx, .w.es;\
+    mov ax, word ptr ds:[bx];\
+    sub bx, .w.es;\
+    mov es, ax;\
+    add bx, .d.eax;\
+    mov eax, dword ptr ds:[bx];\
+    sub bx, .d.eax;\
+    add bx, .d.ecx;\
+    mov ecx, dword ptr ds:[bx];\
+    sub bx, .d.ecx;\
+    add bx, .d.edx;\
+    mov edx, dword ptr ds:[bx];\
+    sub bx, .d.edx;\
+    add bx, .d.ebp;\
+    mov eax, dword ptr ds:[bx];\
+    sub bx, .d.ebp;\
+    add bx, .d.esi;\
+    mov esi, dword ptr ds:[bx];\
+    sub bx, .d.esi;\
+    add bx, .d.edi;\
+    mov edi, dword ptr ds:[bx];\
+    sub bx, .d.edi;\
+    \
+    add bx, .d.ebx;\
+    mov ebx, dword ptr ds:[bx];\
+    pop ds;
+
+#define DPMI_StoreRealModeRegsPtr() \
+    push gs;\
+    push fs;\
+    add bx, .w.fs;\
+    pop word ptr ds:[bx];\
+    sub bx, .w.fs;\
+    push es;\
+    add bx, .w.es;\
+    pop word ptr ds:[bx];\
+    sub bx, .w.es;\
+    pushf;\
+    add bx, .w.flags;\
+    pop word ptr ds:[bx];\
+    sub bx, .w.flags;\
+    add bx, .w.gs;\
+    pop word ptr ds:[bx];\
+    sub bx, .w.gs;\
+    add bx, .d.eax;\
+    mov dword ptr ds:[bx], eax;\
+    sub bx, .d.eax;\
+    add bx, .d.ecx;\
+    mov dword ptr ds:[bx], ecx;\
+    sub bx, .d.ecx;\
+    add bx, .d.edx;\
+    mov dword ptr ds:[bx], edx;\
+    sub bx, .d.edx;\
+    add bx, .d.ebp;\
+    mov dword ptr ds:[bx], ebp;\
+    sub bx, .d.ebp;\
+    add bx, .d.esi;\
+    mov dword ptr ds:[bx], esi;\
+    sub bx, .d.esi;\
+    add bx, .d.edi;\
+    mov dword ptr ds:[bx], edi;\
+    sub bx, .d.edi;
+#endif
 
 //INTn < 256 (hi byte 0): interrupt(cs:ip) with iret, push flags.
 static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL directcall)
@@ -1098,11 +1323,29 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM2(mov ax, INTn)
         _ASM2(test ah, ah)
         _ASM(jnz skip_flags)
+#if defined(__BC__)
         _ASM(push word ptr [bx.w.flags])
         _ASM2(and word ptr [bx.w.flags], 0xFCFF) //clear IF TF (by Intel INTn instruction reference).(AC in hiword)
+#else
+        _ASM(add bx, .w.flags)
+        _ASM(push word ptr ds:[bx]);
+        _ASM2(and word ptr ds:[bx], 0xFCFF);
+        _ASM(sub bx, .w.flags)
+#endif
     _ASMLBL(skip_flags:)
         _ASM(push cs)
+#if defined(__BC__)
         _ASM2(mov ax, offset callreturn)
+#else
+        _ASM(call hack)
+        _ASM(jmp callreturn)
+    _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
+        _ASM(pop ax)
+        _ASM(push bx)
+        _ASM(mov bx, ax)
+        _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(pop bx)
+#endif
         _ASM2(mov cx, directcall)
         _ASM2(test cx, cx)
         _ASM(jnz skip_offset_adjst)
@@ -1110,13 +1353,19 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM2(add ax, ds:[.Translation]);
     _ASMLBL(skip_offset_adjst:)
         _ASM(push ax)
+#if defined(__BC__)
         _ASM(push word ptr [bx.w.cs])
         _ASM(push word ptr [bx.w.ip])
-    _ASM_END
+#else
+        _ASM(add bx, .w.cs)
+        _ASM(push word ptr ds:[bx]);
+        _ASM(sub bx, .w.cs)
+        _ASM(add bx, .w.ip)
+        _ASM(push word ptr ds:[bx]);
+#endif
 
-    DPMI_LoadRealModeRegsPtr();//DS:BX
+        DPMI_LoadRealModeRegsPtr();//DS:BX
 
-    _ASM_BEGIN
         _ASM(retf)
     _ASMLBL(callreturn:)
         //load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
@@ -1131,15 +1380,25 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(pop bp)
         _ASM(pop ax)
         _ASM(pop ds) //ds changed
-    _ASM_END
 
-    DPMI_StoreRealModeRegsPtr();//DS:BX
+        DPMI_StoreRealModeRegsPtr();//DS:BX
 
-    _ASM_BEGIN
         _ASM(pop eax) //new ebx
+#if defined(__BC__)
         _ASM2(mov dword ptr ds:[bx.d.ebx], eax);
+#else
+        _ASM(add bx, .d.ebx)
+        _ASM2(mov dword ptr ds:[bx], eax);
+        _ASM(sub bx, .d.ebx)
+#endif
         _ASM(pop ax) //new ds
+#if defined(__BC__)
         _ASM2(mov word ptr ds:[bx.w.ds], ax);
+#else
+        _ASM(add bx, .w.ds)
+        _ASM2(mov word ptr ds:[bx], ax);
+        _ASM(sub bx, .w.ds)
+#endif
     _ASM_END
 
     _ASM_BEGIN
@@ -1149,7 +1408,7 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
     _ASM_END
 }
 #pragma option -k-
-static void DPMI_RMCBTranslationEnd() {}
+static void __NAKED DPMI_RMCBTranslationEnd() {}
 #pragma option -k
 
 static void DPMI_SetupRMCB()
