@@ -88,7 +88,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     //take ownership & disable SMI
     if(caps.hciVersion > 0x95 && caps.hccParamsBm.EECP)
     {
-        EHCI_LEGSUP legsup = {READ_USBLEGSUP2(pPCIDev, caps)};
+        EHCI_LEGSUP legsup; legsup.Val = READ_USBLEGSUP2(pPCIDev, caps);
         //uint32_t legctlsts = READ_USBLEGCTLSTS2(pPCIDev, caps);
         if(legsup.Bm.CapabilityID == CAPID_LEGSUP)
         {

@@ -809,8 +809,10 @@ BOOL DPMI_TSR(void)
 
 #if defined(__BC__)
 #define __LIBCALL _Cdecl _FARFUNC
-#else
+#elif defined(__WC__)
 #define __LIBCALL _WCRTLINK
+#else
+#define __LIBCALL 
 #endif
 
 #if defined(__WC__)
@@ -845,6 +847,8 @@ int __LIBCALL printf(const char* fmt, ...)
     if(!recursion_gard) //avoid reentrance in mode switching
     {
         recursion_gard = 1;
+        _LOG("printf\n");
+        _LOG("stack: %d\n", stackavail());
 
         //himem mode: data not copied during translation, so string buffers (%s) need to de-referenced before mode switch (otherwise ds/himemds data don't match)
         //use vsprintf to do it. BC doesn't have vsnprintf, potential buffer overflow exists.
@@ -883,9 +887,9 @@ void __LIBCALL delay(unsigned millisec)
 }
 
 #if !defined(NDEBUG)
-void __LIBCALL __assertfail(char _FAR* __msg,
-                                  char _FAR* __cond,
-                                  char _FAR* __file,
+void __LIBCALL __assertfail(char * __msg,
+                                  char * __cond,
+                                  char * __file,
                                   int __line)
 {//BC's __assertfail will cause #GP, probably caused by INTn (abort) / changing segment
     if(DPMI_PM)
@@ -911,7 +915,7 @@ void __LIBCALL __assertfail(char _FAR* __msg,
 #endif
 
 //internal used, for debug
-BOOL DPMI_IsInProtectedMode()
+extern "C" BOOL DPMI_IsInProtectedMode()
 {
     return DPMI_PM;
 }

@@ -33,7 +33,8 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
     uint8_t bInterface = pIntfaceDesc->bInterfaceNumber;
 
     //get max LUN
-    USB_Request Req = { USB_REQ_READ | USB_REQ_TYPE_MSC, USB_REQ_MSC_GET_MAX_LUN, 0, bInterface, 1, };
+    USB_Request Req = { USB_REQ_READ | USB_REQ_TYPE_MSC, USB_REQ_MSC_GET_MAX_LUN, 0, 0, 1, };
+    Req.wIndex = bInterface;
     uint8_t* pMaxLUN = (uint8_t*)DPMI_DMAMalloc(1, 16);
     *pMaxLUN = 0;
     USB_SyncSendRequest(pDevice, &Req, pMaxLUN); //ignore return. device may not support multiple LUN.
@@ -42,7 +43,8 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
     pMaxLUN = NULL;
     _LOG("MSC MaxLUN: %d\n", maxLUN);
     
-    USB_Request Req2 =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, bInterface, 0};
+    USB_Request Req2 =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, 0, 0};
+    Req2.wIndex = bInterface;
     if(USB_SyncSendRequest(pDevice, &Req2, NULL) != 0)
     {
         _LOG("MSC Error reset bulk.\n");
@@ -122,7 +124,8 @@ BOOL USB_MSC_BulkReset(USB_Device* pDevice)
 {
     if(pDevice == NULL || pDevice->pDriverData == NULL)
         return FALSE;
-    USB_Request Req =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, ((USB_MSC_DriverData*)pDevice->pDriverData)->bInterface, 0};
+    USB_Request Req =  {USB_REQ_WRITE | USB_REQ_TYPE_MSC, USB_REQ_MSC_RESET, 0, 0, 0};
+    Req.wIndex = ((USB_MSC_DriverData*)pDevice->pDriverData)->bInterface;
     return USB_SyncSendRequest(pDevice, &Req, NULL) != 0;
 }
 

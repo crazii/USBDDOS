@@ -108,7 +108,11 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define memcpy_c2d memcpy
 
 #elif defined(__WC__)
-//need -za99 option?
+
+#if !defined(__TINY__) && !defined(__SMALL__)
+#error only tiny/small model supported.
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -137,7 +141,7 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 #define CLI() __asm {cli}
 #define STI() __asm {sti}
 
-static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r;
+inline static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r = 0;
     __asm {
         bsf eax, x
         mov r, eax
@@ -145,24 +149,24 @@ static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r;
     return r;
 }
 
-static uint16_t _DS_ASM();
+uint16_t _DS_ASM();
 #pragma aux _DS_ASM = \
 "mov ax, ds" \
 value[ax]
 #define _DS _DS_ASM()
 
-static uint16_t _AX_ASM();
+uint16_t _AX_ASM();
 #pragma aux _AX_ASM = \
 value[ax]
 #define _AX _AX_ASM()
 
-static uint16_t _CS_ASM();
+uint16_t _CS_ASM();
 #pragma aux _CS_ASM = \
 "mov ax, cs" \
 value[ax]
 #define _CS _CS_ASM()
 
-static uint8_t _AL_ASM();
+uint8_t _AL_ASM();
 #pragma aux _AL_ASM = \
 value[al]
 #define _AL _AL_ASM()

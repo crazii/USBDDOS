@@ -10,7 +10,7 @@
 #if defined(__BC__) || defined(__WC__)
 uint32_t inpd(uint16_t port)
 {
-    uint32_t val;
+    uint32_t val = 0;
     __asm {
         mov dx, port
         in eax, dx

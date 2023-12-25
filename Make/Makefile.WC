@@ -4,27 +4,22 @@ TARGET = output/usbddos.exe
 
 all: $(TARGET)
 
-# use C++ for C
-CC = wpp
-CFLAGS = -w4 -e25 -zq -3 -bt=dos -ms -i..
+!ifndef DEBUG
+DEBUG = 0
+!endif
+
+CC = wcc
+CFLAGS = -za99 -w4 -e25 -zq -3 -bt=dos -ms -os -i..
 CXX = wpp
-CXXFLAGS = -w4 -e25 -zq -3 -bt=dos -ms -i..
+CXXFLAGS = -w4 -e25 -zq -3 -bt=dos -ms -os -i..
 
 LDFLAGS = SYS DOS &
 OPTION MAXE=25 &
 OPTION Q
 
-!ifndef DEBUG
-DEBUG = 0
-!endif
-
-!ifeq DEBUG 1
-CFLAGS += -od -d2 -DDEBUG=1
-CXXFLAGS += -od -d2 -DDEBUG=1
-LDFLAGS += D ALL
-!else
-CFLAGS += -d0 -DDEBUG=0 -DNDEBUG
-CXXFLAGS += -d0 -DDEBUG=0 -DNDEBUG
+!ifneq DEBUG 1
+CFLAGS += -DNDEBUG
+CXXFLAGS += -DNDEBUG
 !endif
 
 !ifndef SILENT
@@ -43,15 +38,15 @@ clean: .symbolic
 
 {../}.c{output/}.obj: .AUTODEPEND
     @echo $<
-    $(SILENT)$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+    $(SILENT)$(CC) $(CFLAGS) -fo=$@ $<
 
 {../USBDDOS/}.c{output/}.obj: .AUTODEPEND
     @echo $<
-    $(SILENT)$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+    $(SILENT)$(CC) $(CFLAGS) -fo=$@ $<
 
 {../USBDDOS/DPMI/}.c{output/}.obj: .AUTODEPEND
     @echo $<
-    $(SILENT)$(CXX) $(CXXFLAGS) -fo=$@ -fr=$@.log $<
+    $(SILENT)$(CC) $(CFLAGS) -fo=$@ $<
 
 {../USBDDOS/DPMI/}.cpp{output/}.obj: .AUTODEPEND
     @echo $<
@@ -59,14 +54,13 @@ clean: .symbolic
 
 {../USBDDOS/HCD/}.c{output/}.obj: .AUTODEPEND
     @echo $<
-    $(SILENT)$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+    $(SILENT)$(CC) $(CFLAGS) -fo=$@ $<
 
 {../USBDDOS/CLASS/}.c{output/}.obj: .AUTODEPEND
     @echo $<
-    $(SILENT)$(CC) $(CFLAGS) -fo=$@ -fr=$@.log $<
+    $(SILENT)$(CC) $(CFLAGS) -fo=$@ $<
 
-OBJS = output/hub.obj &
-output/dpmi.obj &
+OBJS = output/dpmi.obj &
 output/dpmi_bc.obj &
 output/xms.obj &
 output/pci.obj &
@@ -81,6 +75,7 @@ output/uhci.obj &
 output/ehci.obj &
 output/msc.obj &
 output/hid.obj &
+output/hub.obj &
 output/main.obj
 
 $(TARGET) : $(OBJS)

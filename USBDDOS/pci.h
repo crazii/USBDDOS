@@ -17,7 +17,7 @@ extern "C"
 #if defined(__DJ2__)
 #define inpd inportl
 #define outpd outportl
-#elif defined(__BC__)
+#elif defined(__BC__) || defined(__WC__)
 uint32_t inpd(uint16_t port);
 void outpd(uint16_t port, uint32_t value);
 #endif

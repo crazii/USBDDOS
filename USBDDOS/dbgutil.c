@@ -10,9 +10,10 @@
 #include "USBDDOS/usb.h"
 #include "USBDDOS/dbgutil.h"
 
-#if defined(__BC__)
-extern BOOL DPMI_IsInProtectedMode();
+#if defined(__BC__) //BC always uses C++ to compile
+extern "C"
 #endif
+BOOL DPMI_IsInProtectedMode();
 
 //https://dev.to/frosnerd/writing-my-own-vga-driver-22nn
 #define VGA_CTRL_REGISTER 0x3d4
@@ -41,7 +42,7 @@ static uint32_t VGA_GetCursor()
 
 static void VGA_SetChar(char character, uint32_t offset)
 {
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     if(!DPMI_IsInProtectedMode())
         *(char far*)MK_FP(0xB800, offset*2) = character;
     else
@@ -64,7 +65,7 @@ static uint32_t VGA_NewLine(uint32_t offset)
 
 static uint32_t VGA_Scroll(uint32_t offset)
 {
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     if(!DPMI_IsInProtectedMode())
     {
         char far* line0 = (char far*)MK_FP(0xB800, VGA_GetOffset(0, 0)*2);
@@ -101,7 +102,7 @@ static void VGA_Print(const char *string)
     VGA_SetCursor(offset);
     //update cursor in BIOS data area (40:50)
     //https://stanislavs.org/helppc/bios_data_area.html
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     if(!DPMI_IsInProtectedMode())
     {
         *(char far*)MK_FP(0x40, 0x50) = (uint8_t)(offset % VGA_MAX_COLS);

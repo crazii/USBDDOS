@@ -27,7 +27,7 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
 #define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push dword ptr _DPMI_Addressing) _ASM(pop ds) _ASM_END
 #define RESTORE_DS() _ASM_BEGIN _ASM(pop ds) _ASM_END
 
-#elif defined(__BC__)
+#elif defined(__BC__) || defined(__WC__)
 
 #define UNMAP_ADDR(addr) (addr)
 #define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push word ptr DPMI_Addressing) _ASM(pop ds) _ASM_END
@@ -294,7 +294,7 @@ void DPMI_MaskW(uint32_t addr, uint16_t mand, uint16_t mor)
 //16bit int32_t: dx:ax
 uint32_t DPMI_LoadD(uint32_t addr)
 {
-    uint32_t val;
+    uint32_t val = 0;
     LOAD_DS();
     __asm {
         mov ecx, dword ptr addr
@@ -449,7 +449,7 @@ end:
 
 int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)
 {
-    int32_t result;
+    int32_t result = 0;
     LOAD_DS();
     __asm {
         push esi

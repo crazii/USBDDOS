@@ -63,7 +63,7 @@ typedef struct//TSR/callback usage
     uint32_t stackpointer;  //esp
 }DPMI_SPACE;
 
-typedef struct//TSR/callback usage. state for linear DPMI_Load*/DPMI_Store*/DPMI_Mask*/DPMI_CopyLinear functions
+typedef struct //TSR/callback usage. state for linear DPMI_Load*/DPMI_Store*/DPMI_Mask*/DPMI_CopyLinear functions
 {
     uint16_t selector; //selector created from outside
     uint16_t physical; //1: physical addr instead of virutal. used when not called through DPMI/DPMI, and context unavailable, and no paging

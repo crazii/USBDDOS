@@ -144,7 +144,7 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
     uint16_t far* XMSPageHandle; //XMS handle for extra page tables
 }DPMI_TempData;
 
-extern DPMI_ADDRESSING DPMI_Addressing;
+extern "C" DPMI_ADDRESSING DPMI_Addressing;
 const uint32_t DPMI_XMS_Size = 192L*1024L;   //64k code+data, first 64k is system data.
 
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
@@ -232,7 +232,13 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
     outp(0x64, 0xff);\
 } while(0)
 
-#if defined(__BC__)
+#if defined(__WC__)//!__BC__ this branch is used to skip unsure warning on watcom
+static BOOL DPMI_IsV86();
+#pragma aux DPMI_IsV86 = \
+"smsw ax" \
+"and ax, 1" \
+value[ax]
+#else
 #pragma option -k-
 static BOOL DPMI_IsV86() //should call before init pm
 {
@@ -243,12 +249,6 @@ static BOOL DPMI_IsV86() //should call before init pm
     return _AX;
 }
 #pragma option -k
-#elif defined(__WC__)//!__BC__ this branch is used to skip unsure warning on watcom
-static BOOL DPMI_IsV86();
-#pragma aux DPMI_IsV86 = \
-"smsw ax" \
-"and ax, 1" \
-value[ax]
 #endif
 
 #if defined(__WC__)
@@ -1228,7 +1228,7 @@ static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintpt
         _ASM2(mov dword ptr ds:[bx.d.ebp], ebp)\
         _ASM2(mov dword ptr ds:[bx.d.esi], esi)\
         _ASM2(mov dword ptr ds:[bx.d.edi], edi)
-#else
+#elif defined(__WC__)
 #define DPMI_LoadRealModeRegsPtr() \
     add bx, .w.ds;\
     push word ptr ds:[bx];\
@@ -1307,12 +1307,15 @@ static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintpt
     add bx, .d.edi;\
     mov dword ptr ds:[bx], edi;\
     sub bx, .d.edi;
+#else
+#define DPMI_LoadRealModeRegsPtr()
+#define DPMI_StoreRealModeRegsPtr()
 #endif
 
 //INTn < 256 (hi byte 0): interrupt(cs:ip) with iret, push flags.
 static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL directcall)
 {
-   _ASM_BEGIN
+    _ASM_BEGIN
         _ASM(pushf)
         _ASM(pushad)
         _ASM(push es) _ASM(push fs) _ASM(push gs)

@@ -474,7 +474,7 @@ uint8_t USB_Transfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer, uin
         return 0xFFU;
     }
     HCD_TxDir dir = pDesc->bEndpointAddressBits.Dir ? HCD_TXR : HCD_TXW;
-    if(pDesc->bmAttributesBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL || pDesc->bmAttributesBits.TransferType > USB_ENDPOINT_TRANSFER_TYPE_INTR)
+    if(pDesc->bmAttributesBits.TransferType == USB_ENDPOINT_TRANSFER_TYPE_CTRL /*|| pDesc->bmAttributesBits.TransferType > USB_ENDPOINT_TRANSFER_TYPE_INTR*/)
     {
         assert(FALSE);
         return 0xFFU;
@@ -561,7 +561,8 @@ uint8_t USB_GetConfigDescriptor(USB_Device* pDevice, uint8_t* buffer, uint16_t l
     assert(length >= TotalLength);
     #endif
 
-    USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length)};
+    USB_Request Request = {USB_REQ_READ, USB_REQ_GET_DESCRIPTOR, USB_DT_CONFIGURATION << 8, 0, 0};
+    Request.wLength = min(pDevice->pConfigList[pDevice->bCurrentConfig].wTotalLength, length);
     uint8_t result = USB_SyncSendRequest(pDevice, &Request, buffer);
     assert(result == 0);
     return result;
@@ -580,7 +581,8 @@ BOOL USB_SetConfiguration(USB_Device* pDevice, uint8_t configuration)
     if(configuration == pDevice->bCurrentConfig)
         return TRUE;
 
-    USB_Request request = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_CONFIGURATION, configuration, 0, 0};
+    USB_Request request = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_CONFIGURATION, 0, 0, 0};
+    request.wValue = configuration;
     BOOL result = USB_SyncSendRequest(pDevice, &request, NULL);
     assert(result);
     if(!result)
@@ -665,7 +667,8 @@ BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, ui
     uint8_t* Buffer = pDevice->pDeviceBuffer;
     memset(Buffer, 0, USB_DEVBUFFER_SIZE);
     assert((void*)Buffer != (void*)pBuffer); //need a separate string buffer
-    USB_Request Request = {USB_REQ_READ|USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, (uint16_t)((USB_DT_STRING << 8) + bID), USB_LANG_ID_ENG, 1U}; //get length first
+    USB_Request Request = {USB_REQ_READ|USB_REQTYPE_STANDARD, USB_REQ_GET_DESCRIPTOR, 0, USB_LANG_ID_ENG, 1U}; //get length first
+    Request.wValue = (uint16_t)((USB_DT_STRING << 8) + bID);
 #if 0
     if (USB_SyncSendRequest(pDevice, &Request, Buffer) == 0)
     {
@@ -719,7 +722,8 @@ void USB_ShowDeviceInfo(USB_Device* pDevice)
 
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr)
 {
-    USB_Request req = {USB_REQ_WRITE|USB_REQTYPE_STANDARD|USB_REQREC_ENDPOINT, USB_REQ_CLEAR_FEATURE, ENDPOINT_HALT, epAddr, 0};
+    USB_Request req = {USB_REQ_WRITE|USB_REQTYPE_STANDARD|USB_REQREC_ENDPOINT, USB_REQ_CLEAR_FEATURE, ENDPOINT_HALT, 0, 0};
+    req.wIndex = epAddr;
     return USB_SyncSendRequest(pDevice, &req, NULL) == 0; //TODO: reset data toggle on ep
 }
 
@@ -833,7 +837,8 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     // the device will be adressed state
     _LOG("USB: set device address\n");
     assert(pDevice->HCDDevice.bAddress == 0);
-    USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, address, 0, 0};
+    USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, 0, 0, 0};
+    Request2.wValue = address;
     result = USB_SyncSendRequest(pDevice, &Request2, NULL);
     delay(2); // spec required.
     if(result != 0)

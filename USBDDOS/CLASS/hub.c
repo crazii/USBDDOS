@@ -25,7 +25,9 @@ static BOOL USB_HUB_SetPortFeature(USB_Device* pDevice, uint8_t port, uint16_t f
     if(port > pDriverData->desc.bNbrPorts)
         return FALSE;
 
-    USB_Request req = {USB_REQ_WRITE|USB_REQ_TYPE_HUBPORT, USB_REQ_SET_FEATURE, feature, (uint16_t)(port+1), 0}; //1 based port no
+    USB_Request req = {USB_REQ_WRITE|USB_REQ_TYPE_HUBPORT, USB_REQ_SET_FEATURE, 0, 0, 0};
+    req.wValue = feature;
+    req.wIndex = (uint16_t)(port+1); //1 based port no
     return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
 }
 
@@ -34,7 +36,9 @@ static BOOL USB_HUB_ClearPortFeature(USB_Device* pDevice, uint8_t port, uint16_t
     USB_HUB_DriverData* pDriverData = (USB_HUB_DriverData*)pDevice->pDriverData;
     if(port > pDriverData->desc.bNbrPorts)
         return FALSE;
-    USB_Request req = {USB_REQ_WRITE|USB_REQ_TYPE_HUBPORT, USB_REQ_CLEAR_FEATURE, feature, (uint16_t)(port+1), 0}; //1 based port no
+    USB_Request req = {USB_REQ_WRITE|USB_REQ_TYPE_HUBPORT, USB_REQ_CLEAR_FEATURE, 0, 0, 0};
+    req.wValue = feature;
+    req.wIndex = (uint16_t)(port+1); //1 based port no
     return USB_SyncSendRequest(pDevice, &req, NULL) == 0;
 }
 
@@ -45,7 +49,8 @@ static uint32_t USB_HUB_GetPortStatus(USB_Device* pDevice, uint8_t port)
     if(port > pDriverData->desc.bNbrPorts)
         return 0;
 
-    USB_Request req = {USB_REQ_READ|USB_REQ_TYPE_HUBPORT, USB_REQ_GET_STATUS, 0, (uint16_t)(port+1), 4}; //1 based port no
+    USB_Request req = {USB_REQ_READ|USB_REQ_TYPE_HUBPORT, USB_REQ_GET_STATUS, 0, 0, 4};
+    req.wIndex = (uint16_t)(port+1); //1 based port no
     uint32_t* status = (uint32_t*)DPMI_DMAMalloc(4, 4);
     uint8_t e = USB_SyncSendRequest(pDevice, &req, status);
     uint32_t sts = *status;
@@ -60,7 +65,7 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
         assert(FALSE);
         return FALSE;
     }
-    USB_HUB_PS ps = {USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)};
+    USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
     uint32_t current = ps.bm.status;
     BOOL result = TRUE;
 
@@ -73,7 +78,7 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
         delay(5);
 
         //reload states after reset
-        USB_HUB_PS ps = {USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)};
+        USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
         current = ps.bm.status;
         _LOG("HUB port %d reset %x\n", port, current);
     }
@@ -110,7 +115,7 @@ static uint16_t HUB_GetPortStatus(HCD_HUB* pHub, uint8_t port)
         assert(FALSE);
         return 0;
     }
-    USB_HUB_PS ps = {USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)};
+    USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
     uint32_t statuschange = ps.bm.change;
     uint32_t status = ps.bm.status;
     uint16_t result = 0;
@@ -195,10 +200,14 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
 
     HCD_HUB hub =
     {
-        "HUB", pDevice->HCDDevice.pHCI, &pDevice->HCDDevice, pDevice->HCDDevice.bAddress, desc.bNbrPorts,
+        "HUB", 0, 0, 0, 0,
         &HUB_GetPortStatus,
         &HUB_SetPortStatus,
     };
+    hub.pHCI = pDevice->HCDDevice.pHCI;
+    hub.pDevice = &pDevice->HCDDevice;
+    hub.bHubAddress = pDevice->HCDDevice.bAddress;
+    hub.bNumPorts = desc.bNbrPorts;
     return USB_AddHub(hub);
 }
 

@@ -214,7 +214,8 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
 
             //set boot protocol
             _LOG("HID: Set boot protocol\n");
-            USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_PROTOCOL, USB_HID_PROTOCOL_BOOT, (uint16_t)DrvIntface->bInterface, 0};
+            USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_PROTOCOL, USB_HID_PROTOCOL_BOOT, 0, 0};
+            req.wIndex = (uint16_t)DrvIntface->bInterface;
             if(DrvIntface->pDataEP[HCD_TXR] != NULL && USB_SyncSendRequest(pDevice, &req, NULL) == 0)
                 ++valid;
 
@@ -223,7 +224,8 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
             //now use non-idle to implement repeating, will save timer irq and DPMI RMCB, but use USB badwidth when a key is long pressed 
             //for an 10ms rate keyboard, the bandwith will be 8*100=800 bytes per second
             _LOG("HID Set idle\n");
-            USB_Request req2 = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(USB_HID_IDLE_INDEFINITE, USB_HID_IDLE_REPORTALL) /*indefinite until input detected, all reports*/, (uint16_t)DrvIntface->bInterface, 0};
+            USB_Request req2 = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(USB_HID_IDLE_INDEFINITE, USB_HID_IDLE_REPORTALL) /*indefinite until input detected, all reports*/, 0, 0};
+            req2.wIndex = (uint16_t)DrvIntface->bInterface;
             USB_SyncSendRequest(pDevice, &req2, NULL);
             DrvIntface->Idle = TRUE;
         }
@@ -402,7 +404,8 @@ static BOOL USB_HID_Keyboard_SetupLED(USB_Device* pDevice)
     if(BiosModifier&USB_HID_BIOS_NUMLOCK_S) LED |= USB_HID_LED_NUMLOCK;
     pDriverData->Interface[USB_HID_KEYBOARD].BIOSModifier = BiosModifier;
 
-    USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_REPORT, USB_HID_MAKE_REPORT(USB_HID_REPORT_OUTPUT, 0), (uint16_t)pDriverData->Interface[USB_HID_KEYBOARD].bInterface, 1}; //1 byte data
+    USB_Request req = {USB_REQ_WRITE | USB_REQ_TYPE_HID, USB_REQ_HID_SET_REPORT, USB_HID_MAKE_REPORT(USB_HID_REPORT_OUTPUT, 0), 0, 1}; //1 byte data
+    req.wIndex = (uint16_t)pDriverData->Interface[USB_HID_KEYBOARD].bInterface;
     USB_SendRequest(pDevice, &req, &LED, USB_HID_DummyCallback, NULL);
     return TRUE;
 }
@@ -582,13 +585,15 @@ static void USB_HID_InputKeyboard(USB_Device* pDevice)
     //change idle state
     if(!empty && kbd->Idle) //stop idle if there'is key input, we use the non-idle interrupt to do repeating.
     {
-        USB_Request req = {USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(1L, USB_HID_IDLE_REPORTALL) /*minimal*/, (uint16_t)kbd->bInterface, 0};
+        USB_Request req = {USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(1L, USB_HID_IDLE_REPORTALL) /*minimal*/, 0, 0};
+        req.wIndex = (uint16_t)kbd->bInterface;
         USB_SendRequest(pDevice, &req, NULL, USB_HID_DummyCallback, NULL);
         kbd->Idle = FALSE;
     }
     else if(empty && !kbd->Idle) //start idle if no input (no interrupts)
     {
-        USB_Request req = {USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(USB_HID_IDLE_INDEFINITE, USB_HID_IDLE_REPORTALL) /*indefinite until input detected, all reports*/, (uint16_t)kbd->bInterface, 0};
+        USB_Request req = {USB_REQ_TYPE_HID, USB_REQ_HID_SET_IDLE, USB_HID_MAKE_IDLE(USB_HID_IDLE_INDEFINITE, USB_HID_IDLE_REPORTALL) /*indefinite until input detected, all reports*/, 0, 0};
+        req.wIndex = (uint16_t)kbd->bInterface;
         USB_SendRequest(pDevice, &req, NULL, USB_HID_DummyCallback, NULL);
         kbd->Idle = TRUE;
     }

@@ -189,10 +189,11 @@ typedef struct UHCI_TransferDescriptor
     HCD_Request* pRequest;
     UHCI_TD* pNext;
     UHCI_TD* pPrev;
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     uint16_t padding[3];
     #endif
 }UHCI_TD;
+_Static_assert(sizeof(UHCI_TD)%16 == 0, "size alignment error");
 
 /*
                                                                      3 2  1 0
@@ -221,10 +222,11 @@ typedef struct
         uint16_t Reserved0 : 15;
     }Flags;
     UHCI_TD* pTail;
-    #if defined(__BC__)
+    #if defined(__BC__) || defined(__WC__)
     uint16_t padding[1];
     #endif
 }UHCI_QH;
+_Static_assert(sizeof(UHCI_QH)%16 == 0, "size alignment error");
 
 typedef struct UHCI_HostControllerDriverData
 {
