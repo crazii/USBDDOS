@@ -149,16 +149,33 @@ inline static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r = 0;
     return r;
 }
 
+uint16_t _AX_ASM();
+#pragma aux _AX_ASM = \
+value[ax]
+#define _AX _AX_ASM()
+
+uint8_t _AL_ASM();
+#pragma aux _AL_ASM = \
+value[al]
+#define _AL _AL_ASM()
+
 uint16_t _DS_ASM();
 #pragma aux _DS_ASM = \
 "mov ax, ds" \
 value[ax]
 #define _DS _DS_ASM()
 
-uint16_t _AX_ASM();
-#pragma aux _AX_ASM = \
+uint16_t _ES_ASM();
+#pragma aux _ES_ASM = \
+"mov ax, es" \
 value[ax]
-#define _AX _AX_ASM()
+#define _ES _ES_ASM()
+
+uint16_t _SS_ASM();
+#pragma aux _SS_ASM = \
+"mov ax, ss" \
+value[ax]
+#define _SS _SS_ASM()
 
 uint16_t _CS_ASM();
 #pragma aux _CS_ASM = \
@@ -166,15 +183,14 @@ uint16_t _CS_ASM();
 value[ax]
 #define _CS _CS_ASM()
 
-uint8_t _AL_ASM();
-#pragma aux _AL_ASM = \
-value[al]
-#define _AL _AL_ASM()
-
-static uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {
-    pushf; pop ax;
-} return _AX;}
-static inline uint16_t PLTFM_CPU_FLAGS() { typedef uint16_t (*VFN)(void); volatile VFN vfn = &PLTFM_CPU_FLAGS_ASM; return vfn();} //prevent optimization, need get FLAGS every time
+static __NAKED uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {
+    pushf;
+    pop ax;
+    ret
+}}
+typedef uint16_t (*PFN_PLTFM_CPU_FLAGS_ASM)(void);
+static const volatile PFN_PLTFM_CPU_FLAGS_ASM pfnPLTFM_CPU_FLAGS_ASM = &PLTFM_CPU_FLAGS_ASM;  //prevent optimization, need get FLAGS every time
+static inline uint16_t PLTFM_CPU_FLAGS() { return pfnPLTFM_CPU_FLAGS_ASM();}
 
 #define memcpy_c2d(src, dest, size) do{\
     void far* fdest = MK_FP(_DS, FP_OFF(src));\
