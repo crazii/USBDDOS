@@ -151,7 +151,7 @@ static void USB_HID_Keyboard_Finalizer(void* data);
 static void USB_HID_Mouse_GenerateSample(uint8_t byte);
 static void USB_HID_Mouse_Finalizer(void* data);
 //driver routines
-static void USB_HID_DummyCallback(HCD_Request* pRequest) {}
+static void USB_HID_DummyCallback(HCD_Request* pRequest) {unused(pRequest);}
 static void USB_HID_InputCallback(HCD_Request* pRequest);
 static void USB_HID_InputKeyboard(USB_Device* pDevice);
 static void USB_HID_InputMouse(USB_Device* pDevice);

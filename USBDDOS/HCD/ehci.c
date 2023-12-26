@@ -772,6 +772,7 @@ void EHCI_ISR_QH(HCD_Interface* pHCI, EHCI_QH* pHead, EHCI_QH* pTail)
 
 void EHCI_ISR_qTD(HCD_Interface* pHCI, EHCI_QH* pQH)
 {
+    unused(pHCI);
     // detach all inactive TD first, then issue callback, to prevent extra transferr happen in callback and break the in-processing list
     EHCI_qTD* pTD = (pQH->qTDNext.Ptr&~0x1FUL) ? (EHCI_qTD*)DPMI_P2PTR(pQH->qTDNext.Ptr&~0x1FUL) : NULL;
     EHCI_qTD* pList = NULL;

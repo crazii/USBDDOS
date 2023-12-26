@@ -351,7 +351,7 @@ typedef struct
 
 typedef struct
 {
-    //easy alignment
+    //easy alignment for 32 bit code
     uint16_t unused; //make clear of size/alignment, care about the offset (2)
     uint16_t size;
     uint32_t offset; //linear offset (page mapped)
