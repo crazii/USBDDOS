@@ -30,8 +30,17 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
 #elif defined(__BC__) || defined(__WC__)
 
 #define UNMAP_ADDR(addr) (addr)
-#define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push word ptr DPMI_Addressing) _ASM(pop ds) _ASM_END
 #define RESTORE_DS() _ASM_BEGIN _ASM(pop ds) _ASM_END
+#if defined(__BC__)
+#define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push word ptr DPMI_Addressing) _ASM(pop ds) _ASM_END
+#else //workaround ';' bug
+static __NAKED void load_ds(){ __asm{
+    push ds
+    push word ptr DPMI_Addressing
+    pop ds
+}}
+#define LOAD_DS() load_ds()
+#endif
 
 #endif
 
