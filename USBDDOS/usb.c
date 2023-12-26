@@ -28,7 +28,10 @@ _ASM_END } while(0)
 
 static void USB_IDLE_WAIT() { 
     __asm {
-        pushf; sti; nop; popf;
+        pushf;
+        sti;
+        nop;
+        popf;
     }
 }
 
@@ -176,7 +179,7 @@ void USB_Shutdown(void)
             continue;
         while(pDevice->HCDDevice.pRequest != NULL) //waiting on interrupt to handle pending request
             USB_IDLE_WAIT();
-        _LOG("CPUFLAGS: %04x\n", CPU_FLAGS()); //make sure interrupt is on (IF set)
+        //_LOG("CPUFLAGS: %04x\n", CPU_FLAGS()); //make sure interrupt is on (IF set)
         assert(CPU_FLAGS()&CPU_IFLAG);
         _LOG("Removing device at address: %d\n", address+1);
         USB_RemoveDevice(pDevice);
@@ -331,7 +334,7 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     if(pDevice->bStatus == DS_Configured)
     {
         uint8_t bClass = pDevice->Desc.bDeviceClass;
-        #if DEBUG
+        #if DEBUG && 0
         USB_ShowDeviceInfo(pDevice);
         #else
         _LOG("USB: Device class:%x, installing drivers\n", bClass);
@@ -382,13 +385,13 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
     _LOG("Removing HCD device\n");
     HCD_RemoveDevice(&pDevice->HCDDevice);
 
-    _LOG("Free device buffers\n");
+    //_LOG("Free device buffers\n");
     if(pDevice->pDeviceBuffer)
         DPMI_DMAFree(pDevice->pDeviceBuffer);
     if(pDevice->pSetup)
         DPMI_DMAFree(pDevice->pSetup);
 
-    _LOG("Free device configs\n");
+    //_LOG("Free device configs\n");
     if(pDevice->pConfigList != NULL)
     {
         for(int i = 0; i < pDevice->Desc.bNumConfigurations; ++i)
@@ -893,7 +896,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
         return FALSE;
     }
     uint16_t TotalLength = ((USB_ConfigDesc*)Buffer)->wTotalLength;
-    _LOG("USB: config descirptor total length: %d\n", TotalLength);
+    //_LOG("USB: config descirptor total length: %d\n", TotalLength);
     uint8_t* DescBuffer = Buffer;
     if(TotalLength > USB_DEVBUFFER_SIZE)
         DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 4);
