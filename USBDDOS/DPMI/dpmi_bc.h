@@ -60,7 +60,6 @@ enum
 #define DPMI_RMCB_COUNT 16
 #define DPMI_RMCB_ENTRYCODE_SIZE 6
 #define DPMI_RMCB_SIZE 4096 //total size including stack
-#define DPMI_REMAP_PIC 0 //not working properly for some drivers (which need handle rm interrupt in pm mode.)
 
 typedef void (near* DPMI_RMCB_ENTRY)(void);
 
@@ -102,7 +101,7 @@ typedef struct //real mode callback
     uint8_t RealModeIRQ8Vec;
     uint8_t ProtectedModeIRQ8Vec;
     //uint8_t Interrupt : 1; //interrupt status. don't remap PIC in int handling. make sure IF is always cleared: use pushf/popf instead of sti.
-    uint8_t NeedRemapPIC : 1;
+    uint8_t NeedRemapPIC : 1; //deprecated
     uint8_t Ready : 1;
     uint8_t Unused : 6;
     uint8_t Unused2;
@@ -302,39 +301,6 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //simplified to works only for real mode before init
 #define DPMI_PTUnmap(pt, laddr) (DPMI_V86 ? PTE_ADDR((pt)[(laddr)>>12L]) : laddr);
 
-//wiki.osdev.org/8259_PIC
-//only remap master pic. will informs the VCPI server in v86 mode.
-//use macro because the switch function need have no function calls (for simplification)
-//assume outp() is optimized to out dx,al, or better use asm.
-#if DPMI_REMAP_PIC
-#define DPMI_RemapPIC(rmcb, pm, v86) do {\
-    if(!rmcb->NeedRemapPIC) \
-        break;\
-    int master = pm ? rmcb->ProtectedModeIRQ0Vec : rmcb->RealModeIRQ0Vec; \
-    int slave = pm ? rmcb->ProtectedModeIRQ8Vec : rmcb->RealModeIRQ8Vec; \
-    int oldmask = inp(0x21); \
-    outp(0x20, 0x11); \
-    outp(0x21, master); \
-    outp(0x21, 4); \
-    outp(0x21, 1); \
-    outp(0x21, oldmask); \
-    if(!v86) \
-        break; \
-    _ASM_BEGIN \
-        _ASM(push ax) \
-        _ASM(push bx) \
-        _ASM(push cx) \
-        _ASM2(mov bx, master) \
-        _ASM2(mov cx, slave) \
-        _ASM2(mov ax, 0xDE0B) \
-        _ASM(call fword ptr ds:[.RMCB_VCPIInterface]) \
-        _ASM(pop cx)\
-        _ASM(pop bx)\
-        _ASM(pop ax)\
-    _ASM_END \
-} while(0)
-#endif
-
 #define DPMI_EnableA20() do { \
     while(inp(0x64) & 2)\
     outp(0x64, 0xd1);\
@@ -392,15 +358,6 @@ static void far DPMI_DirectProtectedMode()
         _ASM2(mov gs, ax)
     _ASM_END
 
-#if DPMI_REMAP_PIC
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-    #pragma warn -rch //unreachable code
-    #pragma warn -ccc //condition is always true/false
-    DPMI_RemapPIC(rmcb, TRUE, FALSE);
-    #pragma warn .rch
-    #pragma warn .ccc
-#endif
-
     _ASM_BEGIN
         _ASM(popf)
         _ASM(pop ebx)
@@ -420,15 +377,6 @@ static void far DPMI_DirectRealMode()
 
     GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
     nullgdt.offset = 0; nullgdt.size = 0;
-
-#if DPMI_REMAP_PIC
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0]
-    #pragma warn -rch
-    #pragma warn -ccc
-    DPMI_RemapPIC(rmcb, FALSE, FALSE);
-    #pragma warn .rch
-    #pragma warn .ccc
-#endif
 
     _ASM_BEGIN
         _ASM(lgdt fword ptr nullgdt+2)
@@ -530,6 +478,7 @@ uint32_t __CDECL DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
     }
     #endif
     /*//fill the un-inited table entry if VCPI didn't init them all
+    //note: now allowed by VCPI spec
     for(uint32_t i = PageTable0Offset; i < 1024; ++i)
     {
         PTE pte = {0};
@@ -570,7 +519,7 @@ static BOOL DPMI_InitVCPI()
     DPMI_Temp->PageTalbeHimem = NULL;   //mapped for himem
     DPMI_Temp->XMSPageHandle = NULL; //page table for physical maps
     //prepare paging, used dos malloc to save space for the driver. it will be freed on TSR (execept interrupt handler needed)
-    DPMI_Temp->PageMemory = (uint16_t)DPMI_DOSMalloc((VCPI_PAGING_MEM_SIZE+15)>>4L);
+    DPMI_Temp->PageMemory = (uint16_t)DPMI_HighMalloc((VCPI_PAGING_MEM_SIZE+15)>>4L, FALSE);
     _LOG("Page memory: %08x\n", DPMI_Temp->PageMemory);
     if(DPMI_Temp->PageMemory == 0)
     {
@@ -709,14 +658,6 @@ static void far DPMI_VCPIProtectedMode()
         _ASM(push cx)
     _ASM_END
 
-#if DPMI_REMAP_PIC
-    #pragma warn -rch
-    #pragma warn -ccc
-    DPMI_RemapPIC(rmcb, TRUE, TRUE); //note: remap PIC after switch to PM & before popf
-    #pragma warn .rch
-    #pragma warn .ccc
-#endif
-
     _ASM_BEGIN
         _ASM(pop bx)
 
@@ -737,14 +678,6 @@ static void __NAKED DPMI_VCPIProtectedModeEnd() {}
 static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,cs=SEL_RMCB_CS*8
 {
     //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
-
-#if DPMI_REMAP_PIC
-    #pragma warn -rch
-    #pragma warn -ccc
-    DPMI_RemapPIC(rmcb, FALSE, TRUE); //note: remap PIC before switch to RM
-    #pragma warn .rch
-    #pragma warn .ccc
-#endif
 
     _ASM_BEGIN
         _ASM(push ebx)

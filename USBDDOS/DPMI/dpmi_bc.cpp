@@ -81,8 +81,8 @@ static BOOL DPMI_InitProtectedMode()
     _LOG("Himem data setup ready.\n");
 
     //phase 2: return to real mode, and perform the switch again using new himem data
-    DPMI_DOSFree(DPMI_Temp->PageMemory);
-    DPMI_DOSFree(DPMI_Temp->TempMemoryHandle);
+    DPMI_HighFree(DPMI_Temp->PageMemory);
+    DPMI_HighFree(DPMI_Temp->TempMemoryHandle);
     DPMI_Temp = NULL;
 
     DPMI_SwitchProtectedMode(LinearDS); //final PM and also pre-test the adjustment above.
@@ -349,26 +349,35 @@ void DPMI_Init(void)
     DPMI_V86 = DPMI_IsV86();
     DPMI_PM = 0;
 
-    uint32_t TempMemory = DPMI_DOSMalloc((sizeof(DPMI_TempData)+15)>>4);
-    DPMI_Temp = (DPMI_TempData far*)MK_FP(TempMemory, 0);
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
+    uint32_t TempMemory = DPMI_HighMalloc((sizeof(DPMI_TempData)+15)>>4, FALSE);
+
     if(TempMemory == 0 || DPMI_RmcbMemory == 0)
     {
+        if(DPMI_RmcbMemory) DPMI_HighFree(DPMI_RmcbMemory);
+        if(TempMemory) DPMI_HighFree(TempMemory);
         printf("Error: failed allocating memory.\n");
         exit(-1);
     }
+
+    DPMI_Temp = (DPMI_TempData far*)MK_FP(TempMemory, 0);
     //pre allocate XMS memory. CS not used for now, use it on TSR
     DPMI_XMSHimemHandle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
-    /*if(DPMI_SystemDS + 128L*1024L < 0x400000L) //align to 4M (1st page table)
+
+    if(DPMI_V86) //since we need 1:1 map of memory, and VCPI spec doesn't allow modify the first page table, we need allocate memory above 4M
     {
-        if( XMS_Realloc(DPMI_XMSHimemHandle, (0x400000L-DPMI_SystemDS)/1024, &DPMI_SystemDS))
+        if(DPMI_SystemDS < 0x400000L) //align to 4M (1st page table)
         {
-            uint16_t handle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
-            XMS_Free(DPMI_XMSHimemHandle);
-            DPMI_XMSHimemHandle = handle;
+            if( XMS_Realloc(DPMI_XMSHimemHandle, (0x400000L-DPMI_SystemDS)/1024, &DPMI_SystemDS))
+            {
+                uint16_t handle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
+                //XMS_Free(DPMI_XMSHimemHandle); //don't free, waste them all. so that all later xms alloc will be above 4M.
+                DPMI_XMSHimemHandle = handle;
+            }
         }
-    }*/
+    }
+
     if(DPMI_XMSHimemHandle == 0)
     {
         printf("Error: unable to allocate XMS memory.\n");
