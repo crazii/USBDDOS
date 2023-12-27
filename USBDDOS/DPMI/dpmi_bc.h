@@ -55,6 +55,17 @@ enum
 #define SEL_TOTAL 15
 #endif
 
+typedef struct //layout required by VCPI. do not change
+{
+    uint32_t CR3; //page directory
+    uint32_t GDTR_linear;
+    uint32_t IDTR_linear;
+    uint16_t LDT_Selector;
+    uint16_t TSS_Selector;
+    uint32_t EIP;
+    uint32_t CS;
+}DPMI_VCPIClientStruct;
+
 #define DPMI_RMCB_STACK_SIZE 128 //for switching mode
 #define DPMI_RMCB_TRASNLATION_STACK_SIZE 512 //need more of them to support reentrance (translation to RM, RMCB to PM, translation to RM ...)
 #define DPMI_RMCB_COUNT 16
@@ -79,46 +90,44 @@ typedef struct
 //4. rm => pm (allocated user call backs)
 typedef struct //real mode callback
 {
-    IDTR RMCB_OldIDTR;
-    GDTR RMCB_Gdtr; //the RMCB_ prefix is added to prevent ambiguous name for ASM
-    IDTR RMCB_Idtr;
-    uint32_t LinearDS; //initial ds
-    uint32_t CR3;
-    uint32_t RMCB_VCPIInterface; //used in V86
-    uint16_t RMCB_VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
+    //FIXED OFFSET BEGIN used for inline asm
+    IDTR OldIDTR;
+    GDTR NullGDTR;
+    GDTR GDTR; //the RMCB_ prefix is added to prevent ambiguous name for ASM
+    IDTR IDTR;
+
+    uint32_t CR3; //reserved for raw mode (xms mode) paging.
+
+    DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
+    DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
+
     uint16_t SwitchPM; //function offset
     uint16_t SwitchRM; //function offset
     uint16_t Translation; //function offset: PM2RM translation
+
     uint16_t PM_SP; //stack pointer
     uint16_t PM_SS; //stack segment. must follows PM_SP
+
     uint16_t RM_SP; //fixed stack for translation, temporary, do not save any thing on it after mode switch
     uint16_t RM_SEG; //real mode segment of RMCB (DS=CS=SS), //must follows RM_SP, as an SS
 
+    uint32_t VcpiInterface; //used in V86
+    uint16_t VcpiInterfaceCS; //grouped with VcpiInterface as a farcall, don't break
+    DPMI_VCPIClientStruct VcpiClient;
+    uint32_t VcpiClientAddr; //linear address of VcpiClient
+
+    //add new fixed offset for inline asm here
+    //FIXED OFFSET END
+
+    uint32_t LinearDS; //initial ds
     uint16_t TranslationSP;
     uint16_t Size;
     uint8_t RealModeIRQ0Vec;
     uint8_t ProtectedModeIRQ0Vec;
     uint8_t RealModeIRQ8Vec;
     uint8_t ProtectedModeIRQ8Vec;
-    //uint8_t Interrupt : 1; //interrupt status. don't remap PIC in int handling. make sure IF is always cleared: use pushf/popf instead of sti.
-    uint8_t NeedRemapPIC : 1; //deprecated
-    uint8_t Ready : 1;
-    uint8_t Unused : 6;
-    uint8_t Unused2;
-    DPMI_RMCB_ENTRY CommonEntry; //common entry: save context & swtich to PM to call target entry
-    DPMI_RMCBTable Table[DPMI_RMCB_COUNT];
-}DPMI_RMCB;
 
-typedef struct //layout required by VCPI. do not change
-{
-    uint32_t CR3; //page directory
-    uint32_t gdtr_linear;
-    uint32_t idtr_linear;
-    uint16_t ldt_selector;
-    uint16_t tss_selector;
-    uint32_t EIP;
-    uint32_t CS;
-}DPMI_VCPIClientStruct;
+}DPMI_RMCB;
 
 #if defined(__BC__)
 
@@ -184,38 +193,55 @@ _Static_assert(DPMI_REG_OFF_IP == offsetof(DPMI_REG, w.ip), "constant error");
 _Static_assert(DPMI_REG_OFF_SS == offsetof(DPMI_REG, w.ss), "constant error");
 _Static_assert(DPMI_REG_OFF_SP == offsetof(DPMI_REG, w.sp), "constant error");
 
-#define RMCB_OFF_OldIDTR 2 //2: extra padding
-#define RMCB_OFF_GDTR 10
-#define RMCB_OFF_IDTR 18
-#define RMCB_OFF_VCPIInterface 32
-#define RMCB_OFF_SwitchPM 38
-#define RMCB_OFF_SwitchRM 40
-#define RMCB_OFF_Translation 42
-#define RMCB_OFF_PMSP 44
-#define RMCB_OFF_RMSP 48
-#define RMCB_OFF_RMSEG 50
-#define RMCB_OFF_CommonEntry 62
-#define RMCB_OFF_Table 64
-_Static_assert(RMCB_OFF_OldIDTR == offsetof(DPMI_RMCB, RMCB_OldIDTR) + 2, "constant error"); //2: extra padding
-_Static_assert(RMCB_OFF_GDTR == offsetof(DPMI_RMCB, RMCB_Gdtr) + 2, "constant error");
-_Static_assert(RMCB_OFF_IDTR == offsetof(DPMI_RMCB, RMCB_Idtr) + 2, "constant error");
-_Static_assert(RMCB_OFF_VCPIInterface == offsetof(DPMI_RMCB, RMCB_VCPIInterface), "constant error");
+#define DPMI_REG_SIZE 50
+_Static_assert(DPMI_REG_SIZE == sizeof(DPMI_REG), "error constant");
+
+#define RMCB_TABLE_ENTRY_SIZE 10
+_Static_assert(RMCB_TABLE_ENTRY_SIZE == sizeof(DPMI_RMCBTable), "error constant");
+
+#define DPMI_SIZEOF_GDT 8
+_Static_assert(DPMI_SIZEOF_GDT == sizeof(GDT), "error constant");
+
+#define VCPI_SIZEOF_CLIENTSTRUCT 24
+_Static_assert(VCPI_SIZEOF_CLIENTSTRUCT == sizeof(DPMI_VCPIClientStruct), "constant error");
+
+#define VCPI_CLIENTSTRUCT_OFF_EIP 16
+_Static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP), "constant error");
+
+
+#define RMCB_OFF_OldIDTR 2 //+2: extra padding
+#define RMCB_OFF_NullGDTR 10 //+2: extra padding
+#define RMCB_OFF_GDTR 18 //+2: extra padding
+#define RMCB_OFF_IDTR 26
+#define RMCB_OFF_CR3 32
+#define RMCB_OFF_CommonEntry 36
+#define RMCB_OFF_Table 38
+#define RMCB_OFF_SwitchPM 198
+#define RMCB_OFF_SwitchRM 200
+#define RMCB_OFF_Translation 202
+#define RMCB_OFF_PMSP 204
+#define RMCB_OFF_RMSP 208
+#define RMCB_OFF_RMSEG 210
+#define RMCB_OFF_VcpiInterface 212
+#define RMCB_OFF_VcpiClient 218
+#define RMCB_OFF_VcpiClientAddr 242
+
+_Static_assert(RMCB_OFF_OldIDTR == offsetof(DPMI_RMCB, OldIDTR) + 2, "constant error"); //2: extra padding
+_Static_assert(RMCB_OFF_NullGDTR == offsetof(DPMI_RMCB, NullGDTR) + 2, "constant error"); //2: extra padding
+_Static_assert(RMCB_OFF_GDTR == offsetof(DPMI_RMCB, GDTR) + 2, "constant error");
+_Static_assert(RMCB_OFF_IDTR == offsetof(DPMI_RMCB, IDTR) + 2, "constant error");
+_Static_assert(RMCB_OFF_CR3 == offsetof(DPMI_RMCB, CR3), "constant error");
+_Static_assert(RMCB_OFF_CommonEntry == offsetof(DPMI_RMCB, CommonEntry), "constant error");
+_Static_assert(RMCB_OFF_Table == offsetof(DPMI_RMCB, Table), "constant error");
 _Static_assert(RMCB_OFF_SwitchPM == offsetof(DPMI_RMCB, SwitchPM), "constant error");
 _Static_assert(RMCB_OFF_SwitchRM == offsetof(DPMI_RMCB, SwitchRM), "constant error");
 _Static_assert(RMCB_OFF_Translation == offsetof(DPMI_RMCB, Translation), "constant error");
 _Static_assert(RMCB_OFF_PMSP == offsetof(DPMI_RMCB, PM_SP), "constant error");
 _Static_assert(RMCB_OFF_RMSP == offsetof(DPMI_RMCB, RM_SP), "constant error");
 _Static_assert(RMCB_OFF_RMSEG == offsetof(DPMI_RMCB, RM_SEG), "constant error");
-_Static_assert(RMCB_OFF_CommonEntry == offsetof(DPMI_RMCB, CommonEntry), "constant error");
-_Static_assert(RMCB_OFF_Table == offsetof(DPMI_RMCB, Table), "constant error");
-
-#define DPMI_REG_SIZE 50
-_Static_assert(DPMI_REG_SIZE == sizeof(DPMI_REG), "error constant");
-#define RMCB_TABLE_SIZE 10
-_Static_assert(RMCB_TABLE_SIZE == sizeof(DPMI_RMCBTable), "error constant");
-
-#define VCPI_CLIENTSTRUCT_OFF_EIP 16
-_Static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP), "constant error");
+_Static_assert(RMCB_OFF_VcpiInterface == offsetof(DPMI_RMCB, VcpiInterface), "constant error");
+_Static_assert(RMCB_OFF_VcpiClient == offsetof(DPMI_RMCB, VcpiClient), "constant error");
+_Static_assert(RMCB_OFF_VcpiClientAddr == offsetof(DPMI_RMCB, VcpiClientAddr), "constant error");
 
 //default descriptors
 static const uint32_t DPMI_CodeDesc[2] = {0x0000FFFF, 0x000F9A00};
@@ -224,7 +250,6 @@ static const uint32_t DPMI_Data4GDesc[2] = {0x0000FFFF, 0x00CF9200}; //4G ds, Gr
 _Static_assert(sizeof(DPMI_Data4GDesc) == sizeof(GDT), "size error");
 _Static_assert(sizeof(DPMI_DataDesc) == sizeof(GDT), "size error");
 _Static_assert(sizeof(DPMI_CodeDesc) == sizeof(GDT), "size error");
-
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
 {
@@ -243,8 +268,8 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
     uint8_t NeedRemapPIC;
 
     //below should be NULL if not v86
-    uint32_t VCPIInterface; //used in V86
-    uint16_t VCPIInterfaceCS; //grouped with VCPIInterface as a farcall, don't break
+    uint32_t VcpiInterface; //used in V86
+    uint16_t VcpiInterfaceCS; //grouped with VcpiInterface as a farcall, don't break
     uint16_t PageMemory; //dos alloc handle
     uint32_t PageTable0LAddr;
     uint32_t RMCBLAddr;
@@ -301,36 +326,33 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 //simplified to works only for real mode before init
 #define DPMI_PTUnmap(pt, laddr) (DPMI_V86 ? PTE_ADDR((pt)[(laddr)>>12L]) : laddr);
 
-#define DPMI_EnableA20() do { \
-    while(inp(0x64) & 2)\
-    outp(0x64, 0xd1);\
-    while(inp(0x64) & 2)\
-    outp(0x60, 0xdf);\
-    while(inp(0x64) & 2)\
-    outp(0x64, 0xff);\
-} while(0)
-
 //////////////////////////////////////////////////////////////////////////////
 //direct (raw) mode
 //////////////////////////////////////////////////////////////////////////////
-
-static void far DPMI_DirectProtectedMode()
+#pragma option -k-
+static void __NAKED far DPMI_DirectProtectedMode()
 {
     _ASM_BEGIN
         _ASM(push ebx) //the C code uses bx but never restore it
         _ASM(pushf)
         _ASM(cli)
-    _ASM_END
 
-    DPMI_EnableA20(); //no function calls for simplification
+        //XMS global enable A20
+        _ASM(call XMS_EnableA20)
+        _ASM2(test al, al)
+        _ASM(je Enable20Done)
+        _ASM(push 1)
+        _ASM(call exit)
+    _ASMLBL(Enable20Done:)
 
-    _ASM_BEGIN
         _ASM(sidt fword ptr ds:[RMCB_OFF_OldIDTR]);//';' is added to work around vscode highlight problem
         _ASM(lgdt fword ptr ds:[RMCB_OFF_GDTR]);
         _ASM(lidt fword ptr ds:[RMCB_OFF_IDTR]);
         _ASM(push SEL_RMCB_CS*8)
 #if defined(__BC__)
         _ASM2(mov ax, offset reload_cs)
+        _ASM2(sub ax, offset DPMI_DirectProtectedMode)
+        _ASM2(add ax, ds:[RMCB_OFF_SwitchPM]);
 #else
         _ASM(call hack)
         _ASM(jmp reload_cs)
@@ -342,8 +364,6 @@ static void far DPMI_DirectProtectedMode()
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM2(sub ax, offset DPMI_DirectProtectedMode)
-        _ASM2(add ax, ds:[RMCB_OFF_SwitchPM]);
         _ASM(push ax)
         _ASM2(mov eax, cr0)
         _ASM2(or al, 0x1)      //PE
@@ -361,29 +381,28 @@ static void far DPMI_DirectProtectedMode()
     _ASM_BEGIN
         _ASM(popf)
         _ASM(pop ebx)
+        _ASM(retf)
     _ASM_END
 }
-#pragma option -k-
-static void __NAKED DPMI_DirectProtectedModeEnd() {}
-#pragma option -k
 
-static void far DPMI_DirectRealMode()
+static void __NAKED DPMI_DirectProtectedModeEnd() {}
+
+static void __NAKED far DPMI_DirectRealMode()
 {
     _ASM_BEGIN
-        _ASM(push ebx) //the C code uses bx but never restore it
+        _ASM(push ax)
         _ASM(pushf)
         _ASM(cli)
     _ASM_END
 
-    GDTR nullgdt; // = {0}; call BC builtin and freeze - no function calls!
-    nullgdt.offset = 0; nullgdt.size = 0;
-
     _ASM_BEGIN
-        _ASM(lgdt fword ptr nullgdt+2)
+        _ASM(lgdt fword ptr ds:[RMCB_OFF_NullGDTR]); //load null gdt
         _ASM(lidt fword ptr ds:[RMCB_OFF_OldIDTR]);
         _ASM(push word ptr ds:[RMCB_OFF_RMSEG]);
 #if defined(__BC__)
         _ASM2(mov ax, offset reload_cs2)
+        _ASM2(sub ax, offset DPMI_DirectRealMode)
+        _ASM2(add ax, ds:[RMCB_OFF_SwitchRM]);
 #else
         _ASM(call hack)
         _ASM(jmp reload_cs2)
@@ -395,8 +414,6 @@ static void far DPMI_DirectRealMode()
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM2(sub ax, offset DPMI_DirectRealMode)
-        _ASM2(add ax, ds:[RMCB_OFF_SwitchRM]);
         _ASM(push ax)
         _ASM2(mov eax, cr0)
         _ASM2(and al, 0xFE)
@@ -411,10 +428,19 @@ static void far DPMI_DirectRealMode()
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
         _ASM(popf)
-        _ASM(pop ebx)
+        _ASM(pop bx)
+        _ASM(pop ax)
+
+        //XMS global enable A20
+        _ASM(call XMS_DisableA20)
+        _ASM2(test al, al)
+        _ASM(je Disable20Done)
+        _ASM(push 1)
+        _ASM(call exit)
+    _ASMLBL(Disable20Done:)
+        _ASM(retf)
     _ASM_END
 }
-#pragma option -k-
 static void __NAKED DPMI_DirectRealModeEnd() {}
 #pragma option -k
 
@@ -491,7 +517,7 @@ uint32_t __CDECL DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
 static BOOL DPMI_InitVCPI()
 {
     assert(DPMI_Temp);
-    if(DPMI_Temp->VCPIInterface)
+    if(DPMI_Temp->VcpiInterface)
         return TRUE;
 
     volatile short VCPIPresent = FALSE;
@@ -564,8 +590,8 @@ static BOOL DPMI_InitVCPI()
     Gdt[SEL_TSS].accessed = 1;
     Gdt[SEL_TSS].present = 1;
 
-    DPMI_Temp->VCPIInterface = DPMI_GetVCPIInterface(DPMI_Temp->PageTable0, &Gdt[SEL_VCPI_CS]);
-    DPMI_Temp->VCPIInterfaceCS = SEL_VCPI_CS*8;
+    DPMI_Temp->VcpiInterface = DPMI_GetVCPIInterface(DPMI_Temp->PageTable0, &Gdt[SEL_VCPI_CS]);
+    DPMI_Temp->VcpiInterfaceCS = SEL_VCPI_CS*8;
 
     uint32_t pt0 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
     _LOG("Page table 0: %08lx %08lx\n", pt0, DPMI_Ptr16ToLinear(DPMI_Temp->PageTable0));
@@ -599,24 +625,12 @@ static BOOL DPMI_InitVCPI()
     return TRUE;
 }
 
-static void far DPMI_VCPIProtectedMode()
+#pragma option -k-
+static void __NAKED far DPMI_VCPIProtectedMode()
 {
-    _ASM_BEGIN 
-        _ASM(push ebx)
-    _ASM_END
-
-    DPMI_RMCB* rmcb = (DPMI_RMCB*)0; //ds:[0], ds should be FP_SEG(rmcb) or rmcb->RM_SEG.
-    DPMI_VCPIClientStruct ClientStruct; //= {0}; will call BC helper function but we cannot do that
-    ClientStruct.CR3 = rmcb->CR3;
-    ClientStruct.gdtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Gdtr)+2;
-    ClientStruct.idtr_linear = DPMI_Ptr16ToLinear(&rmcb->RMCB_Idtr)+2;
-    ClientStruct.ldt_selector = SEL_LDT*8;
-    ClientStruct.tss_selector = SEL_TSS*8;
-    ClientStruct.CS = SEL_RMCB_CS*8;
-    uint32_t ClientStructLAddr = DPMI_Ptr16ToLinear(&ClientStruct);
-
     //note: DO NOT access global data, since it's executed in isolated real mode segment
     _ASM_BEGIN
+        _ASM(push ebx)
         _ASM(push esi)
         _ASM(pushf)
         _ASM(cli)
@@ -624,6 +638,8 @@ static void far DPMI_VCPIProtectedMode()
         _ASM2(xor ecx, ecx)
 #if defined(__BC__)
         _ASM2(mov cx, offset VCPI_PMDone) //mov ebx, offset _VCPI_PMDone //linking error
+        _ASM2(sub cx, offset DPMI_VCPIProtectedMode)
+        _ASM2(add cx, ds:[RMCB_OFF_SwitchPM]);
 #else
         _ASM(call hack)
         _ASM(jmp VCPI_PMDone)
@@ -635,14 +651,9 @@ static void far DPMI_VCPIProtectedMode()
         _ASM(add cx, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM2(sub cx, offset DPMI_VCPIProtectedMode)
-        _ASM2(add cx, ds:[RMCB_OFF_SwitchPM]);
-        #if defined(__BC__)
-        _ASM2(mov dword ptr ClientStruct.EIP, ecx)
-        #else
-        _ASM2(mov dword ptr [ClientStruct+VCPI_CLIENTSTRUCT_OFF_EIP], ecx)
-        #endif
-        _ASM2(mov esi, ClientStructLAddr)
+        _ASM2(mov dword ptr ds:[RMCB_OFF_VcpiClient+VCPI_CLIENTSTRUCT_OFF_EIP], ecx);
+
+        _ASM2(mov esi, dword ptr ds:[RMCB_OFF_VcpiClientAddr]);
         _ASM2(mov ecx, esp) //save SP to CX
         _ASM2(mov ax, 0xDE0C)
         _ASM(int 0x67) //EAX, ESI, DS ES FS GS modified
@@ -669,13 +680,12 @@ static void far DPMI_VCPIProtectedMode()
 
         _ASM(pop esi)
         _ASM(pop ebx)
+        _ASM(retf)
     _ASM_END
 }
-#pragma option -k-
 static void __NAKED DPMI_VCPIProtectedModeEnd() {}
-#pragma option -k
 
-static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,cs=SEL_RMCB_CS*8
+static void __NAKED far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,cs=SEL_RMCB_CS*8
 {
     //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
 
@@ -719,7 +729,7 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
         _ASM2(mov ax, SEL_4G*8)
         _ASM2(mov ds, ax)
         _ASM2(mov ax, 0xDE0C)
-        _ASM(call fword ptr es:[RMCB_OFF_VCPIInterface]); //EAX modified (and segments loaded from stack)
+        _ASM(call fword ptr es:[RMCB_OFF_VcpiInterface]); //EAX modified (and segments loaded from stack)
     _ASMLBL(VCPI_to_real:)
         _ASM(pop ax)
         _ASM2(and ax, CPU_IFLAG) //IF
@@ -728,9 +738,10 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
 
         _ASM(popf)
         _ASM(pop ebx)
+        _ASM(retf)
     _ASM_END
 }
-#pragma option -k-
+
 static void __NAKED DPMI_VCPIRealModeEnd() {}
 #pragma option -k
 
@@ -1056,7 +1067,7 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(mov bp, sp);
         _ASM2(mov ax, ss:[bp+DPMI_REG_SIZE]); //caller IP (RMCB entry)
         _ASM2(sub bp, dx)
-        _ASM2(mov cx, RMCB_TABLE_SIZE) //optmized as imm
+        _ASM2(mov cx, RMCB_TABLE_ENTRY_SIZE) //optmized as imm
         _ASM2(sub ax, RMCB_OFF_Table) //.Table == offsetof(DPMI_RMCB, Table)
         _ASM2(xor dx, dx)
         _ASM(div cx)
@@ -1338,13 +1349,12 @@ static void DPMI_SetupRMCB()
     memset(buff, 0, DPMI_RMCB_SIZE);
     DPMI_RMCB rmcb;
     memset(&rmcb, 0, sizeof(rmcb));
-    rmcb.RMCB_Gdtr = DPMI_Temp->gdtr;
-    rmcb.RMCB_Idtr = DPMI_Temp->idtr;
+    rmcb.GDTR = DPMI_Temp->gdtr;
+    rmcb.IDTR = DPMI_Temp->idtr;
+    rmcb.CR3 =  DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)); //in case DPMI_Temp->PageDir is in UMB (already mapped). CR3 need physical addr.
+    rmcb.VcpiInterface = DPMI_Temp->VcpiInterface;
+    rmcb.VcpiInterfaceCS = DPMI_Temp->VcpiInterfaceCS;
     rmcb.LinearDS = DPMI_Temp->LinearDS;
-    rmcb.RMCB_VCPIInterface = DPMI_Temp->VCPIInterface;
-    rmcb.RMCB_VCPIInterfaceCS = DPMI_Temp->VCPIInterfaceCS;
-    rmcb.CR3 = DPMI_PTUnmap(DPMI_Temp->PageTable0, DPMI_Ptr16ToLinear(DPMI_Temp->PageDir)); //in case DPMI_Temp->PageDir is in UMB (already mapped). CR3 need physical addr.
-    rmcb.NeedRemapPIC = DPMI_Temp->NeedRemapPIC;
     rmcb.RealModeIRQ0Vec = DPMI_Temp->RealModeIRQ0Vec;
     rmcb.ProtectedModeIRQ0Vec = DPMI_Temp->ProtectedModeIRQ0Vec;
     rmcb.RealModeIRQ8Vec = DPMI_Temp->RealModeIRQ8Vec;
@@ -1407,10 +1417,19 @@ static void DPMI_SetupRMCB()
     DPMI_Rmcb->RM_SP = offset + DPMI_RMCB_STACK_SIZE;
     DPMI_Rmcb->RM_SEG = segment;
 
+    DPMI_Rmcb->VcpiClient.CR3 = rmcb.CR3;
+    DPMI_Rmcb->VcpiClient.GDTR_linear = DPMI_Ptr16ToLinear(&DPMI_Rmcb->GDTR)+2;
+    DPMI_Rmcb->VcpiClient.IDTR_linear = DPMI_Ptr16ToLinear(&DPMI_Rmcb->IDTR)+2;
+    DPMI_Rmcb->VcpiClient.LDT_Selector = SEL_LDT*8;
+    DPMI_Rmcb->VcpiClient.TSS_Selector = SEL_TSS*8;
+    DPMI_Rmcb->VcpiClient.EIP = 0; //set on mode swtiching
+    DPMI_Rmcb->VcpiClient.CS = SEL_RMCB_CS*8;
+    DPMI_Rmcb->VcpiClientAddr = DPMI_Ptr16ToLinear(&DPMI_Rmcb->VcpiClient);
+
     //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
-    _LOG("CR3: %08lx\n", DPMI_Rmcb->CR3);
-    _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Gdtr), DPMI_Rmcb->RMCB_Gdtr.size, DPMI_Rmcb->RMCB_Gdtr.offset);
-    _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Idtr), DPMI_Rmcb->RMCB_Idtr.size, DPMI_Rmcb->RMCB_Idtr.offset);
+    _LOG("CR3: %08lx\n", DPMI_Rmcb->VcpiClient.CR3);
+    _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->GDTR), DPMI_Rmcb->GDTR.size, DPMI_Rmcb->GDTR.offset);
+    _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->IDTR), DPMI_Rmcb->IDTR.size, DPMI_Rmcb->IDTR.offset);
     free(buff);
 }
 

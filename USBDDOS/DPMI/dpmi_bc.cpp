@@ -49,13 +49,13 @@ static BOOL DPMI_InitProtectedMode()
 
     //_LOG("Copy IDT.\n");
     DPMI_CopyLinear(DPMI_SystemDS + offset, IDTLAddr, IDTSize);
-    DPMI_Rmcb->RMCB_Idtr.offset = DPMI_SystemDS + offset;
+    DPMI_Rmcb->IDTR.offset = DPMI_SystemDS + offset;
     offset += IDTSize;
 
     //we're 1:1 mapped, linear address of gdt/idt is the same physical address
     //_LOG("Copy GDT.\n");
     DPMI_CopyLinear(DPMI_SystemDS + offset, GDTLAddr, GDTSize);
-    DPMI_Rmcb->RMCB_Gdtr.offset = DPMI_SystemDS + offset;
+    DPMI_Rmcb->GDTR.offset = DPMI_SystemDS + offset;
     offset += GDTSize;
 
     if(DPMI_V86)
@@ -64,6 +64,7 @@ static BOOL DPMI_InitProtectedMode()
         offset = align(DPMI_SystemDS + offset, 4096) - DPMI_SystemDS; //BUGFIX DPMI_Rmcb->CR3 need align to 4K not offset or initial memory
         DPMI_CopyLinear(DPMI_SystemDS + offset, PageDirLAddr, VCPI_PAGING_MEM_SIZE);
         DPMI_Rmcb->CR3 = DPMI_SystemDS + offset; //physical addr
+        DPMI_Rmcb->VcpiClient.CR3 = DPMI_Rmcb->CR3;
         DPMI_4MPageTableLAddr = Page4MLAddr;
         uint32_t XMSLAddr = DPMI_Rmcb->CR3 + PageXMSOffset;
         uint32_t XMS2LAddr = DPMI_Rmcb->CR3 + PageXMS2Offset;
@@ -408,7 +409,6 @@ void DPMI_Init(void)
     DPMI_SetupIDT();
     DPMI_SetupPaging();
     DPMI_SetupRMCB();
-    DPMI_Rmcb->Ready = TRUE;
 
     if(!DPMI_InitProtectedMode())
     {

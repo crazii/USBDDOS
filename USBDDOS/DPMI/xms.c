@@ -159,6 +159,34 @@ BOOL XMS_Free(uint16_t handle)
     return r.w.ax == 1;
 }
 
+BOOL XMS_EnableA20()
+{
+    if(!XMS_Init())
+    {
+        assert(FALSE);
+        return FALSE;
+    }
+
+    DPMI_REG r = XMSReg;
+    r.h.ah = 0x03;
+    DPMI_CallRealModeRETF(&r);
+    return r.w.ax == 1;
+}
+
+BOOL XMS_DisableA20()
+{
+    if(!XMS_IsInited())
+    {
+        assert(FALSE);
+        return FALSE;
+    }
+
+    DPMI_REG r = XMSReg;
+    r.h.ah = 0x04;
+    DPMI_CallRealModeRETF(&r);
+    return r.w.ax == 1;
+}
+
 uint16_t XMS_AllocUMB(uint16_t size16B)
 {
     DPMI_REG r;

@@ -14,6 +14,10 @@ BOOL XMS_Realloc(uint16_t handle, uint16_t newSizeKB, uint32_t* outputp addr);
 
 BOOL XMS_Free(uint16_t handle);
 
+BOOL XMS_EnableA20();
+
+BOOL XMS_DisableA20();
+
 //XMS3.0 optional
  //size in paragraphs (16 byte). return segmenet addr, or NULL if not supported or not UMB
 uint16_t XMS_AllocUMB(uint16_t size16B);
