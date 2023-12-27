@@ -232,7 +232,7 @@ BOOL USB_HID_InitDevice(USB_Device* pDevice)
     }
     DPMI_DMAFree(pDescBuffer);
 
-    #if DEBUG
+    #if DEBUG && 0
     if(pDriverData->Interface[0].Descriptors)
         DBG_DumpB((uint8_t*)pDriverData->Interface[0].Descriptors, pDriverData->Interface[0].Descriptors->bLength, NULL);
     if(pDriverData->Interface[1].Descriptors)

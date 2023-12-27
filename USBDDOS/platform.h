@@ -143,8 +143,10 @@ static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PL
 
 inline static uint32_t PLTFM_BSF(uint32_t x) { uint32_t r = 0;
     __asm {
+        push eax //better not touch high word of eax
         bsf eax, x
         mov r, eax
+        pop eax
     }
     return r;
 }
@@ -177,11 +179,24 @@ uint16_t _SS_ASM();
 value[ax]
 #define _SS _SS_ASM()
 
+uint16_t _SP_ASM();
+#pragma aux _SP_ASM = \
+value[sp]
+#define _SP _SP_ASM()
+
 uint16_t _CS_ASM();
 #pragma aux _CS_ASM = \
 "mov ax, cs" \
 value[ax]
 #define _CS _CS_ASM()
+
+#if DEBUG
+#include <dos.h>
+inline const uint16_t far* DBG_STK()
+{
+    return (uint16_t far*)MK_FP(_SS, _SP);
+}
+#endif
 
 static __NAKED uint16_t PLTFM_CPU_FLAGS_ASM(void) { __asm {
     pushf;
@@ -393,6 +408,7 @@ typedef union//bc3.1 doesn't support 32bit bitfields
         uint16_t address_high;
     }bits;
 }PDE,PTE;
+_Static_assert(sizeof(PDE) == 4, "size error");
 
 #define PDE_INIT(addr) { ((addr)&~0xFFFL) | 0x7L }
 #define PDE_ADDR(pde) ((pde).value&~0xFFFL)

@@ -123,7 +123,7 @@ typedef struct //layout required by VCPI. do not change
 
 #if defined(__BC__)
 
-//#pragma option -k-
+#pragma option -k-
 static BOOL DPMI_IsV86() //should call before init pm
 {
     _ASM_BEGIN //note: VM in eflags(V86) bit 17 never push on stack, so pushf/pop won't work
@@ -132,7 +132,7 @@ static BOOL DPMI_IsV86() //should call before init pm
     _ASM_END
     return _AX;
 }
-//#pragma option -k
+#pragma option -k
 
 #elif defined(__WC__)
 
@@ -222,6 +222,9 @@ _Static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP)
 static const uint32_t DPMI_CodeDesc[2] = {0x0000FFFF, 0x000F9A00};
 static const uint32_t DPMI_DataDesc[2] = {0x0000FFFF, 0x000F9200};
 static const uint32_t DPMI_Data4GDesc[2] = {0x0000FFFF, 0x00CF9200}; //4G ds, Granularity, 32 bit
+_Static_assert(sizeof(DPMI_Data4GDesc) == sizeof(GDT), "size error");
+_Static_assert(sizeof(DPMI_DataDesc) == sizeof(GDT), "size error");
+_Static_assert(sizeof(DPMI_CodeDesc) == sizeof(GDT), "size error");
 
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
@@ -268,7 +271,7 @@ static DPMI_RMCB far* DPMI_Rmcb; //can be accessed in PM (segment is SEL_RMCB_DS
 static DPMI_TempData far* DPMI_Temp;
 
 //convert a 16 bit ptr to linear addr
-#define DPMI_Ptr16ToLinear(ptr) ((((uint32_t)FP_SEG(ptr))<<4)+(uint32_t)FP_OFF(ptr))
+#define DPMI_Ptr16ToLinear(ptr) ((((uint32_t)FP_SEG((ptr)))<<4)+(uint32_t)FP_OFF((ptr)))
 
 void far* DPMI_LinearToPtr16(uint32_t addr)
 {
@@ -370,6 +373,7 @@ static void far DPMI_DirectProtectedMode()
         _ASM(push bx)
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
         _ASM2(sub ax, offset DPMI_DirectProtectedMode)
@@ -440,6 +444,7 @@ static void far DPMI_DirectRealMode()
         _ASM(push bx)
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
         _ASM2(sub ax, offset DPMI_DirectRealMode)
@@ -475,7 +480,7 @@ static uint16_t PageTable0Offset = 0; //offset of 4M page after VCPI init, < 102
 #define VCPI_PAGING_MEM_SIZE (16L*1024L) //4K PD, 8K page table for XMS, 4k aligment (also for DPMI_XMSPageHandle)
 
 //https://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1
-uint32_t DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
+uint32_t __CDECL DPMI_GetVCPIInterface(PTE far* First4M, GDT far* VcpiGDT)
 {
     uint16_t table_seg = FP_SEG(First4M);
     uint16_t table_off = FP_OFF(First4M);
@@ -566,6 +571,7 @@ static BOOL DPMI_InitVCPI()
     DPMI_Temp->XMSPageHandle = NULL; //page table for physical maps
     //prepare paging, used dos malloc to save space for the driver. it will be freed on TSR (execept interrupt handler needed)
     DPMI_Temp->PageMemory = (uint16_t)DPMI_DOSMalloc((VCPI_PAGING_MEM_SIZE+15)>>4L);
+    _LOG("Page memory: %08x\n", DPMI_Temp->PageMemory);
     if(DPMI_Temp->PageMemory == 0)
     {
         printf("Error: Failed to allocate memory.\n");
@@ -644,7 +650,7 @@ static BOOL DPMI_InitVCPI()
     return TRUE;
 }
 
-static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
+static void far DPMI_VCPIProtectedMode()
 {
     _ASM_BEGIN 
         _ASM(push ebx)
@@ -677,6 +683,7 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
         _ASM(push bx)
         _ASM(mov bx, cx)
         _ASM(add cx, word ptr cs:[bx+1]);
+        _ASM(add cx, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
         _ASM2(sub cx, offset DPMI_VCPIProtectedMode)
@@ -687,7 +694,7 @@ static void far DPMI_VCPIProtectedMode() //intended use struct as paramter
         _ASM2(mov dword ptr [ClientStruct+VCPI_CLIENTSTRUCT_OFF_EIP], ecx)
         #endif
         _ASM2(mov esi, ClientStructLAddr)
-        _ASM2(mov cx, sp) //save SP to CX
+        _ASM2(mov ecx, esp) //save SP to CX
         _ASM2(mov ax, 0xDE0C)
         _ASM(int 0x67) //EAX, ESI, DS ES FS GS modified
     _ASMLBL(VCPI_PMDone:)
@@ -761,6 +768,8 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
         _ASM2(mov es, ax)
 #if defined(__BC__)
         _ASM2(mov ax, offset VCPI_to_real) //mov eax, offset back_to_real //link err
+        _ASM2(sub ax, offset DPMI_VCPIRealMode)
+        _ASM2(add ax, es:[RMCB_OFF_SwitchRM]);
 #else
         _ASM(call hack)
         _ASM(jmp VCPI_to_real)
@@ -769,10 +778,9 @@ static void far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMCB_DS*8,c
         _ASM(push bx)
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM2(sub ax, offset DPMI_VCPIRealMode)
-        _ASM2(add ax, es:[RMCB_OFF_SwitchRM]);
         _ASM(push eax)    //EIP
 
         _ASM2(mov ax, SEL_4G*8)
@@ -798,7 +806,7 @@ static void __NAKED DPMI_VCPIRealModeEnd() {}
 //////////////////////////////////////////////////////////////////////////////
 
 //swtich to protected mode.
-static int16_t DPMI_SwitchProtectedMode(uint32_t LinearDS)
+static int16_t __CDECL DPMI_SwitchProtectedMode(uint32_t LinearDS)
 { //care on printf msg in mode switch, because printf will switch back and forth and cause recursion
     if(DPMI_PM)
         return DPMI_PM;
@@ -822,6 +830,7 @@ static int16_t DPMI_SwitchProtectedMode(uint32_t LinearDS)
         _ASM(mov bp, sp)
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(add bx, word ptr cs:[bx+1]);
+        _ASM(add bx, 3) //size of jmp instruction itself
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(pop bp)
 #endif
@@ -865,7 +874,7 @@ static int16_t DPMI_SwitchProtectedMode(uint32_t LinearDS)
 
 //back to real/v86 mode. this function only should be called on init or exit
 //for swtich modes in between execution, use DPMI_CallRealMode* functions.
-static void DPMI_SwitchRealMode(uint32_t LinearDS)
+static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 {
     if(!DPMI_PM)
         return;
@@ -901,6 +910,7 @@ static void DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM(mov bp, sp)
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(add bx, word ptr cs:[bx+1]);
+        _ASM(add bx, 3) //size of jmp instruction itself
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(pop bp)
 #endif
@@ -939,7 +949,7 @@ static void __NAKED DPMI_NullINTHandler()
         _ASM(iret)
     _ASM_END
 }
-static void __NAKED DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
+static void __NAKED __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
 {
     unused(RETURN_ADDR);unused(error);unused(ip);unused(cs);unused(flags);
     _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
@@ -1186,6 +1196,7 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(push bx)
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
         _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
@@ -1247,20 +1258,22 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(pop fs)
         _ASM(pop gs)
         _ASM2(add sp, 8) //cs, ip, sp, ss
+        _ASM(ret) //WC doesn't generate ret for naked function, and adding it doesn't hurt for BC
     _ASM_END
 }
-static void DPMI_RMCBCommonEntryEnd() {}
-#pragma option -k
+static void __NAKED DPMI_RMCBCommonEntryEnd() {}
 
-#pragma option -k-
 static void __NAKED DPMI_RMCBEntryIRET() //keep it as small as possible
 {
     _ASM_BEGIN
         _ASM(call word ptr cs:[RMCB_OFF_CommonEntry]); //word ptr=near, dword ptr=far cs16:off16, fword=far cs16:off32
-        //there's a RET generated by compiler, will be patched to IRET later.
+        //there's a RET generated by BC compiler, will be patched to IRET later.
+#if !defined(__BC__)//#if defined(__WC__) //theres a bug in BC in _asm block, the __WC__ is defined?
+        _ASM(ret)
+#endif
     _ASM_END
 }
-static void DPMI_RMCBEntryIRETEnd() {}
+static void __NAKED DPMI_RMCBEntryIRETEnd() {}
 #pragma option -k
 static const int DPMI_RMCBEntrySize = (uintptr_t)DPMI_RMCBEntryIRETEnd - (uintptr_t)DPMI_RMCBEntryIRET;
 
@@ -1294,6 +1307,7 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(push bx)
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
+        _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
         _ASM2(mov cx, directcall)
@@ -1387,8 +1401,8 @@ static void DPMI_SetupRMCB()
     assert(DPMI_RmcbMemory != 0);
     assert(DPMI_Rmcb == NULL);
 
-    char buff[DPMI_RMCB_SIZE];
-    memset(buff, 0, sizeof(buff));
+    char* buff = (char*)malloc(DPMI_RMCB_SIZE);
+    memset(buff, 0, DPMI_RMCB_SIZE);
     DPMI_RMCB rmcb;
     memset(&rmcb, 0, sizeof(rmcb));
     rmcb.RMCB_Gdtr = DPMI_Temp->gdtr;
@@ -1464,6 +1478,7 @@ static void DPMI_SetupRMCB()
     _LOG("CR3: %08lx\n", DPMI_Rmcb->CR3);
     _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Gdtr), DPMI_Rmcb->RMCB_Gdtr.size, DPMI_Rmcb->RMCB_Gdtr.offset);
     _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_Ptr16ToLinear(&DPMI_Rmcb->RMCB_Idtr), DPMI_Rmcb->RMCB_Idtr.size, DPMI_Rmcb->RMCB_Idtr.offset);
+    free(buff);
 }
 
 static int DPMI_FindEmptyRMCBTableEntry()

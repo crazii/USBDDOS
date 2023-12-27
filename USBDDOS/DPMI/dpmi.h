@@ -180,21 +180,21 @@ void DPMI_Init(void);
 //void DPMI_Shutdown(void); auto called atexit
 
 //linear memory access
-uint8_t DPMI_LoadB(uint32_t addr);
-void DPMI_StoreB(uint32_t addr, uint8_t val);
-void DPMI_MaskB(uint32_t addr, uint8_t mand, uint8_t mor);
+uint8_t __CDECL DPMI_LoadB(uint32_t addr);
+void __CDECL DPMI_StoreB(uint32_t addr, uint8_t val);
+void __CDECL DPMI_MaskB(uint32_t addr, uint8_t mand, uint8_t mor);
 
-uint16_t DPMI_LoadW(uint32_t addr);
-void DPMI_StoreW(uint32_t addr, uint16_t val);
-void DPMI_MaskW(uint32_t addr, uint16_t mand, uint16_t mor);
+uint16_t __CDECL DPMI_LoadW(uint32_t addr);
+void __CDECL DPMI_StoreW(uint32_t addr, uint16_t val);
+void __CDECL DPMI_MaskW(uint32_t addr, uint16_t mand, uint16_t mor);
 
-uint32_t DPMI_LoadD(uint32_t addr);
-void DPMI_StoreD(uint32_t addr, uint32_t val);
-void DPMI_MaskD(uint32_t addr, uint32_t mand, uint32_t mor);
+uint32_t __CDECL DPMI_LoadD(uint32_t addr);
+void __CDECL DPMI_StoreD(uint32_t addr, uint32_t val);
+void __CDECL DPMI_MaskD(uint32_t addr, uint32_t mand, uint32_t mor);
 
-void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size);
-void DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size);
-int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size);
+void __CDECL DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size);
+void __CDECL DPMI_SetLinear(uint32_t dest, uint8_t val, uint32_t size);
+int32_t __CDECL DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size);
 
 //topdown allocation of DPMI_DOSMalloc, from high address (640K/1024K downwards).
 //input: size in paragraphs (16 bytes)

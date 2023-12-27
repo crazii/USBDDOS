@@ -15,13 +15,7 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
     DPMI_Addressing = *newaddr;
 }
 
-#if defined(__WC__)
-
-#define UNMAP_ADDR(addr) (addr)
-#define LOAD_DS() 
-#define RESTORE_DS() 
-
-#elif defined(__DJ2__)
+#if defined(__DJ2__)
 
 #define UNMAP_ADDR(addr) ((DPMI_Addressing.physical) ? DPMI_L2P(addr) : addr) //must be called before ds change
 #define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push dword ptr _DPMI_Addressing) _ASM(pop ds) _ASM_END
@@ -30,16 +24,21 @@ void DPMI_SetAddressing(DPMI_ADDRESSING* inputp newaddr, DPMI_ADDRESSING* output
 #elif defined(__BC__) || defined(__WC__)
 
 #define UNMAP_ADDR(addr) (addr)
-#define RESTORE_DS() _ASM_BEGIN _ASM(pop ds) _ASM_END
+
 #if defined(__BC__)
 #define LOAD_DS() _ASM_BEGIN _ASM(push ds) _ASM(push word ptr DPMI_Addressing) _ASM(pop ds) _ASM_END
-#else //workaround ';' bug
-static __NAKED void load_ds(){ __asm{
-    push ds
-    push word ptr DPMI_Addressing
-    pop ds
-}}
-#define LOAD_DS() load_ds()
+#define RESTORE_DS() _ASM_BEGIN _ASM(pop ds) _ASM_END
+#else //workaround __asm ';' problem
+
+void LOAD_DS(void);
+#pragma aux LOAD_DS = \
+"push ds" \
+"push word ptr DPMI_Addressing" \
+"pop ds"
+void RESTORE_DS(void);
+#pragma aux RESTORE_DS = \
+"pop ds"
+
 #endif
 
 #endif

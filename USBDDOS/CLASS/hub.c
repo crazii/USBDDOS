@@ -92,7 +92,7 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
 
     if((status&USB_PORT_DISABLE) && (current&PS_ENABLE))
     {
-        _LOG("HUB ClearPortFeature: enable\n");
+        //_LOG("HUB ClearPortFeature: enable\n");
         result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_ENABLE) && result;
         delay(5);
         //assert(!(USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)&PS_ENABLE));
@@ -188,7 +188,7 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     //disable
     {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
         USB_HUB_ClearPortFeature(pDevice, i, PORT_ENABLE);}
-    _LOG("HUB ports powered & disabled.\n");
+    //_LOG("HUB ports powered & disabled.\n");
     #if 0
     {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
         _LOG("HUB port %d status: %x\n",i, USB_HUB_GetPortStatus(pDevice,i));}

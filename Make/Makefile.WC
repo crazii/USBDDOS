@@ -9,18 +9,18 @@ DEBUG = 0
 !endif
 
 CC = wcc
-CFLAGS = -za99 -w4 -e25 -zq -3 -bt=dos -ms -os -s -i..
+CFLAGS = -za99 -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
 CXX = wpp
-CXXFLAGS = -w4 -e25 -zq -3 -bt=dos -ms -os -s -i..
+CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
 
 LDFLAGS = SYS DOS &
 OPTION MAXE=25 &
 OPTION Q
 
-!ifneq DEBUG 1
+#!ifneq DEBUG 1 #code exceed 64k
 CFLAGS += -DNDEBUG
 CXXFLAGS += -DNDEBUG
-!endif
+#!endif
 
 !ifndef SILENT
 SILENT = @

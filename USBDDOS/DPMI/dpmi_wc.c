@@ -1,3 +1,6 @@
+
+//NOTE: this file is deprecated because now 16-bit real mode is used for Wactom C.
+
 #if defined(__WC__)
 #include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/DPMI/xms.h"

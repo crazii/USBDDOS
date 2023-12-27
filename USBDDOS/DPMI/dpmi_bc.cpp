@@ -159,9 +159,6 @@ static void DPMI_SetupIDT()
 static void DPMI_SetupGDT()
 {
     assert(DPMI_Temp);
-    assert(sizeof(DPMI_Data4GDesc) == sizeof(GDT));
-    assert(sizeof(DPMI_DataDesc) == sizeof(GDT));
-    assert(sizeof(DPMI_CodeDesc) == sizeof(GDT));
 
     DPMI_Temp->gdtr.offset = DPMI_Ptr16ToLinear(DPMI_Temp->gdt);
     DPMI_Temp->gdtr.size = sizeof(GDT)*SEL_TOTAL - 1;
@@ -176,7 +173,6 @@ static void DPMI_SetupGDT()
     _fmemcpy(&gdt[SEL_DS], DPMI_DataDesc, sizeof(GDT));
     gdt[SEL_DS].base_low = (uint16_t)DPMI_Temp->LinearDS;
     gdt[SEL_DS].base_middle = (uint8_t)(DPMI_Temp->LinearDS>>16L);
-    //_LOG("GDT: %08lx %08lx %08lx %08lx\n", DPMI_GDT[4], DPMI_GDT[5], DPMI_GDT[6], DPMI_GDT[7]);
 
     _fmemcpy(&gdt[SEL_SYS_DS], DPMI_DataDesc, sizeof(GDT));
     gdt[SEL_SYS_DS].base_low = (uint16_t)DPMI_SystemDS;
@@ -211,7 +207,7 @@ static void DPMI_SetupGDT()
 //////////////////////////////////////////////////////////////////////////////
 //common code
 //////////////////////////////////////////////////////////////////////////////
-static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interrupt call
+static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interrupt call
 {
     reg->w.flags &= 0x3ED7;
     reg->w.flags |= 0x3002;
@@ -268,6 +264,7 @@ static void DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256: interr
         _ASM(mov bp, sp)
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(add bx, word ptr[bx+1])
+        _ASM(add bx, 3) //size of jmp instruction itself
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(pop bp)
 #endif

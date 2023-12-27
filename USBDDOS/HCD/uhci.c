@@ -9,7 +9,7 @@
 #include "USBDDOS/DPMI/xms.h"
 #include "USBDDOS/usballoc.h"
 #include "USBDDOS/dbgutil.h"
-#if 0
+
 // reference spec: Universal Host Controller Interface (UHCI)
 // Universal Serial Bus Specification 2.0
 
@@ -257,7 +257,7 @@ uint8_t UHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
     UHCI_BuildTD(pSetupTD, length ? pDataTD : pStatusTD, CS&~CS_ActiveStatus, SETUPPID, bAddress, bEndpoint, 0, 8, DPMI_PTR2P(setup8)); //setup data toggle always 0
     pSetupTD->pRequest = pRequest;
     pQH->pTail = pEnd;
-    #if DEBUG //&& UHCI_USE_INTERRUPT
+    #if DEBUG && 0//&& UHCI_USE_INTERRUPT
     uint16_t status = inpw((uint16_t)(pDevice->pHCI->dwBaseAddress + USBSTS));
     _LOG("UHCI HC status: %x\n", status);
     _LOG("UHCI port status: %04x\n", inpw((uint16_t)(pDevice->pHCI->dwBaseAddress + PORTSC + pDevice->bHubPort * 2U)));
@@ -858,4 +858,3 @@ UHCI_QH* UHCI_GetQHFromInterval(UHCI_HCData* pHCData, uint8_t interval)
     else
         return &pHCData->QH8ms;
 }
-#endif

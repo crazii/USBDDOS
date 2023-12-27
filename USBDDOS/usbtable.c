@@ -34,7 +34,7 @@ USB_Table USBT =
 {
     //HC_Types
     {
-        /*/UHCI
+        //UHCI
         {
             0x00,
             "UHCI",
@@ -49,7 +49,7 @@ USB_Table USBT =
             OHCI_InitController,
             OHCI_DeinitController,
             OHCI_ISR,
-        },*/
+        },
         //EHCI
         {
             EHCI_PI, //0x20,
@@ -118,8 +118,12 @@ USB_Table USBT =
     {0},
     //USB_Routine
     {
+        #if USE_MSC
         USB_MSC_PreInit, USB_MSC_PostDeInit,
+        #endif
+        #if USE_HID
         USB_HID_PreInit, USB_HID_PostDeInit,
+        #endif
     },
     0,
     0,

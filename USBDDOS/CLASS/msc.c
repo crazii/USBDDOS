@@ -747,9 +747,9 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
     DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
     uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT]; //usually 26
-    uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
+    //uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
     DOS_DDH* NULHeader = (DOS_DDH*)&buf[DOS_LOL_NULDEV_HEADER];
-    _LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount); unused(DeviceCount);
+    //_LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount); unused(DeviceCount);
 
     //fill CDS
     DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //local cache
@@ -1025,7 +1025,7 @@ void USB_MSC_PreInit()
             reg.w.bx = 0;
             if(DPMI_CallRealModeRETF(&reg) == 0)
             {
-                _LOG("Drive %c Strategy OK.\n", 'A' + CDSIndex);
+                //_LOG("Drive %c Strategy OK.\n", 'A' + CDSIndex);
                 memset(&reg, 0, sizeof(reg));
                 reg.w.cs = (uint16_t)(DrvHeader>>16);
                 reg.w.ds = reg.w.cs;
@@ -1034,7 +1034,7 @@ void USB_MSC_PreInit()
                 reg.w.bx = 0;
                 if(DPMI_CallRealModeRETF(&reg) == 0 && DPMI_LoadW(DPMI_SEGOFF2L(DRSMem, offsetof(DOS_DRS, Header.Status))) == DOS_DRSS_DONEBIT)
                 {
-                    _LOG("Drive %c IntEntry OK.\n", 'A' + CDSIndex);
+                    //_LOG("Drive %c IntEntry OK.\n", 'A' + CDSIndex);
                     //uint32_t bpb = DPMI_LoadD(DPMI_SEGOFF2L(DrvMem, offsetof(DOS_DRS, BuildBPB.BPBPtr)));
                     #if DEBUG && 0
                     _LOG("Drive %c BPB:\n", 'A'+ CDSIndex);
@@ -1043,7 +1043,7 @@ void USB_MSC_PreInit()
                     DPMI_CopyLinear(DPMI_PTR2L(MSC_BPBs+CDSIndex), DPMI_SEGOFF2L(SectorBuffer, 11), sizeof(DOS_BPB));
                 }
                 else
-                    _LOG("Drive %c IntEntry: %x\n", 'A'+CDSIndex, DPMI_LoadW(DPMI_SEGOFF2L(DRSMem, offsetof(DOS_DRS, Header.Status))));
+                    ;//_LOG("Drive %c IntEntry: %x\n", 'A'+CDSIndex, DPMI_LoadW(DPMI_SEGOFF2L(DRSMem, offsetof(DOS_DRS, Header.Status))));
             }
             DPMI_HighFree(SectorBuffer);
         }
@@ -1083,7 +1083,7 @@ static BOOL USB_MSC_ReadSector(USB_Device* pDevice, uint32_t sector, uint16_t co
     return USB_MSC_IssueCommand(pDevice, &cmd, sizeof(cmd), DPMI_PTR2L(buf), pDriverData->BlockSize, HCD_TXR);
 }
 
-#if DEBUG
+#if DEBUG && 0
 void USB_MSC_Test() //dump DPB
 {
     DPMI_REG reg;
