@@ -2,12 +2,25 @@
 #define _DPMI_BC_H_
 #include <assert.h>
 #include <string.h>
-#include <stdio.h>
 #include <dos.h>
 #include <process.h>
 #include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/pic.h"
 #include "USBDDOS/dbgutil.h"
+
+#if defined(__BC__)
+#define __LIBCALL _Cdecl _FARFUNC
+#elif defined(__WC__)
+#define __LIBCALL _WCRTLINK
+#else
+#define __LIBCALL 
+#endif
+extern "C" int __LIBCALL puts(const char* str);
+extern "C" int __LIBCALL printf(const char* fmt, ...);
+#ifndef NDEBUG
+extern "C" void __LIBCALL __assertfail(char * __msg, char * __cond, char * __file, int __line);
+#endif
+extern "C" int __LIBCALL vsprintf(char* buf, const char* fmt, va_list aptr);
 
 typedef enum
 {
@@ -265,7 +278,6 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
     uint8_t ProtectedModeIRQ0Vec;
     uint8_t RealModeIRQ8Vec;
     uint8_t ProtectedModeIRQ8Vec;
-    uint8_t NeedRemapPIC;
 
     //below should be NULL if not v86
     uint32_t VcpiInterface; //used in V86
@@ -362,7 +374,7 @@ static void __NAKED far DPMI_DirectProtectedMode()
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
         _ASM(add ax, 3) //size of jmp instruction itself
-        _ASM(pop bx)
+        _ASM(pop bx) //it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM(push ax)
         _ASM2(mov eax, cr0)
@@ -412,7 +424,7 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
         _ASM(add ax, 3) //size of jmp instruction itself
-        _ASM(pop bx)
+        _ASM(pop bx) //it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM(push ax)
         _ASM2(mov eax, cr0)
@@ -649,7 +661,7 @@ static void __NAKED far DPMI_VCPIProtectedMode()
         _ASM(mov bx, cx)
         _ASM(add cx, word ptr cs:[bx+1]);
         _ASM(add cx, 3) //size of jmp instruction itself
-        _ASM(pop bx)
+        _ASM(pop bx) //it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM2(mov dword ptr ds:[RMCB_OFF_VcpiClient+VCPI_CLIENTSTRUCT_OFF_EIP], ecx);
 
@@ -722,7 +734,7 @@ static void __NAKED far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMC
         _ASM(mov bx, ax)
         _ASM(add ax, word ptr cs:[bx+1]);
         _ASM(add ax, 3) //size of jmp instruction itself
-        _ASM(pop bx)
+        _ASM(pop bx) //it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM(push eax)    //EIP
 
@@ -822,6 +834,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 {
     if(!DPMI_PM)
         return;
+    assert(DPMI_V86);
     CLIS();
     uint16_t segment = DPMI_Rmcb->RM_SEG; //save on stack. DPMI_Rmcb won't be accessible after switching mode
 
@@ -1234,6 +1247,7 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(push ds)
         _ASM2(mov bx, reg) //bp[xxx]
         _ASM(push ebx)    //save DPMI_REG ptr
+
         _ASM2(mov ax, INTn)
         _ASM2(test ah, ah)
         _ASM(jnz skip_flags)
@@ -1253,6 +1267,7 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(add ax, word ptr cs:[bx+1]);
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
+        _ASM(mov directcall, ax); //directcall=!0, it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM2(mov cx, directcall)
         _ASM2(test cx, cx)
@@ -1290,14 +1305,14 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(retf)
     _ASMLBL(callreturn:)
         //load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
-        _ASM(push ds)
-        _ASM(push ax)
-        _ASM(push bp)
+        _ASM(push ds) //ss[bp+4]
+        _ASM(push ax) //ss[bp+2]
+        _ASM(push bp) //ss[bp]
         _ASM2(mov bp, sp)
-        _ASM2(xchg dword ptr ss:[bp+6], ebx);
-        _ASM2(mov ax, ss:[bp+10]);
+        _ASM2(xchg dword ptr ss:[bp+6], ebx); //DPMI_REG ptr
+        _ASM2(mov ax, ss:[bp+10]); //pushed ds
         _ASM2(xchg ss:[bp+4], ax); //change ds back
-        _ASM2(mov ss:[bp+10], ax);
+        _ASM2(mov ss:[bp+10], ax); //store new ds
         _ASM(pop bp)
         _ASM(pop ax)
         _ASM(pop ds) //ds changed

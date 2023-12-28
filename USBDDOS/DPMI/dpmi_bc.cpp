@@ -1,5 +1,4 @@
 #include "USBDDOS/DPMI/dpmi.h"
-#if 1
 //don't use DPMI on Boarland C, instead use 16bit protected mode and keep the code and data near (no far calls/far data).
 //note: the inline assember won't reconginze 386 instructions and registers, code need compiled with -B flag (compile via assembly) in BC31
 //
@@ -7,7 +6,6 @@
 //small model, 64K+64K
 
 //the _ASM* macros are not needed since this file is intended for BC only, but stil add them to workaround the syntax inteligence problem of vscode
-#include <conio.h>
 #include <stdlib.h>
 #include <dos.h>
 #if !defined(_WIN32) && !defined(__linux__) && !defined(__WC__)//make editor happy
@@ -17,7 +15,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <assert.h>
-#include <stdio.h>
 #include "USBDDOS/DPMI/xms.h"
 #include "USBDDOS/DPMI/dpmi_bc.h"
 
@@ -109,9 +106,6 @@ static void DPMI_SetupIDT()
         DPMI_Temp->idt[i].present = 1;
     }
 
-    DPMI_Temp->NeedRemapPIC = FALSE;    //don't do remap, incompatible with TSR's interupt handling: pm interrupt handler need enter pm, if
-                                        //do remapping, the PIC are re-inited and status (IMR/ISR) are cleared. but we also need handling interrupt in pm after in pm, so the best
-                                        //way is to leave the interrupt and detect IRQ/EXC in the handler.
     DPMI_Temp->RealModeIRQ0Vec = 0x08;
     DPMI_Temp->ProtectedModeIRQ0Vec = 0x08;
     DPMI_Temp->RealModeIRQ8Vec = 0x70;
@@ -135,10 +129,7 @@ static void DPMI_SetupIDT()
         _ASM_END
 
         if(MasterVec != DPMI_Temp->RealModeIRQ0Vec) //if already remapped, just use it
-        {
             DPMI_Temp->RealModeIRQ0Vec = (uint8_t)MasterVec;
-            DPMI_Temp->NeedRemapPIC = FALSE;
-        }
         if(SlaveVec != DPMI_Temp->RealModeIRQ8Vec)
             DPMI_Temp->RealModeIRQ8Vec = (uint8_t)SlaveVec;
     }
@@ -230,10 +221,12 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
     DPMI_Rmcb->TranslationSP -= sizeof(DPMI_REG);
     uint8_t far* stackREG = (uint8_t far*)MK_FP(SEL_RMCB_DS*8, DPMI_Rmcb->TranslationSP);
     _fmemcpy(stackREG, reg, sizeof(DPMI_REG));
-    DPMI_Rmcb->TranslationSP -= DPMI_RMCB_TRASNLATION_STACK_SIZE; //reserve spece for re-entrant
+    DPMI_Rmcb->TranslationSP -= DPMI_RMCB_TRASNLATION_STACK_SIZE; //reserve space for re-entrant
 
     _ASM_BEGIN
-        _ASM(push es) _ASM(push fs) _ASM(push gs)
+        _ASM(push es)
+        _ASM(push fs)
+        _ASM(push gs)
         _ASM(push bx)
         _ASM(push bp)
         _ASM2(mov dx, ss)
@@ -264,7 +257,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM(push bp)
         _ASM(mov bp, sp)
         _ASM(xchg bx, word ptr ss:[bp+2]);
-        _ASM(add bx, word ptr[bx+1])
+        _ASM(add bx, word ptr cs:[bx+1]);
         _ASM(add bx, 3) //size of jmp instruction itself
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(pop bp)
@@ -301,10 +294,12 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
 
         _ASM(pop bp)
         _ASM(pop bx)
-        _ASM(pop gs) _ASM(pop fs) _ASM(pop es)
+        _ASM(pop gs)
+        _ASM(pop fs)
+        _ASM(pop es)
     _ASM_END
     _fmemcpy(reg, stackREG, sizeof(DPMI_REG));
-    DPMI_Rmcb->TranslationSP += sizeof(DPMI_REG) + DPMI_RMCB_TRASNLATION_STACK_SIZE;
+    DPMI_Rmcb->TranslationSP += (sizeof(DPMI_REG) + DPMI_RMCB_TRASNLATION_STACK_SIZE);
 }
 
 static void DPMI_Shutdown(void);
@@ -342,9 +337,12 @@ void DPMI_Init(void)
 {
     #if defined(__WC__)
     _DATA = _DS;
+    //sbrk(0xFFFF - FP_OFF(sbrk(0)));
     #endif
 
-    //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());//small model: static data : heap : stack
+    //small model: static data : heap : stack (BC)
+    //static data : stack (fixed size, set on wlink) : heap
+    //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
     atexit(&DPMI_Shutdown);
 
     DPMI_V86 = DPMI_IsV86();
@@ -779,7 +777,6 @@ BOOL DPMI_TSR(void)
     DPMI_Rmcb->PM_SP = 0xFFF8;
     DPMI_TSRed = TRUE;
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
-    //DPMI_Rmcb->NeedRemapPIC = FALSE; //make sure no remmaping after TSR, it might conflict with other VCPI clients
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
@@ -793,18 +790,6 @@ BOOL DPMI_TSR(void)
     DPMI_TSRed = FALSE;
     return FALSE;
 }
-
-#if defined(__BC__)
-#define __LIBCALL _Cdecl _FARFUNC
-#elif defined(__WC__)
-#define __LIBCALL _WCRTLINK
-#else
-#define __LIBCALL 
-#endif
-
-#if defined(__WC__)
-namespace std {
-#endif
 
 //PM to RM translation for debug output
 int __LIBCALL puts(const char* str)
@@ -873,21 +858,28 @@ void __LIBCALL delay(unsigned millisec)
 }
 
 #if !defined(NDEBUG)
+#if defined(__BC__)
 void __LIBCALL __assertfail(char * __msg,
                                   char * __cond,
                                   char * __file,
                                   int __line)
+#else
+void __LIBCALL _assert99(char * __msg,
+                                  char * __cond,
+                                  char * __file,
+                                  int __line)
+#endif
 {//BC's __assertfail will cause #GP, probably caused by INTn (abort) / changing segment
     if(DPMI_PM)
     {
         printf("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
         printf(__msg, __cond, __file, __line);
-        fflush(stdout);
+        //fflush(stdout);
     }
     else
     {
         printf(__msg, __cond, __file, __line);
-        fflush(stdout);
+        //fflush(stdout);
     }
     if(!DPMI_TSRed)
         exit(1);
@@ -896,14 +888,15 @@ void __LIBCALL __assertfail(char * __msg,
 }
 #endif
 
-#if defined(__WC__)
-}//namespace std
-#endif
-
 //internal used, for debug
 extern "C" BOOL DPMI_IsInProtectedMode()
 {
     return DPMI_PM;
 }
 
+#if defined(__BC__)
+uint32_t PLTFM_BSF(uint32_t x)
+{
+    uint32_t i; __asm {bsf eax, x; mov i, eax} return i;
+}
 #endif
