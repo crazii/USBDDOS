@@ -1,0 +1,57 @@
+# With thanks to https://gist.github.com/weibeld/f136048d0a82aacc063f42e684e3c494
+name: build-and-release
+on: push
+permissions:
+  contents: write
+jobs:
+  build-job:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/volkertb/debian-djgpp:v0.2
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Build project
+        run: |
+          test -f main.c
+          cd Make
+          echo $(which gcc)
+          ln -s /opt/djgpp/i586-pc-msdosdjgpp/bin/gcc /opt/djgpp/i586-pc-msdosdjgpp/bin/i586-pc-msdosdjgpp-gcc
+          make
+          find output/
+          test -f output/usbddosp.exe
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-usbddosp-executable
+          path: output/usbddosp.exe
+          retention-days: 5
+
+  publish_job:
+    # TODO: uncomment following line (and remove this TODO) once the PR is approved, just before merging to master/main
+    #if: github.event.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "release_tag=UserBuild_$(date +"%Y.%m.%d_%H-%M")" >> $GITHUB_OUTPUT
+      - name: 'Download Artifact'
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-usbddosp-executable
+      - name: Check existence of artifact
+        run: |
+          test -f output/usbddosp.exe
+      - name: Release compiled executable
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          files: |
+            output/usbddosp.exe
+          body: |
+            ## Release notes
+
+            TODO
