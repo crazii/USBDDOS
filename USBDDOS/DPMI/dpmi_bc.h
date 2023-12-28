@@ -308,10 +308,9 @@ static uint32_t DPMI_RmcbMemory;
 static DPMI_RMCB far* DPMI_Rmcb; //can be accessed in PM (segment is SEL_RMCB_DS*8)
 static DPMI_TempData far* DPMI_Temp;
 
-//convert a 16 bit ptr to linear addr
-#if defined(__BC__)
-#define DPMI_Ptr16ToLinear(ptr) ((((uint32_t)FP_SEG((ptr)))<<4)+(uint32_t)FP_OFF((ptr)))
-#else
+#if defined(__WC__) && 0
+//this method is tiny optimized than the macro method, but it uses more code spaces..
+//the macro uses 16 bit register ops and loops, maybe not efficient but compact in code size.
 uint32_t DPMI_Ptr16ToLinear(void far* ptr);
 #pragma aux DPMI_Ptr16ToLinear = \
 "push edx" \
@@ -330,6 +329,9 @@ Parm[dx ax] \
 Value[dx ax]
 #endif
 
+//convert a 16 bit far ptr to linear addr
+#define DPMI_Ptr16ToLinear(ptr) ((((uint32_t)FP_SEG((ptr)))<<4)+(uint32_t)FP_OFF((ptr)))
+//convert a linear addr to a far pointer
 void far* DPMI_LinearToPtr16(uint32_t addr)
 {
     uint32_t linearDS = ((uint32_t)_DS)<<4L;
