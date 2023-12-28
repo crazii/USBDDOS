@@ -54,6 +54,7 @@ uint16_t PIC_GetPendingInterrupts(void)
     return mask;
 }
 
+#if 0
 void PIC_RemapMaster(uint8_t vector)
 {
     CLIS();
@@ -77,6 +78,7 @@ void PIC_RemapSlave(uint8_t vector)
     outp(PIC_DATA2, oldmask);
     STIL();
 }
+#endif
 
 void PIC_MaskIRQ(uint8_t irq)
 {

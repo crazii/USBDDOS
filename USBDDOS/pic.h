@@ -26,11 +26,13 @@ uint8_t PIC_GetIRQ(void);
 
 uint16_t PIC_GetPendingInterrupts(void);
 
+#if 0
 //remap PIC, not used
 void PIC_RemapMaster(uint8_t vector);
 
 //remap PIC slave
 void PIC_RemapSlave(uint8_t vector);
+#endif
 
 //mask an irq line
 void PIC_MaskIRQ(uint8_t irq);
