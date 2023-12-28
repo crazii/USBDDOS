@@ -339,7 +339,7 @@ static __INLINE uint32_t EndianSwap32(uint32_t x) {return (x<<24) | ((x<<8)&0xFF
 #define STIL() do { if(FLTFM_IFlag) STI(); } while(0)
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 3.4.5 (3-9)
-typedef struct //segment descriptors
+typedef struct DESCRIPTOR //segment descriptors
 {
     uint16_t limit_low;
     uint16_t base_low;
@@ -367,7 +367,7 @@ typedef struct //segment descriptors
 #define IDT_GT_TASK 0x5   //task gate, offset should be 0
 #define IDT_GT_IG 0x6     //interrupt gate
 #define IDT_GT_TG 0x7     //trap gate
-typedef struct
+typedef struct _DIT
 {
     uint16_t offset_low;
     uint16_t selector;
@@ -380,7 +380,7 @@ typedef struct
     uint16_t offset_high;
 }IDT;
 
-typedef struct
+typedef struct DESC_PTR
 {
     //easy alignment for 32 bit code
     uint16_t unused; //make clear of size/alignment, care about the offset (2)
@@ -389,7 +389,7 @@ typedef struct
 }GDTR, LDTR, IDTR;
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, Charpter 4: Paging
-typedef union//bc3.1 doesn't support 32bit bitfields
+typedef union _PTE_PDE//bc3.1 doesn't support 32bit bitfields
 {
     uint32_t value;
     struct
@@ -422,7 +422,7 @@ _Static_assert(sizeof(PDE) == 4, "size error");
 #define PTE_ADDR PDE_ADDR
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, 7.2.1 (7-3)
-typedef struct
+typedef struct _TSS32
 {
     uint16_t prev;  //previous task link
     uint16_t reserved;
@@ -469,7 +469,7 @@ typedef struct
     uint32_t ssp;   //shadow stack pointer
 }TSS32;
 
-typedef struct
+typedef struct _TSS16
 {
     uint16_t prev;  //previous task link
     uint16_t sp0;

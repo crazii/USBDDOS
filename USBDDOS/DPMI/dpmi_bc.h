@@ -51,6 +51,7 @@ enum
     SEL_TOTAL,
 };
 #else
+//WC won't compile if enum used as a constant in inline asm
 #define SEL_4G 1
 #define SEL_SYS_DS 2
 #define SEL_CS 3
@@ -156,8 +157,6 @@ static BOOL DPMI_IsV86() //should call before init pm
 #pragma option -k
 
 #elif defined(__WC__)
-
-static uint16_t _DATA;
 
 static BOOL DPMI_IsV86();
 #pragma aux DPMI_IsV86 = \
@@ -295,10 +294,13 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
 extern "C" DPMI_ADDRESSING DPMI_Addressing;
 const uint32_t DPMI_XMS_Size = 192L*1024L;   //64k code+data, first 64k is system data.
 
+static uint16_t _DATA_SEG;
+static uint16_t _CODE_SEG;
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
 static uint32_t DPMI_HimemCS = 0;
 static uint32_t DPMI_HimemDS = 0;
 static uint16_t DPMI_XMSHimemHandle;
+static uint16_t DPMI_XMSBelow4MHandle;
 static uint8_t DPMI_V86;
 static uint8_t DPMI_PM;
 static uint8_t DPMI_TSRed;
@@ -307,7 +309,26 @@ static DPMI_RMCB far* DPMI_Rmcb; //can be accessed in PM (segment is SEL_RMCB_DS
 static DPMI_TempData far* DPMI_Temp;
 
 //convert a 16 bit ptr to linear addr
+#if defined(__BC__)
 #define DPMI_Ptr16ToLinear(ptr) ((((uint32_t)FP_SEG((ptr)))<<4)+(uint32_t)FP_OFF((ptr)))
+#else
+uint32_t DPMI_Ptr16ToLinear(void far* ptr);
+#pragma aux DPMI_Ptr16ToLinear = \
+"push edx" \
+"push eax" \
+"movzx eax, ax" \
+"movzx edx, dx" \
+"shl edx, 4" \
+"add edx, eax" \
+"pop eax" \
+"mov ax, dx" \
+"pop dx" \
+"shr edx, 16" \
+"push dx" \
+"pop edx" \
+Parm[dx ax] \
+Value[dx ax]
+#endif
 
 void far* DPMI_LinearToPtr16(uint32_t addr)
 {
@@ -366,6 +387,8 @@ static void __NAKED far DPMI_DirectProtectedMode()
         _ASM2(sub ax, offset DPMI_DirectProtectedMode)
         _ASM2(add ax, ds:[RMCB_OFF_SwitchPM]);
 #else
+        //thanks to joncampbell123
+        //https://github.com/open-watcom/open-watcom-v2/issues/1179#issuecomment-1868556806
         _ASM(call hack)
         _ASM(jmp reload_cs)
     _ASMLBL(hack:) //hack for watcom, not working with offset + asm label
@@ -532,7 +555,7 @@ static BOOL DPMI_InitVCPI()
     if(DPMI_Temp->VcpiInterface)
         return TRUE;
 
-    volatile short VCPIPresent = FALSE;
+    volatile BOOL VCPIPresent = FALSE;
 
     _ASM_BEGIN //check vcpi
         _ASM(push ax)
@@ -834,9 +857,10 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 {
     if(!DPMI_PM)
         return;
-    assert(DPMI_V86);
     CLIS();
+
     uint16_t segment = DPMI_Rmcb->RM_SEG; //save on stack. DPMI_Rmcb won't be accessible after switching mode
+    //_LOG("SS:SP %x:%x\n:", _DATA_SEG, _SP);
 
     DPMI_CopyLinear(LinearDS, DPMI_HimemDS, 64L*1024L); //copy data back
     _ASM_BEGIN
@@ -856,7 +880,8 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 
         _ASM2(mov ss:[bx + RMCB_OFF_PMSP], sp);
         _ASM2(mov sp, ss:[bx + RMCB_OFF_RMSP]);
-        _ASM(push _TEXT)
+        _ASM(push _DATA_SEG)
+        _ASM(push _CODE_SEG)
 #if defined(__BC__)
         _ASM(push offset SwitchRMDone)
 #else
@@ -877,7 +902,8 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM2(mov ds, ax)
         _ASM(retf)
     _ASMLBL(SwitchRMDone:)
-        _ASM2(mov ax, _DATA)
+        //_ASM2(mov ax, _DATA_SEG) //_DATA_SEG is in _DS, not accessible since DS not set
+        _ASM(pop ax) //pushed _DATA_SEG
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
         _ASM2(mov ss, ax)
@@ -892,6 +918,63 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
     DPMI_PM = PM_NONE;
     DPMI_Addressing.selector = 0;
     STIL();
+#if 0 //debug code
+    _asm
+     {
+    jmp end
+    printdx:
+        push bp
+        mov bp, sp
+        sub sp, 4
+
+        mov cx, 4
+    xword:
+        mov ax, dx
+
+        push cx
+        dec cx
+        shl cx, 2
+        shr ax, cl
+        pop cx
+
+        and ax, 0xF
+        cmp ax, 0xA
+        jae alpha
+        add ax, '0'
+        jmp savechar
+    alpha:
+        add ax, 'A'-0xA
+    savechar:
+        sub bp, cx
+        mov [bp], ax
+        add bp, cx
+        loop xword
+
+        mov cx, 4
+    pnt:
+        mov ah, 0x0E
+        sub bp, cx
+        mov al, [bp]
+        add bp, cx
+        int 0x10
+        loop pnt
+        mov sp, bp
+        pop bp
+        ret
+    end:
+        mov dx, ss
+        call printdx
+
+        mov ah,0x0E
+        mov al,':'
+        int 0x10
+
+        mov dx, sp
+        call printdx
+    looop:
+        jmp looop
+    }
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -910,11 +993,13 @@ static void __NAKED __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, shor
 {
     unused(RETURN_ADDR);unused(error);unused(ip);unused(cs);unused(flags);
     _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
+    _ASM_BEGIN
+        _ASM(ret)
+    _ASM_END
 }
-#pragma option -k
 
 #if defined(__BC__)
-#define DPMI_EXCEPT(n) static void DPMI_ExceptionHandler##n()\
+#define DPMI_EXCEPT(n) static __NAKED void DPMI_ExceptionHandler##n()\
 {\
     _ASM_BEGIN _ASM(cli) _ASM(call DPMI_DumpExcept) _ASM_END \
     printf("Exception: %02x\n", n);\
@@ -922,7 +1007,7 @@ static void __NAKED __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, shor
     else while(1);\
 }
 #else //workaround WC compiling bugs
-static void __NAKED DumpExcept() 
+static void __NAKED __CDECL DumpExcept() 
 {
     __asm cli
     __asm jmp DPMI_DumpExcept
@@ -956,9 +1041,10 @@ DPMI_EXCEPT(0x0E)
 
 #define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExceptionHandler##n)
 
-static void __NAKED DPMI_HWIRQHandlerInternal()
+static void DPMI_HWIRQHandlerInternal()
 {
     uint8_t irq = PIC_GetIRQ();
+    //_LOG("HWIRQ %d\n", irq);
     //if(irq < 16)
     {
         uint8_t vec = PIC_IRQ2VEC(irq);
@@ -982,7 +1068,7 @@ static void __NAKED DPMI_HWIRQHandler()
         _ASM2(mov bp, sp)
         _ASM2(cmp word ptr [bp+6], SEL_HIMEM_CS*8) //normal int: [bp,] ip,cs,flags, exception: [bp,] errorcode,ip,cs,flags (0x08~0x0F). not handling ring3 excptions.
         _ASM(jne NormalINT)
-        //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 avoid conflict
+        //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 to avoid conflict
         _ASM2(cmp word ptr [bp+4], SEL_HIMEM_CS*8)
         _ASM(je NormalINT)
         _ASM2(cmp word ptr [bp+4], SEL_RMCB_CS*8) //DPMI_CallRealMode

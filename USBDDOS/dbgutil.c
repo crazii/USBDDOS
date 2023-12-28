@@ -122,7 +122,7 @@ static void VGA_Print(const char *string)
 void DBG_Logv(const char* fmt, va_list aptr)
 {
     #define SIZE (int)(DUMP_BUFF_SIZE*4)
-    char* buf = (char*)malloc(SIZE); //char buf[SIZE]; //not working for WC because WC has a small stack
+    char* buf = (char*)malloc(SIZE); //char buf[SIZE]; //not working for WC because WC has a fixed stack
     int len = vsprintf(buf, fmt, aptr);
     assert(len < SIZE);
     len = min(len, SIZE-1);

@@ -106,7 +106,8 @@ BOOL XMS_Realloc(uint16_t handle, uint16_t newSizeKB, uint32_t* outputp addr)
     r.h.ah = 0x0D;    //unlock first
     r.w.dx = handle;
     DPMI_CallRealModeRETF(&r);
-    if(r.w.ax != 1)
+    result = (r.w.ax == 1);
+    if(!result)
     {
         assert(FALSE);
         return result;
@@ -118,13 +119,22 @@ BOOL XMS_Realloc(uint16_t handle, uint16_t newSizeKB, uint32_t* outputp addr)
     r.w.bx = newSizeKB;
     DPMI_CallRealModeRETF(&r);
     result = (r.w.ax == 1);
+    if(!result)
+    {
+        assert(FALSE);
+        return result;
+    }
 
     r = XMSReg;//relock
     r.w.dx = handle;
     r.h.ah = 0x0C;
     DPMI_CallRealModeRETF(&r);
-    if(r.w.ax != 0x1)
+    result = (r.w.ax == 1);
+    if(!result)
+    {
         *addr = 0;
+        assert(FALSE);
+    }
     else
         *addr = ((uint32_t)r.w.dx << 16L) | (uint32_t)r.w.bx;
     return result;

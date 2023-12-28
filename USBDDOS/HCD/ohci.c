@@ -45,11 +45,6 @@ HCD_Method OHCI_Method =
 
 BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 {
-#if defined(__BC__) || defined(__WC__)
-    assert(sizeof(OHCI_TD) % 16 == 0);
-    assert(sizeof(OHCI_ISO_TD) % 16 == 0);
-    assert(sizeof(OHCI_ED) % 16 == 0);
-#endif
     // enable MMIO
     PCI_CMD cmd;
     cmd.reg16 = pPCIDev->Header.Command;

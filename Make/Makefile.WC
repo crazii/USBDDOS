@@ -11,10 +11,9 @@ DEBUG = 0
 CC = wcc
 CFLAGS = -za99 -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
 CXX = wpp
-CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
+CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -ei -i..
 
 LDFLAGS = SYS DOS &
-OPTION MAXE=25 &
 OPTION Q &
 OPTION STACK=1024 &
 OPTION MAP=output/map.txt

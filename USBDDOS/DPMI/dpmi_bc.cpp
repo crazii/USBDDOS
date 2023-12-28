@@ -335,13 +335,15 @@ void* DPMI_L2PTR(uint32_t addr)
 
 void DPMI_Init(void)
 {
+    _DATA_SEG = _DS;
+    _CODE_SEG = _CS;
     #if defined(__WC__)
-    _DATA = _DS;
-    //sbrk(0xFFFF - FP_OFF(sbrk(0)));
+    sbrk(0xFFF8 - FP_OFF(sbrk(0))); //avoid further DOS mem call in PM mode for malloc
     #endif
 
-    //small model: static data : heap : stack (BC)
-    //static data : stack (fixed size, set on wlink) : heap
+    //small model:
+    //BC: static data : heap : stack; fixed 64K data seg size.
+    //WC: static data : stack (fixed size, set on linker) : heap; incremental: memory allocated from DOS on request.
     //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
     atexit(&DPMI_Shutdown);
 
@@ -349,6 +351,8 @@ void DPMI_Init(void)
     DPMI_PM = 0;
 
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
+    //use high malloc because WC's malloc may expand DS size on request, if normal block is allocated, expanding will fail
+	//the sbrk above will solve the problem but still it's better to allocate memory from high address.
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     uint32_t TempMemory = DPMI_HighMalloc((sizeof(DPMI_TempData)+15)>>4, FALSE);
 
@@ -364,14 +368,15 @@ void DPMI_Init(void)
     //pre allocate XMS memory. CS not used for now, use it on TSR
     DPMI_XMSHimemHandle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
 
-    if(DPMI_V86) //since we need 1:1 map of memory, and VCPI spec doesn't allow modify the first page table, we need allocate memory above 4M
+    if(DPMI_V86 && DPMI_XMSHimemHandle) //since we need 1:1 map of memory, and VCPI spec doesn't allow modify the first page table, we need allocate memory above 4M
     {
         if(DPMI_SystemDS < 0x400000L) //align to 4M (1st page table)
         {
             if( XMS_Realloc(DPMI_XMSHimemHandle, (0x400000L-DPMI_SystemDS)/1024, &DPMI_SystemDS))
             {
                 uint16_t handle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
-                //XMS_Free(DPMI_XMSHimemHandle); //don't free, waste them all. so that all later xms alloc will be above 4M.
+                DPMI_XMSBelow4MHandle = DPMI_XMSHimemHandle; //keep to free on exit
+                //XMS_Free(DPMI_XMSHimemHandle); //don't free, so that all later xms alloc will be above 4M.
                 DPMI_XMSHimemHandle = handle;
             }
         }
@@ -418,17 +423,27 @@ void DPMI_Init(void)
 
 static void DPMI_Shutdown(void)
 {
-    //assert(DPMI_PM);
+    //DPMI_XMSPageHandle are stored in protected mode memory, free them before switching to real mode
     for(int i = 0; i < DPMI_MappedPages; ++i)
         XMS_Free(DPMI_XMSPageHandle[i]);
 
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
+
     if(DPMI_XMSHimemHandle)
     {
         XMS_Free(DPMI_XMSHimemHandle);
         DPMI_XMSHimemHandle = 0;
     }
-    DPMI_HighFree(DPMI_RmcbMemory);
+    if(DPMI_XMSBelow4MHandle)
+    {
+        XMS_Free(DPMI_XMSBelow4MHandle);
+        DPMI_XMSBelow4MHandle = 0;
+    }
+    if(DPMI_RmcbMemory)
+    {
+        DPMI_HighFree(DPMI_RmcbMemory);
+        DPMI_RmcbMemory = 0;
+    }
     _LOG("(pseudo)DPMI terminating...\n");
 }
 
@@ -781,6 +796,12 @@ BOOL DPMI_TSR(void)
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
     //printf("CR3: %08lx\n", DPMI_Rmcb->CR3);
+
+    if(DPMI_XMSBelow4MHandle)
+    {
+        XMS_Free(DPMI_XMSBelow4MHandle);
+        DPMI_XMSBelow4MHandle = 0;
+    }
     
     _ASM_BEGIN
         _ASM2(mov ax, 0x3100)
@@ -849,7 +870,7 @@ int __LIBCALL printf(const char* fmt, ...)
 
 void __LIBCALL delay(unsigned millisec)
 {
-    uint32_t usec = (uint32_t)millisec*1000L;
+    uint32_t usec = ((uint32_t)millisec)*1000UL;
     DPMI_REG r = {0};
     r.w.ax = 0x8600; //bios delay function, 976 usec resolution
     r.w.dx = (uint16_t)(usec&0xFFFF);
@@ -858,35 +879,42 @@ void __LIBCALL delay(unsigned millisec)
 }
 
 #if !defined(NDEBUG)
+
 #if defined(__BC__)
-void __LIBCALL __assertfail(char * __msg,
-                                  char * __cond,
-                                  char * __file,
-                                  int __line)
-#else
-void __LIBCALL _assert99(char * __msg,
-                                  char * __cond,
-                                  char * __file,
-                                  int __line)
-#endif
-{//BC's __assertfail will cause #GP, probably caused by INTn (abort) / changing segment
+void __LIBCALL __assertfail(char* __msg, char* __cond, char* __file, int __line)
+{ //BC's __assertfail will cause #GP, probably caused by INTn (abort)
+    #if DEBUG
+    _LOG(__msg, __cond, __file, __line);
+    #else
+    printf(__msg, __cond, __file, __line);
+    //fflush(stdout);
+    #endif
+#else //defined(__BC__)
+void __LIBCALL _assert99(char* expr, char* func, char* file, int line)
+{
+    #if DEBUG
+    _LOG("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, expr, func);
+    #else
+    printf("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, expr, func);
+    //fflush(stdout);
+    #endif
+    //TODO: need a loader to fix DS for exit() clean ups.
+    // if(DPMI_PM && !DPMI_TSRed)
+    //     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
+#endif //defined(__BC__)
+
+    #if DEBUG
     if(DPMI_PM)
-    {
-        printf("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
-        printf(__msg, __cond, __file, __line);
-        //fflush(stdout);
-    }
-    else
-    {
-        printf(__msg, __cond, __file, __line);
-        //fflush(stdout);
-    }
+        _LOG("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
+    #endif
+
     if(!DPMI_TSRed)
         exit(1);
     else
         while(1);
 }
-#endif
+
+#endif //!defined(NDEBUG)
 
 //internal used, for debug
 extern "C" BOOL DPMI_IsInProtectedMode()
@@ -895,6 +923,8 @@ extern "C" BOOL DPMI_IsInProtectedMode()
 }
 
 #if defined(__BC__)
+//static inline function not optimized out (if not used) in BC
+//put it in .c/.cpp
 uint32_t PLTFM_BSF(uint32_t x)
 {
     uint32_t i; __asm {bsf eax, x; mov i, eax} return i;
