@@ -10,6 +10,8 @@
 #include "USBDDOS/usb.h"
 #include "USBDDOS/dbgutil.h"
 
+#if _LOG_ENABLE
+
 #if defined(__BC__) //BC always uses C++ to compile
 extern "C"
 #endif
@@ -168,6 +170,10 @@ void DBG_Log(const char* fmt, ...)
     va_end(aptr);
 }
 
+#else//_LOG_ENABLE
+int DBG_Nolog(const char* fmt, ...) {return 0;}
+#endif //_LOG_ENABLE
+
 #if DEBUG
 static DBG_DBuff dbuff;
 
@@ -319,5 +325,4 @@ void DBG_DumpREG(DPMI_REG* reg)
     DBG_Log("ss:sp:%04x:%04x cs:ip:%04x:%04x flags:%04x\n", reg->w.ss, reg->w.sp, reg->w.cs, reg->w.ip, reg->w.flags);
 }
 
-#endif
-
+#endif //DEBUG

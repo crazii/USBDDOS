@@ -334,7 +334,7 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     if(pDevice->bStatus == DS_Configured)
     {
         uint8_t bClass = pDevice->Desc.bDeviceClass;
-        #if DEBUG && 0
+        #if DEBUG
         USB_ShowDeviceInfo(pDevice);
         #else
         _LOG("USB: Device class:%x, installing drivers\n", bClass);
@@ -693,6 +693,7 @@ BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, ui
     return FALSE;
 }
 
+#if DEBUG
 void USB_ShowDeviceInfo(USB_Device* pDevice)
 {
     printf("%s,  %s,  %s\n", pDevice->sManufacture, pDevice->sProduct, pDevice->sSerialNumber);
@@ -722,6 +723,7 @@ void USB_ShowDeviceInfo(USB_Device* pDevice)
 
     return;
 }
+#endif
 
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr)
 {

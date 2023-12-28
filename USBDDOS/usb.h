@@ -300,7 +300,9 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 
 BOOL USB_GetDescriptorString(USB_Device* pDevice, uint8_t bID, char* pBuffer, uint16_t length);
 
+#if DEBUG
 void USB_ShowDeviceInfo(USB_Device* pDevice);
+#endif
 
 BOOL USB_ClearHalt(USB_Device* pDevice, uint8_t epAddr); //clear stall
 

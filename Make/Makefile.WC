@@ -15,12 +15,14 @@ CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
 
 LDFLAGS = SYS DOS &
 OPTION MAXE=25 &
-OPTION Q
+OPTION Q &
+OPTION STACK=1024 &
+OPTION MAP=output/map.txt
 
-#!ifneq DEBUG 1 #code exceed 64k
+!ifneq DEBUG 1
 CFLAGS += -DNDEBUG
 CXXFLAGS += -DNDEBUG
-#!endif
+!endif
 
 !ifndef SILENT
 SILENT = @
@@ -30,10 +32,12 @@ SILENT = @
 clean: .symbolic
     del output\*.obj
     del output\*.log
+    del output\map.txt
 !else
 clean: .symbolic
     rm -f output/*.obj
     rm -f output/*.log
+    rm -f output/map.txt
 !endif
 
 {../}.c{output/}.obj: .AUTODEPEND

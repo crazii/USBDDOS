@@ -62,7 +62,7 @@ typedef uint16_t uintptr_t;
 #define NOP() __asm nop
 #define CLI() __asm cli
 #define STI() __asm sti
-static uint32_t PLTFM_BSF(uint32_t x) { uint32_t i; __asm {bsf eax, x; mov i, eax} return i; }//386+ (386 included)
+extern uint32_t PLTFM_BSF(uint32_t x); //386+ (386 included)
 #define PLTFM_CPU_FLAGS() _FLAGS
 
 //copy code to data. as long as the compiler doesn't touch the PM segment selector

@@ -97,8 +97,17 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
             }
             uint32_t MaxLBA = EndianSwap32(data.LastLBA);
             uint32_t BlockSize = EndianSwap32(data.BlockSize);
-            float cap = (float)MaxLBA / 1024.0f / 1024.0f / 1024.0f * (float)BlockSize;
-            _LOG("LUN %d Capcacity: %.1f GB\n", i, cap);
+            
+            //skip float library to save code size. it's the culprit that makes code seg exceeds 64K (found in map.txt)
+            //there's no other floating points used in USBDDOS.
+            uint32_t div = BlockSize >= 1024 ? BlockSize / 1024 : 1024 / BlockSize;
+            MaxLBA /= 1024;
+            uint32_t cap = BlockSize >= 1024 ? MaxLBA*div : MaxLBA/div;
+            uint16_t capN = (cap/1024);
+            uint16_t capP = cap - ((uint32_t)capN)*1024UL;
+            while(capP/10 != 0) capP = capP/10;
+            _LOG("LUN %d Capcacity: %d.%d GB\n", i, capN, capP);
+
             pDriverData->SizeGB = (uint16_t)(pDriverData->SizeGB + (uint16_t)cap);
             pDriverData->MaxLBA = MaxLBA;
             pDriverData->BlockSize = BlockSize;

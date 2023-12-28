@@ -33,7 +33,7 @@ void DBG_Log(const char* fmt, ...);
 #else //_LOG_ENABLE
 
 #if defined(__BC__) //no variadic macro, so string constants may not optimized out
-inline int DBG_Nolog(const char* fmt, ...) {return 0;}
+int DBG_Nolog(const char* fmt, ...);
 #define _LOG DBG_Nolog
 #else
 #define _LOG(...) 
