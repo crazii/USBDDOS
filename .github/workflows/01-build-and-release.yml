@@ -16,7 +16,6 @@ jobs:
           test -f main.c
           cd Make
           echo $(which gcc)
-          ln -s /opt/djgpp/i586-pc-msdosdjgpp/bin/gcc /opt/djgpp/i586-pc-msdosdjgpp/bin/i586-pc-msdosdjgpp-gcc
           make
           find output/
           test -f output/usbddosp.exe
