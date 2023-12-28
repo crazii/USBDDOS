@@ -103,8 +103,8 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
             uint32_t div = BlockSize >= 1024 ? BlockSize / 1024 : 1024 / BlockSize;
             MaxLBA /= 1024;
             uint32_t cap = BlockSize >= 1024 ? MaxLBA*div : MaxLBA/div;
-            uint16_t capN = (cap/1024);
-            uint16_t capP = cap - ((uint32_t)capN)*1024UL;
+            uint16_t capN = (uint16_t)(cap/1024);
+            uint16_t capP = (uint16_t)(cap - ((uint32_t)capN)*1024UL);
             while(capP/10 != 0) capP = capP/10;
             _LOG("LUN %d Capcacity: %d.%d GB\n", i, capN, capP);
 

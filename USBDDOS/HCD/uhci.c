@@ -843,7 +843,7 @@ void UHCI_StartHC(HCD_Interface* pHCI)
     delay(10);
     outpw((uint16_t)(pHCI->dwBaseAddress + USBCMD), RS); //run
     uint16_t status = inpw((uint16_t)(pHCI->dwBaseAddress + USBSTS));
-    _LOG("UHCI start HC status: %x\n", status);
+    _LOG("UHCI start HC status: %x\n", status); unused(status);
     assert(!(status & USBHCHALTED));
     return;
 }

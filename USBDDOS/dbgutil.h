@@ -6,13 +6,6 @@
 
 #define DUMP_BUFF_SIZE 1024U
 
-#ifndef DEBUG
-#define DEBUG 0
-#elif DEBUG != 0
-#undef DEBUG
-#define DEBUG 1
-#endif
-
 //log should be disabled or write to file in final shipping. use output function (printf/puts) to show msg to user.
 #ifndef _LOG_ENABLE
 #define _LOG_ENABLE DEBUG
