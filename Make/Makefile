@@ -32,7 +32,7 @@ LDFLAGS = -lm
 
 ifeq ($(DEBUG),0)
 LDFLAGS += -s
-CFLAGS += -DNDEBUG
+CFLAGS += -DNDEBUG -DDEBUG=0
 else
 CFLAGS += -DDEBUG=1
 endif
