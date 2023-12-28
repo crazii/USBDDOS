@@ -41,7 +41,8 @@ jobs:
           name: compiled-usbddosp-executable
       - name: Check existence of artifact
         run: |
-          test -f Make/output/usbddosp.exe
+          find ./ | grep usbddosp
+          test -f usbddosp.exe
       - name: Release compiled executable
         uses: softprops/action-gh-release@v1
         env:
@@ -49,7 +50,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-            Make/output/usbddosp.exe
+            usbddosp.exe
           body: |
             ## Release notes
 
