@@ -1,0 +1,10 @@
+
+
+??/??/????: support OpenWatcom
+12/24/2023: add EHCI & HUB; if IRQ=0xFF, set IRQ from PCI IRQ routing options.
+
+Version 1.0:
+12/06/2023: fix HID mouse random inputs
+12/05/2023: fix UHCI bugs on adding/removing endpoints
+mm/dd/yyyy: add MSC and HID
+mm/dd/yyyy: Initial commit OHCI+UHCI
