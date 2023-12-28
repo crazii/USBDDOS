@@ -17,13 +17,12 @@ jobs:
           cd Make
           echo $(which gcc)
           make
-          find output/
           test -f output/usbddosp.exe
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v4
         with:
           name: compiled-usbddosp-executable
-          path: output/usbddosp.exe
+          path: Make/output/usbddosp.exe
           retention-days: 5
 
   publish-job:
@@ -42,7 +41,7 @@ jobs:
           name: compiled-usbddosp-executable
       - name: Check existence of artifact
         run: |
-          test -f output/usbddosp.exe
+          test -f Make/output/usbddosp.exe
       - name: Release compiled executable
         uses: softprops/action-gh-release@v1
         env:
@@ -50,7 +49,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
-            output/usbddosp.exe
+            Make/output/usbddosp.exe
           body: |
             ## Release notes
 
