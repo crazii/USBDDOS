@@ -15,6 +15,7 @@ jobs:
         run: |
           test -f main.c
           cd Make
+          make clean
           make DEBUG=1
           mv output/usbddosp.exe output/usbddosp_dbg.exe
           make clean
