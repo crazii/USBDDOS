@@ -11,29 +11,29 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-#      - name: Build with debug
-#        run: |
-#          cd Make
-#          make clean
-#          make DEBUG=1
-#          mv output/usbddosp.exe output/usbddosp_dbg.exe
-#          test -f output/usbddosp_dbg.exe
+      - name: Build with debug
+        run: |
+          cd Make
+          make clean
+          make DEBUG=1
+          mv output/usbddosp.exe output/usbddosp_dbg.exe
+          test -f output/usbddosp_dbg.exe
       - name: Build without debug
         run: |
           cd Make
           make clean
           make
           test -f output/usbddosp.exe
-#          test -f output/usbddosp_dbg.exe
+          test -f output/usbddosp_dbg.exe
           # Verify that the non-debug variant is actually different from the debug variant.
-#          ! diff output/usbddosp.exe output/usbddosp_dbg.exe
+          ! diff output/usbddosp.exe output/usbddosp_dbg.exe
       - name: 'Upload Artifacts'
         uses: actions/upload-artifact@v4
         with:
           name: compiled-usbddosp-executables
           path: |
             Make/output/usbddosp.exe
-#            Make/output/usbddosp_dbg.exe
+            Make/output/usbddosp_dbg.exe
           retention-days: 1
 
   publish-job:
@@ -58,7 +58,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
             usbddosp.exe
-#            usbddosp_dbg.exe
+            usbddosp_dbg.exe
           body: |
             ## Description of files
 
