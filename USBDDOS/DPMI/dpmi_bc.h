@@ -10,17 +10,24 @@
 
 #if defined(__BC__)
 #define __LIBCALL _Cdecl _FARFUNC
+extern "C" int __LIBCALL vsprintf(char* buf, const char* fmt, va_list aptr);
 #elif defined(__WC__)
 #define __LIBCALL _WCRTLINK
+extern "C" int __LIBCALL vsnprintf(char* buf, size_t size, const char* fmt, va_list aptr);
 #else
 #define __LIBCALL 
 #endif
 extern "C" int __LIBCALL puts(const char* str);
 extern "C" int __LIBCALL printf(const char* fmt, ...);
+extern "C" void __LIBCALL delay(unsigned millisec);
+
 #ifndef NDEBUG
+#if defined(__BC__)
 extern "C" void __LIBCALL __assertfail(char * __msg, char * __cond, char * __file, int __line);
+#else
+void __LIBCALL _assert99(char* expr, char* func, char* file, int line);
 #endif
-extern "C" int __LIBCALL vsprintf(char* buf, const char* fmt, va_list aptr);
+#endif
 
 typedef enum
 {
@@ -368,8 +375,9 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 static void __NAKED far DPMI_DirectProtectedMode()
 {
     _ASM_BEGIN
+        _ASM(push eax)
         _ASM(push ebx) //the C code uses bx but never restore it
-        _ASM(pushf)
+        _ASM(pushfd)
         _ASM(cli)
 
         //XMS global enable A20
@@ -416,8 +424,9 @@ static void __NAKED far DPMI_DirectProtectedMode()
     _ASM_END
 
     _ASM_BEGIN
-        _ASM(popf)
+        _ASM(popfd)
         _ASM(pop ebx)
+        _ASM(pop eax)
         _ASM(retf)
     _ASM_END
 }
@@ -427,8 +436,9 @@ static void __NAKED DPMI_DirectProtectedModeEnd() {}
 static void __NAKED far DPMI_DirectRealMode()
 {
     _ASM_BEGIN
-        _ASM(push ax)
-        _ASM(pushf)
+        _ASM(push eax)
+        _ASM(push ebx)
+        _ASM(pushfd)
         _ASM(cli)
     _ASM_END
 
@@ -464,9 +474,6 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM2(mov ss, ax)
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
-        _ASM(popf)
-        _ASM(pop bx)
-        _ASM(pop ax)
 
         //XMS global enable A20
         _ASM(call XMS_DisableA20)
@@ -475,6 +482,10 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM(push 1)
         _ASM(call exit)
     _ASMLBL(Disable20Done:)
+
+        _ASM(popfd)
+        _ASM(pop ebx)
+        _ASM(pop eax)
         _ASM(retf)
     _ASM_END
 }
@@ -667,7 +678,9 @@ static void __NAKED far DPMI_VCPIProtectedMode()
 {
     //note: DO NOT access global data, since it's executed in isolated real mode segment
     _ASM_BEGIN
+        _ASM(push eax)
         _ASM(push ebx)
+        _ASM(push ecx)
         _ASM(push esi)
         _ASM(pushf)
         _ASM(cli)
@@ -716,7 +729,9 @@ static void __NAKED far DPMI_VCPIProtectedMode()
         _ASM(popf)
 
         _ASM(pop esi)
+        _ASM(pop ecx)
         _ASM(pop ebx)
+        _ASM(pop eax)
         _ASM(retf)
     _ASM_END
 }
@@ -727,6 +742,7 @@ static void __NAKED far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMC
     //http://www.edm2.com/index.php/Virtual_Control_Program_Interface_specification_v1#5.2_Switch_to_V86_Mode
 
     _ASM_BEGIN
+        _ASM(push eax)
         _ASM(push ebx)
         _ASM(pushf)
         _ASM(cli)
@@ -775,6 +791,7 @@ static void __NAKED far DPMI_VCPIRealMode() //VCPI PM to RM. input ds=ss=SEL_RMC
 
         _ASM(popf)
         _ASM(pop ebx)
+        _ASM(pop eax)
         _ASM(retf)
     _ASM_END
 }
@@ -984,14 +1001,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 //////////////////////////////////////////////////////////////////////////////
 static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 
-#pragma option -k-
-static void __NAKED DPMI_NullINTHandler()
-{
-    _ASM_BEGIN 
-        _ASM(iret)
-    _ASM_END
-}
-static void __NAKED __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
+static void __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
 {
     unused(RETURN_ADDR);unused(error);unused(ip);unused(cs);unused(flags);
     _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
@@ -1024,6 +1034,13 @@ static void __NAKED __CDECL DumpExcept()
 #endif
 
 #pragma option -k-
+static void __NAKED DPMI_NullINTHandler()
+{
+    _ASM_BEGIN 
+        _ASM(iret)
+    _ASM_END
+}
+
 DPMI_EXCEPT(0x00)
 DPMI_EXCEPT(0x01)
 DPMI_EXCEPT(0x02)
@@ -1389,9 +1406,30 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM2(mov ebx, dword ptr ds:[bx + DPMI_REG_OFF_EBX]);
         _ASM(pop ds)
 
+        // #if 0 //test code
+        // push ax
+        // push bx
+        // xor bx, bx
+        // mov ah, 0x0E
+        // mov al, '_'
+        // int 0x10
+        // pop bx
+        // pop ax
+        // #endif //-test code
 
         _ASM(retf)
     _ASMLBL(callreturn:)
+        // #if 0 //test code
+        // push ax
+        // push bx
+        // xor bx, bx
+        // mov ah, 0x0E
+        // mov al, '-'
+        // int 0x10
+        // pop bx
+        // pop ax
+        // #endif //-test code
+
         //load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
         _ASM(push ds) //ss[bp+4]
         _ASM(push ax) //ss[bp+2]

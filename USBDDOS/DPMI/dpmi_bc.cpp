@@ -229,6 +229,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM(push gs)
         _ASM(push bx)
         _ASM(push bp)
+        _ASM(push ecx)
         _ASM2(mov dx, ss)
 
         _ASM2(mov cx, INTn)    //INTn stored at ss:bp[xx]. save parameters to register before switching stack
@@ -292,6 +293,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM2(mov bx, sp)
         _ASM2(lss sp, ss:[bx]);
 
+        _ASM(pop ecx)
         _ASM(pop bp)
         _ASM(pop bx)
         _ASM(pop gs)
@@ -338,13 +340,21 @@ void DPMI_Init(void)
     _DATA_SEG = _DS;
     _CODE_SEG = _CS;
     #if defined(__WC__)
-    sbrk(0xFFF8 - FP_OFF(sbrk(0))); //avoid further DOS mem call in PM mode for malloc
+    //avoid further DOS mem call in PM mode for malloc
+    short inc = (short)(0xFFF8U - (unsigned)FP_OFF(sbrk(0)));
+    while(inc < 0)
+    {
+        sbrk(0x7FF8);
+        unsigned nb = (unsigned)FP_OFF(sbrk(0));
+        inc = (short)(0xFFF8U - nb);
+    }
+    sbrk(inc);
     #endif
 
     //small model:
     //BC: static data : heap : stack; fixed 64K data seg size.
     //WC: static data : stack (fixed size, set on linker) : heap; incremental: memory allocated from DOS on request.
-    //_LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
+    _LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
     atexit(&DPMI_Shutdown);
 
     DPMI_V86 = DPMI_IsV86();
@@ -352,7 +362,7 @@ void DPMI_Init(void)
 
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     //use high malloc because WC's malloc may expand DS size on request, if normal block is allocated, expanding will fail
-	//the sbrk above will solve the problem but still it's better to allocate memory from high address.
+    //the sbrk above will solve the problem but still it's better to allocate memory from high address.
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     uint32_t TempMemory = DPMI_HighMalloc((sizeof(DPMI_TempData)+15)>>4, FALSE);
 
@@ -572,6 +582,7 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
     CLIS();
     alignment = max(alignment,4);
     uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
+    assert((short)ptr != 2);
     uint32_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = (uint16_t)(align(addr, alignment) - addr);
     void* aligned = ptr + offset;
@@ -585,6 +596,7 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
     CLIS();
     alignment = max(alignment,4);
     uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
+    assert((short)ptr != 2);
     uint32_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = (uint16_t)(align(addr, alignment) - addr);
     //_LOG("%lx %lx %lx", DPMI_HimemDS, addr, align(addr,alignment));
@@ -597,6 +609,7 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
         free(ptr-2);
         extra += align(size,alignment);
         ptr = (uint8_t*)malloc((size_t)(size + extra + alignment + 2)) + 2;
+        assert((short)ptr != 2);
         addr = DPMI_PTR2L(ptr);
         offset = (uint16_t)(align(addr, alignment) - addr + extra);
         //_LOG("%lx ", align(addr,alignment)+extra);
@@ -748,7 +761,7 @@ uint32_t DPMI_AllocateRMCB_RETF(void(*Fn)(void), DPMI_REG* reg)
     //patch return code to RETF (default is IRET)
     DPMI_Rmcb->Table[RmcbIndex].Code[DPMI_RMCBEntrySize-1] = 0xCB;
 
-    _LOG("RMCB Index:%d, addr: %lx\n", RmcbIndex, (((uint32_t)DPMI_Rmcb->RM_SEG)<<4) + offsetof(DPMI_RMCB, Table) +  (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex));
+    //_LOG("RMCB Index:%d, addr: %lx\n", RmcbIndex, (((uint32_t)DPMI_Rmcb->RM_SEG)<<4) + offsetof(DPMI_RMCB, Table) +  (offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex));
     STIL();
     return (((uint32_t)DPMI_Rmcb->RM_SEG) << 16) | (offsetof(DPMI_RMCB, Table) + offsetof(DPMI_RMCBTable, Code) + sizeof(DPMI_RMCBTable)*RmcbIndex);
 }
@@ -843,10 +856,15 @@ int __LIBCALL printf(const char* fmt, ...)
 
         //himem mode: data not copied during translation, so string buffers (%s) need to de-referenced before mode switch (otherwise ds/himemds data don't match)
         //use vsprintf to do it. BC doesn't have vsnprintf, potential buffer overflow exists.
-        char* buff = (char*)malloc(2048);
+        #define BUFSIZE 1024
+        char buff[BUFSIZE];
         va_list aptr;
         va_start(aptr, fmt);
+        #if defined(__BC__)
         int len = vsprintf(buff, fmt, aptr);
+        #else
+        int len = vsnprintf(buff, BUFSIZE, fmt, aptr);
+        #endif
         va_end(aptr);
         DPMI_REG r = {0};
         for(int i = 0; i < len; ++i)
@@ -861,7 +879,6 @@ int __LIBCALL printf(const char* fmt, ...)
                 DPMI_CallRealModeINT(0x10, &r);
             }
         }
-        free(buff);
         recursion_gard = 0;
         return len;
     }
@@ -893,9 +910,9 @@ void __LIBCALL __assertfail(char* __msg, char* __cond, char* __file, int __line)
 void __LIBCALL _assert99(char* expr, char* func, char* file, int line)
 {
     #if DEBUG
-    _LOG("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, expr, func);
+    _LOG("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, func, expr);
     #else
-    printf("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, expr, func);
+    printf("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, func, expr);
     //fflush(stdout);
     #endif
     //TODO: need a loader to fix DS for exit() clean ups.

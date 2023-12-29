@@ -8,6 +8,12 @@ all: $(TARGET)
 DEBUG = 0
 !endif
 
+!ifeq DEBUG 1
+STACK_SIZE = 4096 # for debug output buffer
+!else
+STACK_SIZE = 1024
+!endif
+
 CC = wcc
 CFLAGS = -za99 -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
 CXX = wpp
@@ -15,10 +21,10 @@ CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -ei -i..
 
 LDFLAGS = SYS DOS &
 OPTION Q &
-OPTION STACK=1024 &
+OPTION STACK=$(STACK_SIZE) &
 OPTION MAP=output/map.txt
 
-!ifneq DEBUG 1
+!ifeq DEBUG 0
 CFLAGS += -DNDEBUG
 CXXFLAGS += -DNDEBUG
 !endif

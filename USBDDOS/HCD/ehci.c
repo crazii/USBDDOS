@@ -626,6 +626,7 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)malloc(4096);
+    assert(flep);
     {//scope for BC
         for(int i = 0; i < 1024; ++i)
             flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;
