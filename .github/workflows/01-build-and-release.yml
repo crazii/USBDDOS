@@ -11,13 +11,16 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-      - name: Build project
+      - name: Build with debug
         run: |
-          test -f main.c
           cd Make
           make clean
           make DEBUG=1
           mv output/usbddosp.exe output/usbddosp_dbg.exe
+          test -f output/usbddosp_dbg.exe
+      - name: Build without debug
+        run: |
+          cd Make
           make clean
           make
           test -f output/usbddosp.exe
