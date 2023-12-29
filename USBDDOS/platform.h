@@ -66,9 +66,9 @@ extern uint32_t PLTFM_BSF(uint32_t x); //386+ (386 included)
 #define PLTFM_CPU_FLAGS() _FLAGS
 
 //copy code to data. as long as the compiler doesn't touch the PM segment selector
-#define memcpy_c2d(src, dest, size) do{\
-    void far* fdest = MK_FP(_DS, FP_OFF(src));\
-    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+#define memcpy_c2d(dest, src, size) do{\
+    void far* fdest = MK_FP(_DS, FP_OFF(dest));\
+    void far* fsrc = MK_FP(_CS, FP_OFF(src));\
     _fmemcpy(fdest, fsrc, size);\
 }while(0)
 
@@ -207,9 +207,9 @@ typedef uint16_t (*PFN_PLTFM_CPU_FLAGS_ASM)(void);
 static const volatile PFN_PLTFM_CPU_FLAGS_ASM pfnPLTFM_CPU_FLAGS_ASM = &PLTFM_CPU_FLAGS_ASM;  //prevent optimization, need get FLAGS every time
 static inline uint16_t PLTFM_CPU_FLAGS() { return pfnPLTFM_CPU_FLAGS_ASM();}
 
-#define memcpy_c2d(src, dest, size) do{\
-    void far* fdest = MK_FP(_DS, FP_OFF(src));\
-    void far* fsrc = MK_FP(_CS, FP_OFF(dest));\
+#define memcpy_c2d(dest, src, size) do{\
+    void far* fdest = MK_FP(_DS, FP_OFF(dest));\
+    void far* fsrc = MK_FP(_CS, FP_OFF(src));\
     _fmemcpy(fdest, fsrc, size);\
 }while(0)
 
@@ -368,6 +368,7 @@ typedef struct DESCRIPTOR //segment descriptors
 
     uint8_t base_high;
 }GDT,LDT;
+_Static_assert(sizeof(GDT) == 8, "size error");
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, (6-11)
 //gate type
@@ -386,6 +387,7 @@ typedef struct _DIT
     uint8_t present : 1;
     uint16_t offset_high;
 }IDT;
+_Static_assert(sizeof(IDT) == 8, "size error");
 
 typedef struct DESC_PTR
 {

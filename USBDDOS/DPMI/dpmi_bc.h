@@ -43,7 +43,6 @@ enum
     SEL_SYS_DS, //gdt/idt/paging
     SEL_CS, //real time initial cs
     SEL_DS,
-    SEL_0x28,   //avoid for FLAGS
     SEL_HIMEM_CS,
     SEL_HIMEM_DS,
     SEL_RMCB_CS,
@@ -63,17 +62,16 @@ enum
 #define SEL_SYS_DS 2
 #define SEL_CS 3
 #define SEL_DS 4
-#define SEL_0x28 5
-#define SEL_HIMEM_CS 6
-#define SEL_HIMEM_DS 7
-#define SEL_RMCB_CS 8
-#define SEL_RMCB_DS 9
-#define SEL_VCPI_CS 10
-#define SEL_VCPI_1 11
-#define SEL_VCPI_2 12
-#define SEL_LDT 13
-#define SEL_TSS 14
-#define SEL_TOTAL 15
+#define SEL_HIMEM_CS 5
+#define SEL_HIMEM_DS 6
+#define SEL_RMCB_CS 7
+#define SEL_RMCB_DS 8
+#define SEL_VCPI_CS 9
+#define SEL_VCPI_1 10
+#define SEL_VCPI_2 11
+#define SEL_LDT 12
+#define SEL_TSS 13
+#define SEL_TOTAL 14
 #endif
 
 typedef struct //layout required by VCPI. do not change
@@ -1001,44 +999,38 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 //////////////////////////////////////////////////////////////////////////////
 static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 
-static void __CDECL DPMI_DumpExcept(short RETURN_ADDR, short error, short ip, short cs, short flags)
+static void __CDECL DPMI_DumpExcept(short expn, short error, short ip, short cs, short flags)
 {
-    unused(RETURN_ADDR);unused(error);unused(ip);unused(cs);unused(flags);
-    _LOG("Error: %x, CS:IP: %x:%x, FLAGS: %x ", error, cs, ip, flags);
-    _ASM_BEGIN
-        _ASM(ret)
-    _ASM_END
+    unused(expn);unused(error);unused(ip);unused(cs);unused(flags);
+    _LOG("Excpetion: 0x%02x, Error: %x, CS:IP: %04x:%04x, FLAGS: %04x\n", expn, error, cs, ip, flags);
 }
-
-#if defined(__BC__)
-#define DPMI_EXCEPT(n) static __NAKED void DPMI_ExceptionHandler##n()\
-{\
-    _ASM_BEGIN _ASM(cli) _ASM(call DPMI_DumpExcept) _ASM_END \
-    printf("Exception: %02x\n", n);\
-    if(!DPMI_TSRed) exit(1);\
-    else while(1);\
-}
-#else //workaround WC compiling bugs
-static void __NAKED __CDECL DumpExcept() 
-{
-    __asm cli
-    __asm jmp DPMI_DumpExcept
-}
-#define DPMI_EXCEPT(n) void __NAKED DPMI_ExceptionHandler##n() \
-{\
-    DumpExcept(); \
-    printf("Exception: %02x\n", n); \
-    if(!DPMI_TSRed) exit(1); \
-    else while(1); \
-}
-#endif
 
 #pragma option -k-
+extern "C" void __NAKED __CDECL DPMI_ExceptionHandlerImpl();
+
+//add extra wrapper to make the same stack when DPMI_HWIRQHandler called
+extern "C" void __NAKED __CDECL DPMI_ExceptionHandlerImplWrapper()
+{
+    _asm {call DPMI_ExceptionHandlerImpl}
+}
+
 static void __NAKED DPMI_NullINTHandler()
 {
     _ASM_BEGIN 
         _ASM(iret)
     _ASM_END
+}
+
+extern "C" void __NAKED __CDECL DPMI_HWIRQHandler();
+
+#define DPMI_EXCEPT(n) extern "C" void __NAKED __CDECL DPMI_ExceptionHandler##n() \
+{\
+    _asm {call DPMI_ExceptionHandlerImplWrapper} \
+}
+
+#define DPMI_IRQHANDLER(n) extern "C" void __NAKED __CDECL DPMI_IRQHandler##n() \
+{\
+    _asm {call DPMI_HWIRQHandler} \
 }
 
 DPMI_EXCEPT(0x00)
@@ -1056,9 +1048,58 @@ DPMI_EXCEPT(0x0B)
 DPMI_EXCEPT(0x0C)
 DPMI_EXCEPT(0x0D)
 DPMI_EXCEPT(0x0E)
-#pragma option -k
+
+DPMI_IRQHANDLER(0x08)
+DPMI_IRQHANDLER(0x09)
+DPMI_IRQHANDLER(0x0A)
+DPMI_IRQHANDLER(0x0B)
+DPMI_IRQHANDLER(0x0C)
+DPMI_IRQHANDLER(0x0D)
+DPMI_IRQHANDLER(0x0E)
+DPMI_IRQHANDLER(0x0F)
+DPMI_IRQHANDLER(0x70)
+DPMI_IRQHANDLER(0x71)
+DPMI_IRQHANDLER(0x72)
+DPMI_IRQHANDLER(0x73)
+DPMI_IRQHANDLER(0x74)
+DPMI_IRQHANDLER(0x75)
+DPMI_IRQHANDLER(0x76)
+DPMI_IRQHANDLER(0x77)
 
 #define DPMI_EXCEPT_ADDR(n) FP_OFF(&DPMI_ExceptionHandler##n)
+#define DPMI_IRQHANDLER_ADDR(n) FP_OFF(&DPMI_IRQHandler##n)
+
+void __NAKED __CDECL DPMI_ExceptionHandlerImpl()
+{
+    _ASM_BEGIN
+        _ASM(pop ax) //discard return address in DPMI_ExceptionHandlerImplWrapper/DPMI_HWIRQHandler
+        _ASM(pop ax) //get & discard return address in DPMI_ExceptionHandlerXX/DPMI_IRQHandlerXX, never returns.
+        _ASM2(sub ax, 3) //back to caller addr when call was made
+        _ASM2(sub ax, offset DPMI_ExceptionHandler0x00)
+#if defined(__BC__)
+        _ASM2(shr, ax, 2) //BC has a 'ret' at the end
+#else
+        _ASM2(mov bl, 3) //size of DPMI_ExceptionHandlerXX/DPMI_IRQHandlerXX
+        _ASM(div bl) //get exception number
+#endif
+        _ASM2(cmp ax, 0x0E) //called from DPMI_IRQHandlerXX?
+        _ASM(jbe DumpExcept) //no, continue
+        _ASM2(sub ax, 0x7)
+    _ASMLBL(DumpExcept:)
+        _ASM(push ax)
+        _ASM(call DPMI_DumpExcept)
+        _ASM2(test DPMI_TSRed, 1)
+        _ASM(jz exitnow)
+    _ASMLBL(deadloop:)
+        _ASM(jmp deadloop)
+    _ASMLBL(exitnow:)
+        _ASM(push 1)
+        _ASM(call exit)
+    _ASM_END
+}
+
+#pragma option -k
+
 
 static void DPMI_HWIRQHandlerInternal()
 {
@@ -1079,27 +1120,32 @@ static void DPMI_HWIRQHandlerInternal()
 }
 
 #pragma option -k-
-static void __NAKED DPMI_HWIRQHandler()
+void __NAKED DPMI_HWIRQHandler()
 {
     //test if it is a normal INT or exception.
     _ASM_BEGIN
         _ASM(push bp)
         _ASM2(mov bp, sp)
-        _ASM2(cmp word ptr [bp+6], SEL_HIMEM_CS*8) //normal int: [bp,] ip,cs,flags, exception: [bp,] errorcode,ip,cs,flags (0x08~0x0F). not handling ring3 excptions.
-        _ASM(jne NormalINT)
-        //what if flags == SEL_HIMEM_CS*8 by accident? need test [bp+4] for normal INT. add emtpy SEL_0x28 to avoid conflict
-        _ASM2(cmp word ptr [bp+4], SEL_HIMEM_CS*8)
-        _ASM(je NormalINT)
-        _ASM2(cmp word ptr [bp+4], SEL_RMCB_CS*8) //DPMI_CallRealMode
-        _ASM(je NormalINT)
+
+        //stack:
+        //normal int: [bp,] DPMI_IRQHandlerXX, ip,cs,flags
+        //exception: [bp,] DPMI_IRQHandlerXX, errorcode,ip,cs,flags (0x08~0x0F)
+        //not handling ring3 excptions, we're always in ring0
+        //note: flags always has bit1 set, but selector last 4 bits are always 0 or 8
+        _ASM2(cmp word ptr [bp+8], SEL_HIMEM_CS*8)
+        _ASM(je Except)
+        _ASM2(cmp word ptr [bp+8], SEL_RMCB_CS*8) //DPMI_CallRealMode
+        _ASM(je Except)
+        _ASM(jmp NormalINT)
     _ASMLBL(Except:)
         _ASM(pop bp)
-        _ASM(call DPMI_ExceptionHandler0x09) //TODO: call the right handler
+        _ASM(call DPMI_ExceptionHandlerImpl)
     _ASMLBL(NormalINT:)
         _ASM(pop bp)
     _ASM_END
 
-    _ASM_BEGIN 
+    _ASM_BEGIN
+        _ASM2(add sp, 2) //disacard return address in DPMI_IRQHandlerXX
         _ASM(pushf)
         _ASM(cli)
         _ASM(pushad)
@@ -1107,16 +1153,15 @@ static void __NAKED DPMI_HWIRQHandler()
         _ASM(push es)
         _ASM(push fs)
         _ASM(push gs)
+
         _ASM2(mov bp, sp)
         _ASM2(and word ptr [bp+40], 0xBFFF) //remove NT flag for flags or iret will do a task return
+
         _ASM2(mov ax, SEL_HIMEM_DS*8)
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
-    _ASM_END
+        _ASM(call DPMI_HWIRQHandlerInternal)
 
-    DPMI_HWIRQHandlerInternal();
-
-    _ASM_BEGIN
         _ASM(pop gs)
         _ASM(pop fs)
         _ASM(pop es)
@@ -1126,6 +1171,7 @@ static void __NAKED DPMI_HWIRQHandler()
         _ASM(iret)
     _ASM_END
 }
+
 #pragma option -k
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1250,6 +1296,8 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(push cs)
 #if defined(__BC__)
         _ASM2(mov ax, offset RMCB_PmReturn)
+        _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
+        _ASM2(add ax, fs:[RMCB_OFF_CommonEntry]);
 #else
         _ASM(call hack)
         _ASM(jmp RMCB_PmReturn)
@@ -1261,8 +1309,6 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
-        _ASM2(add ax, fs:[RMCB_OFF_CommonEntry]);
         _ASM(push ax)
 
         _ASM2(test bx, bx)
@@ -1406,29 +1452,29 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM2(mov ebx, dword ptr ds:[bx + DPMI_REG_OFF_EBX]);
         _ASM(pop ds)
 
-        // #if 0 //test code
-        // push ax
-        // push bx
-        // xor bx, bx
-        // mov ah, 0x0E
-        // mov al, '_'
-        // int 0x10
-        // pop bx
-        // pop ax
-        // #endif //-test code
+        #ifndef DEBUG //test code
+        push ax
+        push bx
+        xor bx, bx
+        mov ah, 0x0E
+        mov al, '_'
+        int 0x10
+        pop bx
+        pop ax
+        #endif //-test code
 
         _ASM(retf)
     _ASMLBL(callreturn:)
-        // #if 0 //test code
-        // push ax
-        // push bx
-        // xor bx, bx
-        // mov ah, 0x0E
-        // mov al, '-'
-        // int 0x10
-        // pop bx
-        // pop ax
-        // #endif //-test code
+        #ifndef DEBUG //test code
+        push ax
+        push bx
+        xor bx, bx
+        mov ah, 0x0E
+        mov al, '-'
+        int 0x10
+        pop bx
+        pop ax
+        #endif //-test code
 
         //load DPMI_REG ptr(DS:EBX) at stack top and store new reg by xchg
         _ASM(push ds) //ss[bp+4]
@@ -1533,7 +1579,7 @@ static void DPMI_SetupRMCB()
     offset += CodeSize;
 
     //_LOG("%d %d %d\n", offset, DPMI_RMCB_STACK_SIZE, DPMI_RMCB_SIZE);
-    assert(offset + sizeof(sizeof(DPMI_REG))*2 + DPMI_RMCB_TRASNLATION_STACK_SIZE*4 + DPMI_RMCB_STACK_SIZE < DPMI_RMCB_SIZE);
+    assert(offset + sizeof(sizeof(DPMI_REG))*4 + DPMI_RMCB_TRASNLATION_STACK_SIZE*4 + DPMI_RMCB_STACK_SIZE < DPMI_RMCB_SIZE);
     for(int i = 0; i < DPMI_RMCB_COUNT; ++i)
     {
         Code = (void*)&DPMI_RMCBEntryIRET;

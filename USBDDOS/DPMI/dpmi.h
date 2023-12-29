@@ -5,7 +5,7 @@
 //a DPMI wrapper for different compilers. Borland C++, DJGPP, WatCom etc.
 //the porpose of this file is to hide all __dpmi* or int 31h calls from outside
 
-typedef union {
+typedef union _DPMI_REG {
 struct
 {
     uint16_t di, hdi;

@@ -95,7 +95,6 @@ static void DPMI_SetupPaging()
 
 static void DPMI_SetupIDT()
 {
-    assert(sizeof(IDT)==8);
     assert(DPMI_Temp);
     _fmemset(DPMI_Temp->idt, 0, sizeof(IDT)*256);
     for(int i = 0; i < 256; ++i)
@@ -113,6 +112,7 @@ static void DPMI_SetupIDT()
 
     uint16_t MasterVec = DPMI_Temp->RealModeIRQ0Vec;
     uint16_t SlaveVec = DPMI_Temp->RealModeIRQ8Vec;
+    
     if(DPMI_V86)
     {
         _ASM_BEGIN //Get 8259A Interrupt Vector Mappings
@@ -136,13 +136,14 @@ static void DPMI_SetupIDT()
 
     uint16_t size = DPMI_EXCEPT_ADDR(0x01) - DPMI_EXCEPT_ADDR(0x00);
     for(int e = 0x00; e < 0x0E; ++e)
-        DPMI_Temp->idt[e].offset_low = DPMI_EXCEPT_ADDR(0x00) + size * (e-0x00);
+        DPMI_Temp->idt[e].offset_low = DPMI_EXCEPT_ADDR(0x00) + size * e;
 
     //now irq 0~7 & exceptions 0x8~0xF share the same handler. set HWIRQHandler setup will overwrite part of the exception.
+    size = DPMI_IRQHANDLER_ADDR(0x09) - DPMI_IRQHANDLER_ADDR(0x08);
     for(int j = DPMI_Temp->ProtectedModeIRQ0Vec; j <= DPMI_Temp->ProtectedModeIRQ0Vec+7; ++j)
-        DPMI_Temp->idt[j].offset_low = (uintptr_t)(void near*)&DPMI_HWIRQHandler;
+        DPMI_Temp->idt[j].offset_low = DPMI_IRQHANDLER_ADDR(0x08) + size * (j-DPMI_Temp->ProtectedModeIRQ0Vec);
     for(int k = DPMI_Temp->ProtectedModeIRQ8Vec; k <= DPMI_Temp->ProtectedModeIRQ8Vec+7; ++k)
-        DPMI_Temp->idt[k].offset_low = (uintptr_t)(void near*)&DPMI_HWIRQHandler;
+        DPMI_Temp->idt[k].offset_low = DPMI_IRQHANDLER_ADDR(0x70) + size * (k-DPMI_Temp->ProtectedModeIRQ8Vec);
 
     DPMI_Temp->idtr.size = sizeof(IDT)*256 - 1;
     DPMI_Temp->idtr.offset = DPMI_Ptr16ToLinear(DPMI_Temp->idt);
@@ -341,12 +342,12 @@ void DPMI_Init(void)
     _CODE_SEG = _CS;
     #if defined(__WC__)
     //avoid further DOS mem call in PM mode for malloc
-    short inc = (short)(0xFFF8U - (unsigned)FP_OFF(sbrk(0)));
+    short inc = (short)(0xFFFEU - (unsigned)FP_OFF(sbrk(0)));
     while(inc < 0)
     {
-        sbrk(0x7FF8);
+        sbrk(0x7FFF);
         unsigned nb = (unsigned)FP_OFF(sbrk(0));
-        inc = (short)(0xFFF8U - nb);
+        inc = (short)(0xFFFEU - nb);
     }
     sbrk(inc);
     #endif
@@ -679,6 +680,11 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return 0;
 }
 
+static void DPMI_ISRWrapper()
+{
+    DPMI_HWIRQHandler();
+}
+
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
 {
     if(!DPMI_PM || handle == NULL)
@@ -703,7 +709,7 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     handle->extra = RmcbIndex;
 
     DPMI_UserINTHandler[i] = ISR;
-    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_HWIRQHandler; //resue PM handler. temporary implementation for IRQs
+    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_ISRWrapper; //resue PM handler. temporary implementation for IRQs. DPMI_HWIRQHandler needs a wrapper
     DPMI_Rmcb->Table[RmcbIndex].UserReg = 0;
     
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation

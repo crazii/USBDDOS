@@ -144,7 +144,7 @@ typedef union _LEGSUP
 #define AsyncScheduleParkCount_Shift 8
 #define LightHCReset BIT7 //RW, optional
 #define INTonAsyncAdvanceDoorbell BIT6 //RW
-#define AsyncSheduleEnable BIT5 //RW
+#define AsyncScheduleEnable BIT5 //RW
 #define PeroidicScheduleEnable BIT4 //RW
 #define FrameListSize 0x0C //mask, RW/RO, available when ProgrammableFrameList=1
 # define FLS_4096 0x00 //1024 elements, 4k size, default.
@@ -178,8 +178,8 @@ _Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 
 
 //USBSTS
-#define AsyncSheduleSts BIT15 //RO
-#define PeriodicSheduleSts BIT14 //RO
+#define AsyncScheduleSts BIT15 //RO
+#define PeriodicScheduleSts BIT14 //RO
 #define Reclamation BIT13 //RO
 #define HCHalted BIT12 //RO
 #define INTonAsyncAdvance BIT5 //RWC
@@ -337,7 +337,7 @@ typedef struct SplitIsoTransferDescriptor
         uint8_t uFrameSMask;
         uint8_t uFrameCMask;
         uint16_t Reserved4;
-    }SheduleCtl;
+    }ScheduleCtl;
 
     //Transfer status and control
     struct StatusControl
