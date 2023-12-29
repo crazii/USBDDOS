@@ -15,15 +15,22 @@ jobs:
         run: |
           test -f main.c
           cd Make
-          echo $(which gcc)
+          make DEBUG=1
+          mv output/usbddosp.exe output/usbddosp_dbg.exe
+          make clean
           make
           test -f output/usbddosp.exe
-      - name: 'Upload Artifact'
+          test -f output/usbddosp_dbg.exe
+          # Verify that the non-debug variant is actually different from the debug variant.
+          ! diff output/usbddosp.exe output/usbddosp_dbg.exe
+      - name: 'Upload Artifacts'
         uses: actions/upload-artifact@v4
         with:
-          name: compiled-usbddosp-executable
-          path: Make/output/usbddosp.exe
-          retention-days: 5
+          name: compiled-usbddosp-executables
+          path: |
+            Make/output/usbddosp.exe
+            Make/output/usbddosp_dbg.exe
+          retention-days: 1
 
   publish-job:
     # TODO: uncomment following line (and remove this TODO) once the PR is approved, just before merging to master/main
@@ -35,11 +42,11 @@ jobs:
         id: tag
         run: |
           echo "release_tag=UserBuild_$(date +"%Y.%m.%d_%H-%M")" >> $GITHUB_OUTPUT
-      - name: 'Download Artifact'
+      - name: 'Download Artifacts'
         uses: actions/download-artifact@v4
         with:
-          name: compiled-usbddosp-executable
-      - name: Release compiled executable
+          name: compiled-usbddosp-executables
+      - name: Release compiled executables
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +54,12 @@ jobs:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           files: |
             usbddosp.exe
+            usbddosp_dbg.exe
           body: |
-            ## Release notes
+            ## Description of files
 
-            TODO
+            - `usbddosp.exe` -> Regular build that you should use normally.
+            - `usbddosp_dbg.exe` -> Debug-enabled build to help with debugging and troubleshooting.
+
+            When the tool isn't working on the hardware you're trying it on, then please try the debug-enabled build.
+            When opening a GitHub issue to report incompatible hardware, please include any debug output.
