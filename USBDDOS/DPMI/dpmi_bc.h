@@ -316,6 +316,7 @@ const uint32_t DPMI_XMS_Size = 192L*1024L;   //64k code+data, first 64k is syste
 
 static uint16_t _DATA_SEG;
 static uint16_t _CODE_SEG;
+static uint16_t _STACK_PTR;
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
 static uint32_t DPMI_HimemCS = 0;
 static uint32_t DPMI_HimemDS = 0;

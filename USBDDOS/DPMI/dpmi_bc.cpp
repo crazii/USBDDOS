@@ -348,6 +348,7 @@ void DPMI_Init(void)
 {
     _DATA_SEG = _DS;
     _CODE_SEG = _CS;
+    _STACK_PTR = 0xFFFC; //BC's stack at the end
     #if defined(__WC__)
     //avoid further DOS mem call in PM mode for malloc
     short inc = (short)(0xFFFEU - (unsigned)FP_OFF(sbrk(0)));
@@ -358,6 +359,7 @@ void DPMI_Init(void)
         inc = (short)(0xFFFEU - nb);
     }
     sbrk(inc);
+    _STACK_PTR = _SP + 8; //back to main of argc, argv. used after TSR
     #endif
 
     //small model:
@@ -688,9 +690,13 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return 0;
 }
 
-static void DPMI_ISRWrapper()
+//the DPMI_HWIRQHandler is not directly called in IDT but with a dummy wrapper( DPMI_IRQHANDLER(xx) ).
+//the return addr on stack will be poped & discarded and IRET directly by DPMI_HWIRQHandler.
+static void __NAKED DPMI_ISRWrapper()
 {
-    DPMI_HWIRQHandler();
+    _ASM_BEGIN
+        _ASM(call DPMI_HWIRQHandler)
+    _ASM_END
 }
 
 uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp handle)
@@ -805,7 +811,7 @@ void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
     spc->limitds = 64L*1024L - 1;
     spc->basecs = DPMI_HimemCS;
     spc->limitcs = 64L*1024L - 1;
-    spc->stackpointer = 0xFFF8;
+    spc->stackpointer = _STACK_PTR;
     return;
 }
 
@@ -816,7 +822,7 @@ BOOL DPMI_TSR(void)
 
     //assert(!DPMI_Rmcb->Interrupt);
     CLIS();
-    DPMI_Rmcb->PM_SP = 0xFFF8;
+    DPMI_Rmcb->PM_SP = _STACK_PTR;
     DPMI_TSRed = TRUE;
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
