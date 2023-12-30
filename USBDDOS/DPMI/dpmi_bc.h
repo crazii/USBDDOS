@@ -1,3 +1,18 @@
+//////////////////////////////////////////////////////////////////////////////
+//local 16 bit DPMI that implements API defined in dpmi.h
+//works for 16 bit compilers (Borland C, OpenWatcom C)
+//the local DPMI can work standalone without a DPMI host,
+//which removes the dependency of external DPMI servers.
+//it simply copy the code & data to protected mode segments,
+//thus MEDIUM/LARGE model not supported
+//
+//a LOADER/patcher which read the EXE's rellocation info and 
+//setup multiple protected segments and apply the relllocation will
+//make it work for MEDIUM/LARGE model
+//for LARGE model, there also need to be a #define which replace the default _fmalloc
+//and uses the protected mode method.
+//////////////////////////////////////////////////////////////////////////////
+
 #ifndef _DPMI_BC_H_
 #define _DPMI_BC_H_
 #include <assert.h>
