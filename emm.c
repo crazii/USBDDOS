@@ -126,19 +126,19 @@ typedef struct
 }EMM_IODT_FarAddr;
 
 #if defined(__DJ2__)
-_Static_assert(sizeof(GDT) == 8, "incorrect size/alignment");
-_Static_assert(sizeof(GDTR) == 8, "incorrect size/alignment");
-_Static_assert(sizeof(IDTR) == 8, "incorrect size/alignment");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldcs) == 16, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldss) == 18, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, oldesp) == 20, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, gdtr) == 32, "incorrect offset");
+static_assert(sizeof(GDT) == 8, "incorrect size/alignment");
+static_assert(sizeof(GDTR) == 8, "incorrect size/alignment");
+static_assert(sizeof(IDTR) == 8, "incorrect size/alignment");
+static_assert(__builtin_offsetof(EMM_IODT_Header, oldcs) == 16, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, oldss) == 18, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, oldesp) == 20, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, gdtr) == 32, "incorrect offset");
 
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, esp) == 40, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, wrapper) == 44, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, code_offset) == 48, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, tableOffset) == 52, "incorrect offset");
-_Static_assert(__builtin_offsetof(EMM_IODT_Header, tableCount) == 54, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, esp) == 40, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, wrapper) == 44, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, code_offset) == 48, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, tableOffset) == 52, "incorrect offset");
+static_assert(__builtin_offsetof(EMM_IODT_Header, tableCount) == 54, "incorrect offset");
 #endif
 
 //protected mode ring0 entry for EMM386 callback

@@ -73,7 +73,7 @@ static __dpmi_meminfo XMS_Info;
 #pragma pop_macro("DEBUG")
 
 #define XMS_HEAP_SIZE (1024*1024*4)  //maxium around 64M (actual size less than 64M)
-_Static_assert((uint16_t)(XMS_HEAP_SIZE/1024) == (uint32_t)(XMS_HEAP_SIZE/1024), "XMS_HEAP_SIZE must be < 64M");
+static_assert((uint16_t)(XMS_HEAP_SIZE/1024) == (uint32_t)(XMS_HEAP_SIZE/1024), "XMS_HEAP_SIZE must be < 64M");
 static mspace XMS_Space;
 static uint32_t XMS_Physical;
 #if DEBUG

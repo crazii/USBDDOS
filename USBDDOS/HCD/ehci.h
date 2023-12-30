@@ -59,7 +59,7 @@ typedef struct _EHCI_CAPS //helper structs
     uint64_t hcspPortRoute;
     #endif
 }EHCI_CAPS;
-_Static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
+static_assert(sizeof(EHCI_CAPS)==20, "incorrect size/alignment");
 
 #ifdef _EHCI_IMPL //avoid defines polution
 
@@ -174,7 +174,7 @@ typedef union _EHCI_USBCMD
         uint8_t Reserved1;
     }Bm;
 }EHCI_USBCMD;
-_Static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
+static_assert(sizeof(EHCI_USBCMD)==4, "incorrect size/alignment");
 
 
 //USBSTS
@@ -252,7 +252,7 @@ typedef union FLElementPointer //frame list element pointer
         uint16_t Hw : 16; //28 bit ptr by spec (but spec require it reference 32bytes aligned object, so we use 27bit)
     }Bm;
 }EHCI_FLEP;
-_Static_assert(sizeof(EHCI_FLEP)==4, "incorrect size/alignment");
+static_assert(sizeof(EHCI_FLEP)==4, "incorrect size/alignment");
 
 //iTD
 typedef struct IsoTransferDescriptor
@@ -312,7 +312,7 @@ typedef struct IsoTransferDescriptor
         uint32_t Padding;
     }EXT;
 }EHCI_iTD;
-_Static_assert(sizeof(EHCI_iTD)==96, "incorrect size/alignment");
+static_assert(sizeof(EHCI_iTD)==96, "incorrect size/alignment");
 
 typedef struct SplitIsoTransferDescriptor
 {
@@ -386,7 +386,7 @@ typedef struct SplitIsoTransferDescriptor
         uint32_t Padding[7];
     }EXT;
 }EHCI_siTD;
-_Static_assert(sizeof(EHCI_siTD)==64, "incorrect size/alignment");
+static_assert(sizeof(EHCI_siTD)==64, "incorrect size/alignment");
 
 #define PID_OUT 0
 #define PID_IN  1
@@ -421,7 +421,7 @@ typedef struct QueueToken
     uint16_t Length : 15; //bytes to transfer, updated to actual transferred bytes if succeed. 5000h max (EHCI_qTD_MaxSize)
     uint16_t DataToggle : 1;
 }EHCI_QToken;
-_Static_assert(sizeof(EHCI_QToken)==4, "incorrect size/alignment");
+static_assert(sizeof(EHCI_QToken)==4, "incorrect size/alignment");
 
 //qTD
 typedef struct QueueElementTD
@@ -456,7 +456,7 @@ typedef struct QueueElementTD
 #endif
     }EXT;
 }EHCI_qTD;
-_Static_assert(sizeof(EHCI_qTD)==64, "incorrect size/alignment");
+static_assert(sizeof(EHCI_qTD)==64, "incorrect size/alignment");
 
 #define EPS_LOW  1
 #define EPS_FULL 0
@@ -549,7 +549,7 @@ typedef struct QueueHead
 #endif
     }EXT;
 }EHCI_QH;
-_Static_assert(sizeof(EHCI_QH)==96, "incorrect size/alignment");
+static_assert(sizeof(EHCI_QH)==96, "incorrect size/alignment");
 
 //FSTN: periodic frame span traversal node
 typedef struct

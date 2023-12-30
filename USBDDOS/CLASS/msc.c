@@ -269,7 +269,7 @@ typedef struct DOS_BIOSParameterBlock //DOS 3.0+ 0 BPB
     };
     uint8_t unused; //padding
 }DOS_BPB;
-_Static_assert(sizeof(DOS_BPB) == 80, "incorrect size");
+static_assert(sizeof(DOS_BPB) == 80, "incorrect size");
 
 #define DOS_DDHA_32BIT_ADDRESSING   0x0002
 #define DOS_DDHA_OPENCLOSE          0x0800
@@ -284,7 +284,7 @@ typedef struct DOS_DeviceDriverHeader
     uint8_t Drives; //supported drive count. TODO: mount multiple partitions? USB disk can have multiple partitions but usually only 1.
     uint8_t Signature[7];
 }DOS_DDH;
-_Static_assert(sizeof(DOS_DDH) == 18, "incorrect size");
+static_assert(sizeof(DOS_DDH) == 18, "incorrect size");
 
 //https://faydoc.tripod.com/structures/13/1395.htm
 //https://stanislavs.org/helppc/drive_parameter_table.html
@@ -310,7 +310,7 @@ typedef struct DOS_DriveParameterBlock //DOS4.0+
     uint32_t FreeClusters; //DOS7.0+: 4 bytes (teseted out)
     char cwd[63]; //current working directory, not sure for DOS7.0 but it execeeds the 33 limit for FAT32
 }DOS_DPB;
-_Static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
+static_assert(sizeof(DOS_DPB) == 98, "incorrect size");
 
 //#define DOS_CDS_FLAGS_USED        0xC0
 #define DOS_CDS_FLAGS_PHYSICAL      0x4000
@@ -329,7 +329,7 @@ typedef struct DOS_CurrentDirectoryStructure
     uint32_t IFS; //IFS driver or redirector block
     uint16_t IFSData;
 }DOS_CDS;
-_Static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS stores it in arrays
+static_assert(sizeof(DOS_CDS) == 88, "incorrect size"); //MUST be 88 as DOS stores it in arrays
 
 
 //Ralf Brown's Interrupt List, INT 21h,AH=52H

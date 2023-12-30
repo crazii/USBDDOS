@@ -208,37 +208,37 @@ value[ax]
 #define DPMI_REG_OFF_CS 44
 #define DPMI_REG_OFF_SP 46
 #define DPMI_REG_OFF_SS 48
-_Static_assert(DPMI_REG_OFF_EDI == offsetof(DPMI_REG, d.edi), "constant error");
-_Static_assert(DPMI_REG_OFF_ESI == offsetof(DPMI_REG, d.esi), "constant error");
-_Static_assert(DPMI_REG_OFF_EBP == offsetof(DPMI_REG, d.ebp), "constant error");
-_Static_assert(DPMI_REG_OFF_EBX == offsetof(DPMI_REG, d.ebx), "constant error");
-_Static_assert(DPMI_REG_OFF_EDX == offsetof(DPMI_REG, d.edx), "constant error");
-_Static_assert(DPMI_REG_OFF_ECX == offsetof(DPMI_REG, d.ecx), "constant error");
-_Static_assert(DPMI_REG_OFF_EAX == offsetof(DPMI_REG, d.eax), "constant error");
-_Static_assert(DPMI_REG_OFF_FLAGS == offsetof(DPMI_REG, w.flags), "constant error");
-_Static_assert(DPMI_REG_OFF_ES == offsetof(DPMI_REG, w.es), "constant error");
-_Static_assert(DPMI_REG_OFF_DS == offsetof(DPMI_REG, w.ds), "constant error");
-_Static_assert(DPMI_REG_OFF_FS == offsetof(DPMI_REG, w.fs), "constant error");
-_Static_assert(DPMI_REG_OFF_GS == offsetof(DPMI_REG, w.gs), "constant error");
-_Static_assert(DPMI_REG_OFF_CS == offsetof(DPMI_REG, w.cs), "constant error");
-_Static_assert(DPMI_REG_OFF_IP == offsetof(DPMI_REG, w.ip), "constant error");
-_Static_assert(DPMI_REG_OFF_SS == offsetof(DPMI_REG, w.ss), "constant error");
-_Static_assert(DPMI_REG_OFF_SP == offsetof(DPMI_REG, w.sp), "constant error");
+static_assert(DPMI_REG_OFF_EDI == offsetof(DPMI_REG, d.edi), "constant error");
+static_assert(DPMI_REG_OFF_ESI == offsetof(DPMI_REG, d.esi), "constant error");
+static_assert(DPMI_REG_OFF_EBP == offsetof(DPMI_REG, d.ebp), "constant error");
+static_assert(DPMI_REG_OFF_EBX == offsetof(DPMI_REG, d.ebx), "constant error");
+static_assert(DPMI_REG_OFF_EDX == offsetof(DPMI_REG, d.edx), "constant error");
+static_assert(DPMI_REG_OFF_ECX == offsetof(DPMI_REG, d.ecx), "constant error");
+static_assert(DPMI_REG_OFF_EAX == offsetof(DPMI_REG, d.eax), "constant error");
+static_assert(DPMI_REG_OFF_FLAGS == offsetof(DPMI_REG, w.flags), "constant error");
+static_assert(DPMI_REG_OFF_ES == offsetof(DPMI_REG, w.es), "constant error");
+static_assert(DPMI_REG_OFF_DS == offsetof(DPMI_REG, w.ds), "constant error");
+static_assert(DPMI_REG_OFF_FS == offsetof(DPMI_REG, w.fs), "constant error");
+static_assert(DPMI_REG_OFF_GS == offsetof(DPMI_REG, w.gs), "constant error");
+static_assert(DPMI_REG_OFF_CS == offsetof(DPMI_REG, w.cs), "constant error");
+static_assert(DPMI_REG_OFF_IP == offsetof(DPMI_REG, w.ip), "constant error");
+static_assert(DPMI_REG_OFF_SS == offsetof(DPMI_REG, w.ss), "constant error");
+static_assert(DPMI_REG_OFF_SP == offsetof(DPMI_REG, w.sp), "constant error");
 
 #define DPMI_REG_SIZE 50
-_Static_assert(DPMI_REG_SIZE == sizeof(DPMI_REG), "error constant");
+static_assert(DPMI_REG_SIZE == sizeof(DPMI_REG), "error constant");
 
 #define RMCB_TABLE_ENTRY_SIZE 10
-_Static_assert(RMCB_TABLE_ENTRY_SIZE == sizeof(DPMI_RMCBTable), "error constant");
+static_assert(RMCB_TABLE_ENTRY_SIZE == sizeof(DPMI_RMCBTable), "error constant");
 
 #define DPMI_SIZEOF_GDT 8
-_Static_assert(DPMI_SIZEOF_GDT == sizeof(GDT), "error constant");
+static_assert(DPMI_SIZEOF_GDT == sizeof(GDT), "error constant");
 
 #define VCPI_SIZEOF_CLIENTSTRUCT 24
-_Static_assert(VCPI_SIZEOF_CLIENTSTRUCT == sizeof(DPMI_VCPIClientStruct), "constant error");
+static_assert(VCPI_SIZEOF_CLIENTSTRUCT == sizeof(DPMI_VCPIClientStruct), "constant error");
 
 #define VCPI_CLIENTSTRUCT_OFF_EIP 16
-_Static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP), "constant error");
+static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP), "constant error");
 
 
 #define RMCB_OFF_OldIDTR 2 //+2: extra padding
@@ -258,30 +258,30 @@ _Static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP)
 #define RMCB_OFF_VcpiClient 218
 #define RMCB_OFF_VcpiClientAddr 242
 
-_Static_assert(RMCB_OFF_OldIDTR == offsetof(DPMI_RMCB, OldIDTR) + 2, "constant error"); //2: extra padding
-_Static_assert(RMCB_OFF_NullGDTR == offsetof(DPMI_RMCB, NullGDTR) + 2, "constant error"); //2: extra padding
-_Static_assert(RMCB_OFF_GDTR == offsetof(DPMI_RMCB, GDTR) + 2, "constant error");
-_Static_assert(RMCB_OFF_IDTR == offsetof(DPMI_RMCB, IDTR) + 2, "constant error");
-_Static_assert(RMCB_OFF_CR3 == offsetof(DPMI_RMCB, CR3), "constant error");
-_Static_assert(RMCB_OFF_CommonEntry == offsetof(DPMI_RMCB, CommonEntry), "constant error");
-_Static_assert(RMCB_OFF_Table == offsetof(DPMI_RMCB, Table), "constant error");
-_Static_assert(RMCB_OFF_SwitchPM == offsetof(DPMI_RMCB, SwitchPM), "constant error");
-_Static_assert(RMCB_OFF_SwitchRM == offsetof(DPMI_RMCB, SwitchRM), "constant error");
-_Static_assert(RMCB_OFF_Translation == offsetof(DPMI_RMCB, Translation), "constant error");
-_Static_assert(RMCB_OFF_PMSP == offsetof(DPMI_RMCB, PM_SP), "constant error");
-_Static_assert(RMCB_OFF_RMSP == offsetof(DPMI_RMCB, RM_SP), "constant error");
-_Static_assert(RMCB_OFF_RMSEG == offsetof(DPMI_RMCB, RM_SEG), "constant error");
-_Static_assert(RMCB_OFF_VcpiInterface == offsetof(DPMI_RMCB, VcpiInterface), "constant error");
-_Static_assert(RMCB_OFF_VcpiClient == offsetof(DPMI_RMCB, VcpiClient), "constant error");
-_Static_assert(RMCB_OFF_VcpiClientAddr == offsetof(DPMI_RMCB, VcpiClientAddr), "constant error");
+static_assert(RMCB_OFF_OldIDTR == offsetof(DPMI_RMCB, OldIDTR) + 2, "constant error"); //2: extra padding
+static_assert(RMCB_OFF_NullGDTR == offsetof(DPMI_RMCB, NullGDTR) + 2, "constant error"); //2: extra padding
+static_assert(RMCB_OFF_GDTR == offsetof(DPMI_RMCB, GDTR) + 2, "constant error");
+static_assert(RMCB_OFF_IDTR == offsetof(DPMI_RMCB, IDTR) + 2, "constant error");
+static_assert(RMCB_OFF_CR3 == offsetof(DPMI_RMCB, CR3), "constant error");
+static_assert(RMCB_OFF_CommonEntry == offsetof(DPMI_RMCB, CommonEntry), "constant error");
+static_assert(RMCB_OFF_Table == offsetof(DPMI_RMCB, Table), "constant error");
+static_assert(RMCB_OFF_SwitchPM == offsetof(DPMI_RMCB, SwitchPM), "constant error");
+static_assert(RMCB_OFF_SwitchRM == offsetof(DPMI_RMCB, SwitchRM), "constant error");
+static_assert(RMCB_OFF_Translation == offsetof(DPMI_RMCB, Translation), "constant error");
+static_assert(RMCB_OFF_PMSP == offsetof(DPMI_RMCB, PM_SP), "constant error");
+static_assert(RMCB_OFF_RMSP == offsetof(DPMI_RMCB, RM_SP), "constant error");
+static_assert(RMCB_OFF_RMSEG == offsetof(DPMI_RMCB, RM_SEG), "constant error");
+static_assert(RMCB_OFF_VcpiInterface == offsetof(DPMI_RMCB, VcpiInterface), "constant error");
+static_assert(RMCB_OFF_VcpiClient == offsetof(DPMI_RMCB, VcpiClient), "constant error");
+static_assert(RMCB_OFF_VcpiClientAddr == offsetof(DPMI_RMCB, VcpiClientAddr), "constant error");
 
 //default descriptors
 static const uint32_t DPMI_CodeDesc[2] = {0x0000FFFF, 0x000F9A00};
 static const uint32_t DPMI_DataDesc[2] = {0x0000FFFF, 0x000F9200};
 static const uint32_t DPMI_Data4GDesc[2] = {0x0000FFFF, 0x00CF9200}; //4G ds, Granularity, 32 bit
-_Static_assert(sizeof(DPMI_Data4GDesc) == sizeof(GDT), "size error");
-_Static_assert(sizeof(DPMI_DataDesc) == sizeof(GDT), "size error");
-_Static_assert(sizeof(DPMI_CodeDesc) == sizeof(GDT), "size error");
+static_assert(sizeof(DPMI_Data4GDesc) == sizeof(GDT), "size error");
+static_assert(sizeof(DPMI_DataDesc) == sizeof(GDT), "size error");
+static_assert(sizeof(DPMI_CodeDesc) == sizeof(GDT), "size error");
 
 typedef struct //group temporary data and allocate from DOS, exit on release. thus save the DS space after TSR
 {

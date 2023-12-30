@@ -95,7 +95,7 @@ typedef struct USB_HID_Descritor
     USB_HID_SUBDESC desc[1]; //could be more USB_HID_SUBDESC, decided by bNumberDescriptors
 }USB_HID_DESC;
 #if defined(__DJ2__)
-_Static_assert(sizeof(USB_HID_DESC) == 9, "incorrect size"); //minimal size
+static_assert(sizeof(USB_HID_DESC) == 9, "incorrect size"); //minimal size
 #endif
 
 //boot protocol keyboard packet. Appendix B.1

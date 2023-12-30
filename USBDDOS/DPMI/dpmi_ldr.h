@@ -25,7 +25,9 @@ typedef struct MZHeader
     uint16_t overlay_num;
 
 }MZHEADER;
-_Static_assert(sizeof(MZHEADER) == 0x1E, "size error");
+static_assert(sizeof(MZHEADER) == 0x1E, "size error");
+
+extern MZHEADER DPMI_LOADER_Header;
 
 typedef struct RelocationTable
 {

@@ -284,15 +284,24 @@ extern uint8_t _AL;
 #define FP_OFF(x) ((uintptr_t)(x))
 #define MK_FP(x,y) (NULL)
 
-#define _Static_assert(e, m) extern int static_assert_xxxx
+#define static_assert(e, m) extern int static_assert_xxxx
 
 #endif //compiler specific preprossor directive
 
-#if !defined(__DJ2__)
-#ifndef _Static_assert
-#define _Static_assert(e,m) extern char static_assert##__LINE__[e ? 1 : -1]
+#if defined(__DJ2__)
+#define static_assert _Static_assert
+#else
+
+#define static_assert_CONCAT2(a, b) a ## b
+#define static_assert_CONCAT(a, b) static_assert_CONCAT2(a, b)
+
+#ifdef __cplusplus
+#define static_assert(e,m) extern "C" char static_assert_CONCAT(static_assert,__LINE__)[(e) ? 1 : -1]
+#else
+#define static_assert(e,m) extern char static_assert_CONCAT(static_assert,__LINE__)[(e) ? 1 : -1]
 #endif
-#endif
+
+#endif//defined(__DJ2__)
 
 //general preprossor directive
 
@@ -368,7 +377,7 @@ typedef struct DESCRIPTOR //segment descriptors
 
     uint8_t base_high;
 }GDT,LDT;
-_Static_assert(sizeof(GDT) == 8, "size error");
+static_assert(sizeof(GDT) == 8, "size error");
 
 //Intel® 64 and IA-32 Architectures Software Developer's Manual, Volume 3A, (6-11)
 //gate type
@@ -387,7 +396,7 @@ typedef struct _DIT
     uint8_t present : 1;
     uint16_t offset_high;
 }IDT;
-_Static_assert(sizeof(IDT) == 8, "size error");
+static_assert(sizeof(IDT) == 8, "size error");
 
 typedef struct DESC_PTR
 {
@@ -417,7 +426,7 @@ typedef union _PTE_PDE//bc3.1 doesn't support 32bit bitfields
         uint16_t address_high;
     }bits;
 }PDE,PTE;
-_Static_assert(sizeof(PDE) == 4, "size error");
+static_assert(sizeof(PDE) == 4, "size error");
 
 #define PDE_INIT(addr) { ((addr)&~0xFFFL) | 0x7L }
 #define PDE_ADDR(pde) ((pde).value&~0xFFFL)
