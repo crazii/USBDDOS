@@ -30,7 +30,7 @@ CFLAGS += -DDEBUG=1
 endif
 
 VPATH = .. ../USBDDOS ../USBDDOS/CLASS ../USBDDOS/DPMI ../USBDDOS/HCD ../RetroWav ../RetroWav/Platform ../RetroWav/Protocol ../RetroWav/Board
-EXCLUDES = MasterGear.c MiniBlaster.c Linux_SPI.c POSIX_SerialPort.c STM32_HAL_SPI.c Win32_SerialPort.c dpmi_wc.c sample.c
+EXCLUDES = MasterGear.c MiniBlaster.c Linux_SPI.c POSIX_SerialPort.c STM32_HAL_SPI.c Win32_SerialPort.c dpmi_wc.c sample.c dpmi_ldr.c
 
 SRC := $(notdir $(SRC))
 SRC := $(filter-out $(EXCLUDES), $(SRC))

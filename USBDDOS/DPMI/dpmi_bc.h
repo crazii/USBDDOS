@@ -21,6 +21,7 @@
 #include <process.h>
 #include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/pic.h"
+#include "USBDDOS/DPMI/dpmi_ldr.h"
 #include "USBDDOS/dbgutil.h"
 
 #if defined(__BC__)
@@ -56,10 +57,7 @@ enum
 {
     SEL_4G = 1,
     SEL_SYS_DS, //gdt/idt/paging
-    SEL_CS, //real time initial cs
-    SEL_DS,
-    SEL_HIMEM_CS,
-    SEL_HIMEM_DS,
+
     SEL_RMCB_CS,
     SEL_RMCB_DS,
 
@@ -69,24 +67,37 @@ enum
     SEL_LDT,    //VCPI dummy
     SEL_TSS,    //VCPI dummy
 
+    SEL_CS, //real time initial cs
+    SEL_CSE = SEL_CS+15,
+    SEL_DS,
+    SEL_DSE = SEL_DS+15,
+    SEL_HIMEM_CS,
+    SEL_HIMEM_CSE = SEL_HIMEM_CS+15,
+    SEL_HIMEM_DS,
+    SEL_HIMEM_DSE = SEL_HIMEM_DS+15,
+
     SEL_TOTAL,
 };
 #else
 //WC won't compile if enum used as a constant in inline asm
 #define SEL_4G 1
 #define SEL_SYS_DS 2
-#define SEL_CS 3
-#define SEL_DS 4
-#define SEL_HIMEM_CS 5
-#define SEL_HIMEM_DS 6
-#define SEL_RMCB_CS 7
-#define SEL_RMCB_DS 8
-#define SEL_VCPI_CS 9
-#define SEL_VCPI_1 10
-#define SEL_VCPI_2 11
-#define SEL_LDT 12
-#define SEL_TSS 13
-#define SEL_TOTAL 14
+#define SEL_RMCB_CS 3
+#define SEL_RMCB_DS 4
+#define SEL_VCPI_CS 5
+#define SEL_VCPI_1 6
+#define SEL_VCPI_2 7
+#define SEL_LDT 8
+#define SEL_TSS 9
+#define SEL_CS 10
+#define SEL_CSE 25
+#define SEL_DS 26
+#define SEL_DSE 41
+#define SEL_HIMEM_CS 42
+#define SEL_HIMEM_CSE 57
+#define SEL_HIMEM_DS 58
+#define SEL_HIMEM_DSE 73
+#define SEL_TOTAL 74
 #endif
 
 typedef struct //layout required by VCPI. do not change
@@ -312,14 +323,16 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
 }DPMI_TempData;
 
 extern "C" DPMI_ADDRESSING DPMI_Addressing;
-const uint32_t DPMI_XMS_Size = 192L*1024L;   //64k code+data, first 64k is system data.
+uint32_t DPMI_XMS_Size = 64UL*1024UL;   //first 64k of system data, program data will added in run time
 
 static uint16_t _DATA_SEG;
 static uint16_t _CODE_SEG;
 static uint16_t _STACK_PTR;
+static uint32_t _DATA_SIZE;
+static uint32_t _CODE_SIZE;
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
-static uint32_t DPMI_HimemCS = 0;
-static uint32_t DPMI_HimemDS = 0;
+static uint32_t DPMI_HimemCode = 0;  //starting address of himem code (also starting address of the whole program data in himem)
+static uint32_t DPMI_HimemData = 0;  //starting address of himem data, right following the himem code
 static uint16_t DPMI_XMSHimemHandle;
 static uint16_t DPMI_XMSBelow4MHandle;
 static uint8_t DPMI_V86;
@@ -867,7 +880,7 @@ static int16_t __CDECL DPMI_SwitchProtectedMode(uint32_t LinearDS)
     DPMI_Addressing.physical = TRUE;    //linear=physical
     DPMI_Addressing.selector = SEL_4G*8; //4G ds
 
-    DPMI_CopyLinear(DPMI_HimemDS, LinearDS, 64L*1024L); //copy data to himem
+    DPMI_CopyLinear(DPMI_HimemData, LinearDS, _DATA_SIZE); //copy data to himem
 
     _ASM_BEGIN//switch immediately after copy, or the stack won't match
         _ASM2(mov ax, SEL_HIMEM_DS*8)
@@ -894,7 +907,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
     uint16_t segment = DPMI_Rmcb->RM_SEG; //save on stack. DPMI_Rmcb won't be accessible after switching mode
     //_LOG("SS:SP %x:%x\n:", _DATA_SEG, _SP);
 
-    DPMI_CopyLinear(LinearDS, DPMI_HimemDS, 64L*1024L); //copy data back
+    DPMI_CopyLinear(LinearDS, DPMI_HimemData, _DATA_SIZE); //copy data back
     _ASM_BEGIN
         _ASM2(mov ax, SEL_DS*8)
         _ASM2(mov ds, ax)
@@ -1320,7 +1333,7 @@ static void __NAKED DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(popf)
 
         _ASM2(movzx edi, bx) //pm ss:[bx] to linear
-        _ASM2(add edi, dword ptr ss:[DPMI_HimemDS]);
+        _ASM2(add edi, dword ptr ss:[DPMI_HimemData]);
         _ASM2(mov ecx, DPMI_REG_SIZE)
         
         _ASM(push ds)

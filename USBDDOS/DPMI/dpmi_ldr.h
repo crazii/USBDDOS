@@ -1,3 +1,25 @@
+//////////////////////////////////////////////////////////////////////////////
+// A DPMI run time patcher to alt real mode relocation segments to protected
+// mode selectors.
+// It is still a hack, not a REAL LOADER.
+// The potential problems of using the pather is if app code (client)
+// programatically copys the rellocation data before switching
+// to proteced mode, then the copied data cannot be patched.
+// Fortunately that usually doesn't happens.
+// To handle that case perfectly we need a real loader before program
+// startup, and also a stub utility to stub the executable,
+// But that will not be done here.
+//
+// There's also a problem that the C library startup & cleanup
+// routine may made a copy of the relocations on the stack, 
+// we either do one of this:
+// 1.walk the stack to modify the selector to segments befoe 
+// switching to real mode. this not much reliable, but simpler.
+// 2.user compiler/library specific feature such as init_seg to make
+// DPMI shutdown at the last or at the first.
+// 3.never going back to real mode(execpt on final exiting), and install a int 21 handler to perform
+// cleanup & translate DOS terminate & IO function call.
+//////////////////////////////////////////////////////////////////////////////
 #ifndef _DPMI_LDR_H_
 #define _DPMI_LDR_H_
 #include "USBDDOS/platform.h"
@@ -37,23 +59,17 @@ typedef struct RelocationTable
 
 BOOL DPMI_LOADER_Init();
 
-#if 0
-//input:    cs, ds: real mode segments
+//input:
+//          code_size: total size of the code segments
+//          cs, ds: real mode segments
 //          cs_sel, ds_sel: protected mode selectors
 //          assume selectors are contingous, i.e. next code selector is cs_sel+8
-//          ds_sel should be larger than any code selectors
-//          address: linear address of whole program data
-//          size:    program data size
+//          address: proteced mode linear address of the beginging of whole program data in HIMEM
+//          size:    size of whole program data
 //MUST be called in PM mode.
-BOOL DPMI_LOADER_PatchRelocation(uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
-#endif
+BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
 
-//only need patch code once, since code are not copied back to RM when switch back
-BOOL DPMI_LOADER_PatchCode(uint16_t cs, uint16_t ds, uint16_t cs_sel, uint32_t address, uint32_t size);
-
-//neeed patch/unpatch data every time when switching mode
-BOOL DPMI_LOADER_PatchData(uint16_t ds, uint16_t ds_sel, uint32_t address, uint32_t size);
-BOOL DPMI_LOADER_UnpatchData(uint16_t ds, uint16_t ds_sel, uint32_t address, uint32_t size);
+BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
 
 BOOL DPMI_LOADER_Shutdown();
 

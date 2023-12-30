@@ -39,7 +39,9 @@ static BOOL DPMI_InitProtectedMode()
     for(int i = 0; i < 256; ++i)
         DPMI_Temp->idt[i].selector = SEL_HIMEM_CS*8; //change IDT selector, codes are the same after change
     DPMI_SwitchProtectedMode(LinearDS);
-    DPMI_CopyLinear(DPMI_HimemCS, LinearCS, 64L*1024L); //copy code
+    DPMI_CopyLinear(DPMI_HimemCode, LinearCS, _CODE_SIZE); //copy code
+    //apply reloc patch
+    DPMI_LOADER_Patch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
     STIL();
 
     #if 0//exceptoin test
@@ -168,25 +170,12 @@ static void DPMI_SetupGDT()
     _fmemset(gdt, 0, sizeof(GDT)*SEL_TOTAL);
 
     _fmemcpy(&gdt[SEL_4G], DPMI_Data4GDesc, sizeof(GDT));
-    _fmemcpy(&gdt[SEL_CS], DPMI_CodeDesc, sizeof(GDT));
-    gdt[SEL_CS].base_low = (uint16_t)DPMI_Temp->LinearCS;
-    gdt[SEL_CS].base_middle = (uint8_t)(DPMI_Temp->LinearCS>>16L);
-    _fmemcpy(&gdt[SEL_DS], DPMI_DataDesc, sizeof(GDT));
-    gdt[SEL_DS].base_low = (uint16_t)DPMI_Temp->LinearDS;
-    gdt[SEL_DS].base_middle = (uint8_t)(DPMI_Temp->LinearDS>>16L);
 
     _fmemcpy(&gdt[SEL_SYS_DS], DPMI_DataDesc, sizeof(GDT));
     gdt[SEL_SYS_DS].base_low = (uint16_t)DPMI_SystemDS;
     gdt[SEL_SYS_DS].base_middle = (uint8_t)(DPMI_SystemDS>>16L);
     gdt[SEL_SYS_DS].base_high = (uint8_t)(DPMI_SystemDS>>24L);
-    _fmemcpy(&gdt[SEL_HIMEM_CS], DPMI_CodeDesc, sizeof(GDT));
-    gdt[SEL_HIMEM_CS].base_low = (uint16_t)DPMI_HimemCS;
-    gdt[SEL_HIMEM_CS].base_middle = (uint8_t)(DPMI_HimemCS>>16L);
-    gdt[SEL_HIMEM_CS].base_high = (uint8_t)(DPMI_HimemCS>>24L);
-    _fmemcpy(&gdt[SEL_HIMEM_DS], DPMI_DataDesc, sizeof(GDT));
-    gdt[SEL_HIMEM_DS].base_low = (uint16_t)DPMI_HimemDS;
-    gdt[SEL_HIMEM_DS].base_middle = (uint8_t)(DPMI_HimemDS>>16L);
-    gdt[SEL_HIMEM_DS].base_high = (uint8_t)(DPMI_HimemDS>>24L);
+
     _fmemcpy(&gdt[SEL_RMCB_CS], DPMI_CodeDesc, sizeof(GDT));
     gdt[SEL_RMCB_CS].base_low = (uint16_t)DPMI_Temp->RMCBLAddr;
     gdt[SEL_RMCB_CS].base_middle = (uint8_t)(DPMI_Temp->RMCBLAddr>>16L);
@@ -196,12 +185,55 @@ static void DPMI_SetupGDT()
     gdt[SEL_RMCB_DS].base_middle = (uint8_t)(DPMI_Temp->RMCBLAddr>>16L);
     gdt[SEL_RMCB_DS].limit_low = DPMI_RMCB_SIZE - 1;
 
+    uint32_t codeSize = (((uint32_t)_DS)<<4) - (((uint32_t)_CS)<<4);
+    uint32_t codeCount = (codeSize + 64UL*1024UL-1UL)/(64UL*1024UL);
+    assert(codeCount <= 16);
+    codeCount = min(codeCount, 16);
+    {for(int i = 0; i < codeCount; ++i)
+    {
+        _fmemcpy(&gdt[SEL_CS+i], DPMI_CodeDesc, sizeof(GDT));
+        uint32_t base = DPMI_Temp->LinearCS + i*64UL*1024UL;
+        uint32_t size = i != codeCount ? 64UL*1024UL : min(64UL*1024UL, codeSize - codeCount*64UL*1024UL);
+
+        gdt[SEL_CS+i].base_low = (uint16_t)base;
+        gdt[SEL_CS+i].base_middle = (uint8_t)(base>>16L);
+        gdt[SEL_CS+i].base_high = (uint8_t)(base>>24L);
+        gdt[SEL_CS+i].limit_low = (uint16_t)(size-1);
+    }}
+    {for(int i = 0; i < 16; ++i)
+    {
+        _fmemcpy(&gdt[SEL_DS+i], DPMI_DataDesc, sizeof(GDT));
+        gdt[SEL_DS+i].base_low = (uint16_t)(DPMI_Temp->LinearDS + i*64UL*1024UL);
+        gdt[SEL_DS+i].base_middle = (uint8_t)((DPMI_Temp->LinearDS + i*64UL*1024UL)>>16L);
+        gdt[SEL_DS+i].base_high = (uint8_t)((DPMI_Temp->LinearDS + i*64UL*1024UL)>>24L);
+    }}
+
+    {for(int i = 0; i < codeCount; ++i)
+    {
+        _fmemcpy(&gdt[SEL_HIMEM_CS+i], DPMI_CodeDesc, sizeof(GDT));
+        uint32_t base = DPMI_HimemCode + i*64UL*1024UL;
+        uint32_t size = i != codeCount ? 64UL*1024UL : min(64UL*1024UL, codeSize - codeCount*64UL*1024UL);
+
+        gdt[SEL_HIMEM_CS+i].base_low = (uint16_t)base;
+        gdt[SEL_HIMEM_CS+i].base_middle = (uint8_t)(base>>16L);
+        gdt[SEL_HIMEM_CS+i].base_high = (uint8_t)(base>>24L);
+        gdt[SEL_HIMEM_CS+i].limit_low = (uint16_t)(size-1);
+    }}
+
+    {for(int i = 0; i < 16; ++i)
+    {
+        _fmemcpy(&gdt[SEL_HIMEM_DS+i], DPMI_DataDesc, sizeof(GDT));
+        gdt[SEL_HIMEM_DS+i].base_low = (uint16_t)(DPMI_HimemData + i*64UL*1024UL);
+        gdt[SEL_HIMEM_DS+i].base_middle = (uint8_t)((DPMI_HimemData + i*64UL*1024UL)>>16L);
+        gdt[SEL_HIMEM_DS+i].base_high = (uint8_t)((DPMI_HimemData + i*64UL*1024UL)>>24L);
+    }}
+
     #if DEBUG && 0
-    for(int i = 0; i < SEL_TOTAL; ++i)
+    {for(int i = 0; i < SEL_TOTAL; ++i)
     {
         uint32_t far* entry = (uint32_t far*)&gdt[i];
         _LOG("GDT: %d: %08lx %08lx\n", i, entry[0], entry[1]);
-    }
+    }}
     #endif
 }
 
@@ -319,7 +351,7 @@ uint32_t DPMI_PTR2L(void* ptr)
 {
     assert(ptr != NULL);
     if(DPMI_PM)
-        return (DPMI_HimemDS + FP_OFF(ptr));
+        return (DPMI_HimemData + FP_OFF(ptr));
     else
     {
         assert(0 && "real mode ptr mapping called.\n");
@@ -331,11 +363,11 @@ void* DPMI_L2PTR(uint32_t addr)
 {
     if(DPMI_PM)
     {
-        if(!(addr >= DPMI_HimemDS && addr <= DPMI_HimemDS+0xFFFFL))
+        if(!(addr >= DPMI_HimemData && addr <= DPMI_HimemData+0xFFFFL))
             _LOG("%08lx ", addr);
-        assert(addr >= DPMI_HimemDS && addr <= DPMI_HimemDS+0xFFFFL);
-        //printf("%08lx %04x ", addr, (void*)(uint16_t)(addr - DPMI_HimemDS));
-        return (void*)(uint16_t)(addr - DPMI_HimemDS);
+        assert(addr >= DPMI_HimemData && addr <= DPMI_HimemData+0xFFFFL);
+        //printf("%08lx %04x ", addr, (void*)(uint16_t)(addr - DPMI_HimemData));
+        return (void*)(uint16_t)(addr - DPMI_HimemData);
     }
     else
     {
@@ -348,7 +380,13 @@ void DPMI_Init(void)
 {
     _DATA_SEG = _DS;
     _CODE_SEG = _CS;
-    _STACK_PTR = 0xFFFC; //BC's stack at the end
+    #if defined(__LARGE__)
+    _DATA_SIZE = 1024UL*1024UL; //1M for dynamic increments
+    #else
+    _DATA_SIZE = 64UL*1024UL;
+    #endif
+    _CODE_SIZE = (((uint32_t)_DATA_SEG)<<4) - (((uint32_t)_CODE_SEG)<<4);
+
     #if defined(__WC__)
     //avoid further DOS mem call in PM mode for malloc
     short inc = (short)(0xFFFEU - (unsigned)FP_OFF(sbrk(0)));
@@ -359,8 +397,11 @@ void DPMI_Init(void)
         inc = (short)(0xFFFEU - nb);
     }
     sbrk(inc);
-    _STACK_PTR = _SP + 8; //back to main of argc, argv. used after TSR
     #endif
+
+    BOOL loader = DPMI_LOADER_Init();
+    assert(loader);unused(loader);
+    _STACK_PTR = DPMI_LOADER_Header.initSP;
 
     //small model:
     //BC: static data : heap : stack; fixed 64K data seg size.
@@ -387,6 +428,8 @@ void DPMI_Init(void)
 
     DPMI_Temp = (DPMI_TempData far*)MK_FP(TempMemory, 0);
     //pre allocate XMS memory. CS not used for now, use it on TSR
+    DPMI_XMS_Size += _CODE_SIZE + _DATA_SIZE;
+    DPMI_XMS_Size = align(DPMI_XMS_Size, 4UL*4096UL);
     DPMI_XMSHimemHandle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
 
     if(DPMI_V86 && DPMI_XMSHimemHandle) //since we need 1:1 map of memory, and VCPI spec doesn't allow modify the first page table, we need allocate memory above 4M
@@ -408,10 +451,10 @@ void DPMI_Init(void)
         printf("Error: unable to allocate XMS memory.\n");
         exit(1);
     }
-    DPMI_HimemCS = DPMI_SystemDS + 64L*1024L;
-    DPMI_HimemDS = DPMI_HimemCS + 64L*1024L;
+    DPMI_HimemCode = DPMI_SystemDS + 64L*1024L;
+    DPMI_HimemData = DPMI_HimemCode + _CODE_SIZE;
 
-    _LOG("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
+    _LOG("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCode, DPMI_HimemData);
     _LOG("Temp: %08lx\n", (uint32_t)TempMemory<<4);
     //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
 
@@ -448,6 +491,7 @@ static void DPMI_Shutdown(void)
     for(int i = 0; i < DPMI_MappedPages; ++i)
         XMS_Free(DPMI_XMSPageHandle[i]);
 
+    DPMI_LOADER_Unpatch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
 
     if(DPMI_XMSHimemHandle)
@@ -610,7 +654,7 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
     assert((short)ptr != 2);
     uint32_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = (uint16_t)(align(addr, alignment) - addr);
-    //_LOG("%lx %lx %lx", DPMI_HimemDS, addr, align(addr,alignment));
+    //_LOG("%lx %lx %lx", DPMI_HimemData, addr, align(addr,alignment));
 
     uint32_t extra = 0;
     while(((align(addr,alignment)+extra)&~0xFFFUL) != ((align(addr,alignment)+extra+size-1)&~0xFFFUL))
@@ -632,7 +676,6 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
     STIL();
     return aligned;
 }
-
 
 void DPMI_DMAFree(void* ptr)
 {
@@ -807,9 +850,9 @@ uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
 {
-    spc->baseds = DPMI_HimemDS;
+    spc->baseds = DPMI_HimemData;
     spc->limitds = 64L*1024L - 1;
-    spc->basecs = DPMI_HimemCS;
+    spc->basecs = DPMI_HimemCode;
     spc->limitcs = 64L*1024L - 1;
     spc->stackpointer = _STACK_PTR;
     return;
@@ -827,7 +870,7 @@ BOOL DPMI_TSR(void)
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
-    //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCS, DPMI_HimemDS);
+    //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCode, DPMI_HimemData);
     //printf("CR3: %08lx\n", DPMI_Rmcb->CR3);
 
     if(DPMI_XMSBelow4MHandle)
@@ -935,14 +978,11 @@ void __LIBCALL _assert99(char* expr, char* func, char* file, int line)
     printf("%s(%d): in function `%s`\nassertion failed: %s\n", file, line, func, expr);
     //fflush(stdout);
     #endif
-    //TODO: need a loader to fix DS for exit() clean ups.
-    // if(DPMI_PM && !DPMI_TSRed)
-    //     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
 #endif //defined(__BC__)
 
     #if DEBUG
     if(DPMI_PM)
-        _LOG("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCS, DPMI_HimemDS);
+        _LOG("CR3: %08lx, DS: %04x, HimemCS: %08lx, HimemDS: %08lx\n", DPMI_Rmcb->CR3, _DS, DPMI_HimemCode, DPMI_HimemData);
     #endif
 
     if(!DPMI_TSRed)
