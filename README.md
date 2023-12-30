@@ -57,8 +57,9 @@ HIMEM.SYS or other XMS manager; EMM386 4.46+(optional, for RetroWave driver); 80
 The code is orginally written as DOS driver for RetroWave OPL3, currently only a simple CDC driver, UHCI tested on a real hardware and OHCI tested on VirtualBox & real harware. But it could be more. the following can be supported:
 * - [x] OHCI driver
 * - [x] UHCI driver
-* - [ ] EHCI driver
+* - [x] EHCI driver
 * - [ ] xHCI driver
+* - [x] Hub
 * - [x] Keyborad & mouse driver (HID). use `USBDDOSP /hid` to enable
 * - [x] Mass storage deivce driver (MSD). use `USBDDOSP /disk` to enable
 * - [x] Simple CDC(ACM) driver and RetroWave OPL3. use `USBDDOSP /RW` to enable
