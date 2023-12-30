@@ -42,6 +42,14 @@ static BOOL DPMI_InitProtectedMode()
     DPMI_CopyLinear(DPMI_HimemCS, LinearCS, 64L*1024L); //copy code
     STIL();
 
+    #if 0//exceptoin test
+    _LOG("Exception test\n");
+    _ASM_BEGIN
+        _ASM(push 0xFFF8)
+        _ASM(pop ds)
+    _ASM_END
+    #endif
+
     uint32_t offset = 0;
 
     //_LOG("Copy IDT.\n");

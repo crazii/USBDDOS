@@ -15,9 +15,9 @@ STACK_SIZE = 1024
 !endif
 
 CC = wcc
-CFLAGS = -za99 -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -i..
+CFLAGS = -za99 -DDEBUG=$(DEBUG) -wx -zq -3 -bt=dos -ze -ms -os -s -i..
 CXX = wpp
-CXXFLAGS = -DDEBUG=$(DEBUG) -zq -3 -bt=dos -ze -ms -os -s -ei -i..
+CXXFLAGS = -DDEBUG=$(DEBUG) -wx -zq -3 -bt=dos -ze -ms -os -s -ei -i..
 
 LDFLAGS = SYS DOS &
 OPTION Q &

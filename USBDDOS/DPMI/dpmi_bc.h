@@ -428,7 +428,6 @@ static void __NAKED far DPMI_DirectProtectedMode()
         _ASM(retf)
     _ASM_END
 }
-
 static void __NAKED DPMI_DirectProtectedModeEnd() {}
 
 static void __NAKED far DPMI_DirectRealMode()
@@ -999,7 +998,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
 //////////////////////////////////////////////////////////////////////////////
 static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 
-static void __CDECL DPMI_DumpExcept(short expn, short error, short ip, short cs, short flags)
+extern "C" void __CDECL DPMI_DumpExcept(short expn, short error, short ip, short cs, short flags)
 {
     unused(expn);unused(error);unused(ip);unused(cs);unused(flags);
     _LOG("Excpetion: 0x%02x, Error: %x, CS:IP: %04x:%04x, FLAGS: %04x\n", expn, error, cs, ip, flags);
@@ -1074,20 +1073,22 @@ void __NAKED __CDECL DPMI_ExceptionHandlerImpl()
     _ASM_BEGIN
         _ASM(pop ax) //discard return address in DPMI_ExceptionHandlerImplWrapper/DPMI_HWIRQHandler
         _ASM(pop ax) //get & discard return address in DPMI_ExceptionHandlerXX/DPMI_IRQHandlerXX, never returns.
-        _ASM2(sub ax, 3) //back to caller addr when call was made
+        //_ASM2(sub ax, 3) //back to caller addr when call was made - use dec later
         _ASM2(sub ax, offset DPMI_ExceptionHandler0x00)
 #if defined(__BC__)
-        _ASM2(shr, ax, 2) //BC has a 'ret' at the end
+        _ASM2(shr ax, 2) //BC has a 'ret' at the end
 #else
         _ASM2(mov bl, 3) //size of DPMI_ExceptionHandlerXX/DPMI_IRQHandlerXX
         _ASM(div bl) //get exception number
 #endif
+        _ASM(dec ax)
         _ASM2(cmp ax, 0x0E) //called from DPMI_IRQHandlerXX?
         _ASM(jbe DumpExcept) //no, continue
         _ASM2(sub ax, 0x7)
     _ASMLBL(DumpExcept:)
         _ASM(push ax)
         _ASM(call DPMI_DumpExcept)
+        //don't bother the stack, exit
         _ASM2(test DPMI_TSRed, 1)
         _ASM(jz exitnow)
     _ASMLBL(deadloop:)
@@ -1101,7 +1102,7 @@ void __NAKED __CDECL DPMI_ExceptionHandlerImpl()
 #pragma option -k
 
 
-static void DPMI_HWIRQHandlerInternal()
+extern "C" void __CDECL DPMI_HWIRQHandlerInternal()
 {
     uint8_t irq = PIC_GetIRQ();
     //_LOG("HWIRQ %d\n", irq);
@@ -1124,17 +1125,31 @@ void __NAKED DPMI_HWIRQHandler()
 {
     //test if it is a normal INT or exception.
     _ASM_BEGIN
+        #ifdef DEBUG1
+        _ASM(push eax)
+        _ASM2(mov eax, 'AAAA')
+        _ASM2(and eax, 0x00FFFFFF) //log print 'AAA'
+        _ASM(push eax)
+        _ASM2(mov ax, sp)
+        _ASM(push ax)
+        _ASM(call DBG_Log)
+        _ASM2(add sp, 6)
+        _ASM(pop eax)
+        #endif
+
         _ASM(push bp)
         _ASM2(mov bp, sp)
 
         //stack:
-        //normal int: [bp,] DPMI_IRQHandlerXX, ip,cs,flags
-        //exception: [bp,] DPMI_IRQHandlerXX, errorcode,ip,cs,flags (0x08~0x0F)
+        //normal int: [bp,] DPMI_IRQHandlerXX, ip,          cs, *flags*,
+        //exception:  [bp,] DPMI_IRQHandlerXX, errorcode,   ip, *cs*,     flags
         //not handling ring3 excptions, we're always in ring0
         //note: flags always has bit1 set, but selector last 4 bits are always 0 or 8
         _ASM2(cmp word ptr [bp+8], SEL_HIMEM_CS*8)
         _ASM(je Except)
         _ASM2(cmp word ptr [bp+8], SEL_RMCB_CS*8) //DPMI_CallRealMode
+        _ASM(je Except)
+        _ASM2(cmp word ptr [bp+8], SEL_CS*8) //DPMI_CallRealMode
         _ASM(je Except)
         _ASM(jmp NormalINT)
     _ASMLBL(Except:)
@@ -1162,6 +1177,16 @@ void __NAKED DPMI_HWIRQHandler()
         _ASM2(mov es, ax)
         _ASM(call DPMI_HWIRQHandlerInternal)
 
+        #ifdef DEBUG1
+        _ASM2(mov eax, 'BBBB')
+        _ASM2(and eax, 0x00FFFFFF) //log print 'BBB'
+        _ASM(push eax)
+        _ASM2(mov ax, sp)
+        _ASM(push ax)
+        _ASM(call DBG_Log)
+        _ASM2(add sp, 6)
+        #endif
+
         _ASM(pop gs)
         _ASM(pop fs)
         _ASM(pop es)
@@ -1180,13 +1205,13 @@ void __NAKED DPMI_HWIRQHandler()
 #pragma option -k-
 #define DPMI_RMCB_TEST 0
 #if DPMI_RMCB_TEST
-static void __NAKED DPMI_RmcbLog()
+extern "C" void __NAKED DPMI_RmcbLog()
 {
     _LOG("RMCB TEST");
     _ASM_BEGIN _ASM(retf) _ASM_END
 }
 #endif
-static void __NAKED DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
+extern "C" void __NAKED DPMI_RMCbIRet() //wrapper function for user rmcb (allow user uses normal ret). copy DPMI_REG registers and iret
 {
     _ASM_BEGIN
         //save IRET frame to register
