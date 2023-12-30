@@ -54,6 +54,7 @@ all: $(TARGET)
 EXE_dependencies = \
  output\dpmi_bc.obj \
  output\dpmi.obj \
+ output\dpmi_ldr.obj \
  output\xms.obj \
  output\pci.obj \
  output\pic.obj \

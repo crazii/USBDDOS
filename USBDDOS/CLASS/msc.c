@@ -975,7 +975,7 @@ BOOL USB_MSC_DOS_Install()
     USB_MSC_PostDeInit(); //if TSRed, post-deinit clean up will not be called. call it here.
 
     if(count == 0)
-        printf("No USB disk found.\n");
+        _LOG("No USB disk found.\n");
     return count > 0;
  }
 
