@@ -416,7 +416,7 @@ void DPMI_Init(void)
     _LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
     atexit(&DPMI_Shutdown);
 
-    DPMI_V86 = DPMI_IsV86();
+    DPMI_V86 = (uint8_t)DPMI_IsV86();
     DPMI_PM = 0;
 
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
@@ -437,15 +437,15 @@ void DPMI_Init(void)
     //pre allocate XMS memory. CS not used for now, use it on TSR
     DPMI_XMS_Size += _CODE_SIZE + _DATA_SIZE;
     DPMI_XMS_Size = align(DPMI_XMS_Size, 4UL*4096UL);
-    DPMI_XMSHimemHandle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
+    DPMI_XMSHimemHandle = XMS_Alloc((uint16_t)(DPMI_XMS_Size/1024UL), &DPMI_SystemDS);
 
     if(DPMI_V86 && DPMI_XMSHimemHandle) //since we need 1:1 map of memory, and VCPI spec doesn't allow modify the first page table, we need allocate memory above 4M
     {
-        if(DPMI_SystemDS < 0x400000L) //align to 4M (1st page table)
+        if(DPMI_SystemDS < 0x400000UL) //align to 4M (1st page table)
         {
-            if( XMS_Realloc(DPMI_XMSHimemHandle, (0x400000L-DPMI_SystemDS)/1024, &DPMI_SystemDS))
+            if( XMS_Realloc(DPMI_XMSHimemHandle, (uint16_t)((0x400000UL-DPMI_SystemDS)/1024UL), &DPMI_SystemDS))
             {
-                uint16_t handle = XMS_Alloc(DPMI_XMS_Size/1024L, &DPMI_SystemDS);
+                uint16_t handle = XMS_Alloc((uint16_t)(DPMI_XMS_Size/1024UL), &DPMI_SystemDS);
                 DPMI_XMSBelow4MHandle = DPMI_XMSHimemHandle; //keep to free on exit
                 //XMS_Free(DPMI_XMSHimemHandle); //don't free, so that all later xms alloc will be above 4M.
                 DPMI_XMSHimemHandle = handle;

@@ -64,7 +64,7 @@ BOOL DPMI_LOADER_Init()
         _LOG("relocation %u: %04x:%04x\n", i, DPMI_LOADER_RelocTable[i].segment, DPMI_LOADER_RelocTable[i].offset);
     #endif
     _LOG("min_alloc: %08lx max_alloc: %08lx\n", ((uint32_t)DPMI_LOADER_Header.min_alloc)<<4, ((uint32_t)DPMI_LOADER_Header.max_alloc)<<4);
-	_LOG("pages: %d\n", DPMI_LOADER_Header.pages);
+    _LOG("pages: %d\n", DPMI_LOADER_Header.pages);
 
     fclose(fp);
     return TRUE;
@@ -137,8 +137,11 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
 
 BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth)
 {
-    //unsafe & dirty hack for Watcom, as method 1 described in header o dpmi_ldr.h
-    //there should be 3 of them. open-watcom-v2/bld/clib/startup/c/initrtns.c
+    unused(ds);unused(ds_sel);unused(depth);
+    #if DPMI_LOADER_METHOD == 1
+    //unsafe & dirty hack for Watcom, as method 1 described in header of dpmi_ldr.h
+    //there should be 3 of them, 2 DS and 1 ES pushed on stack:
+    //open-watcom-v2/bld/clib/startup/c/initrtns.c
     uint16_t far* stack = (uint16_t far*)MK_FP(_SS, sp);
     uint16_t pmds = _DS;
     uint16_t pmes = _ES;
@@ -148,18 +151,51 @@ BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int dep
         {
             uint16_t index = (stack[i] - ds_sel)/8;
             #if defined(__LARGE__)
-			if(index >= 16)//ES may point to RMCB_DS, we don't care about that
+            if(index >= 16)
             #else
             if(index >= 1)
             #endif
-				continue;
+                continue; //ES may point to RMCB_DS, we don't care about that
             uint16_t seg = ((((uint32_t)(ds)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
             _LOG("DPMI_LOADER: stack: %04x->%04x\n", stack[i], seg);
             stack[i] = seg;
         }
     }
+    #endif
     return TRUE;
 }
+
+#if defined(_WC__) && DPMI_LOADER_METHOD == 2
+//this hacks to WC's C lib to perform RM switch at last
+//but it doesn't work because the finalizing routine
+//saves PM DS on stack before calling every finializing fucntion,
+//it doesn't know it's the last one and will realod PM DS and continue
+//checking the list (although the list is empty), but with the invalid PM DS
+extern void DPMI_Shutdown(void);
+#pragma pack(__push,1)
+#pragma pack(1)
+struct rt_init
+{
+    uint8_t  rtn_type;
+    uint8_t  priority;
+    void*  rtn;
+#if !defined( __MEDIUM__ ) && defined( __LARGE__ )
+    uint16_t  padding;
+#endif
+};
+#pragma pack(__pop)
+
+struct rt_init __based( __segname("YI") ) shutdown =
+{
+    #if defined(__MEDIUM__) || defined(__LARGE__)
+    1,
+    #else
+    0,
+    #endif
+    0, //priority 0
+    &DPMI_Shutdown,
+};
+#endif
 
 BOOL DPMI_LOADER_Shutdown()
 {

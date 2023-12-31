@@ -18,7 +18,9 @@
 // switching to real mode. this not much reliable, but simpler.
 //
 // 2.user compiler/library specific feature such as init_seg to make
-// DPMI shutdown at the last or at the first.
+// DPMI shutdown at the last so that the protected mode DS is not
+// accessed afterwards. (still it's not working for WC,
+// because WC's c lib still accesses DS after finializing runtime)
 // 
 // 3.never going back to real mode(execpt on final exiting), and install
 // a int 21 handler to translate DOS terminate & IO function call.
@@ -42,6 +44,8 @@
 #ifndef _DPMI_LDR_H_
 #define _DPMI_LDR_H_
 #include "USBDDOS/platform.h"
+
+#define DPMI_LOADER_METHOD 1
 
 #ifdef __cplusplus
 extern "C" {
