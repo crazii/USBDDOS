@@ -38,10 +38,13 @@ static BOOL DPMI_InitProtectedMode()
     CLIS();
     for(int i = 0; i < 256; ++i)
         DPMI_Temp->idt[i].selector = SEL_HIMEM_CS*8; //change IDT selector, codes are the same after change
-    DPMI_SwitchProtectedMode(LinearDS);
+    DPMI_SwitchProtectedMode(SEL_CS*8, LinearDS);
     DPMI_CopyLinear(DPMI_HimemCode, LinearCS, _CODE_SIZE); //copy code
-    //apply reloc patch
+    //apply reloc patch to himem (original code in conventional memory not touched)
+#if defined(__WC__) //this also works for BC, but BC doesn't need this because it didn't save reload DS or save DS on stack
+                    //stkip it for BC  to save code size
     DPMI_LOADER_Patch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
+#endif
     STIL();
 
     #if 0//exceptoin test
@@ -93,7 +96,7 @@ static BOOL DPMI_InitProtectedMode()
     DPMI_HighFree(DPMI_Temp->TempMemoryHandle);
     DPMI_Temp = NULL;
 
-    DPMI_SwitchProtectedMode(LinearDS); //final PM and also pre-test the adjustment above.
+    DPMI_SwitchProtectedMode(SEL_HIMEM_CS*8, LinearDS); //final PM and also pre-test the adjustment above.
     return TRUE;
 }
 
@@ -397,11 +400,15 @@ void DPMI_Init(void)
         inc = (short)(0xFFFEU - nb);
     }
     sbrk(inc);
+    _STACK_PTR = _STACKTOP;
+    #else
+    _STACK_PTR = 0xFFF8;
     #endif
 
-    BOOL loader = DPMI_LOADER_Init();
-    assert(loader);unused(loader);
-    _STACK_PTR = DPMI_LOADER_Header.initSP;
+#if defined(__WC__)
+    BOOL loaded = DPMI_LOADER_Init();
+    assert(loaded);unused(loaded);
+#endif
 
     //small model:
     //BC: static data : heap : stack; fixed 64K data seg size.
@@ -491,7 +498,10 @@ static void DPMI_Shutdown(void)
     for(int i = 0; i < DPMI_MappedPages; ++i)
         XMS_Free(DPMI_XMSPageHandle[i]);
 
-    DPMI_LOADER_Unpatch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
+#if defined(__WC__) //we're going to real mode in conventional memory, not need to unpatch himem, but need to hack it for stack
+    //DPMI_LOADER_Unpatch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
+    DPMI_LOADER_UnpatchStack(_DATA_SEG, SEL_HIMEM_DS*8, _SP, 32);
+#endif
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
 
     if(DPMI_XMSHimemHandle)

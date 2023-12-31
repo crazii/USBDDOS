@@ -184,6 +184,11 @@ uint16_t _SP_ASM();
 value[sp]
 #define _SP _SP_ASM()
 
+uint16_t _BP_ASM();
+#pragma aux _BP_ASM = \
+value[bp]
+#define _BP _BP_ASM()
+
 uint16_t _CS_ASM();
 #pragma aux _CS_ASM = \
 "mov ax, cs" \
@@ -259,6 +264,7 @@ extern void outpd(uint16_t port, uint32_t val);
 extern int _dos_open(const char* file, int mode, int* fd);
 extern int _dos_close(int fd);
 
+extern uint16_t _ES;
 extern uint16_t _DS;
 extern uint16_t _CS;
 extern uint16_t _SS;

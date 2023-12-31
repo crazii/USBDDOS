@@ -21,7 +21,9 @@
 #include <process.h>
 #include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/pic.h"
+#if defined(__WC__)
 #include "USBDDOS/DPMI/dpmi_ldr.h"
+#endif
 #include "USBDDOS/dbgutil.h"
 
 #if defined(__BC__)
@@ -195,6 +197,7 @@ static BOOL DPMI_IsV86();
 "and ax, 1" \
 value[ax]
 
+extern "C" uint16_t _STACKTOP;
 #else
 
 #error not implemented.
@@ -830,7 +833,7 @@ static void __NAKED DPMI_VCPIRealModeEnd() {}
 //////////////////////////////////////////////////////////////////////////////
 
 //swtich to protected mode.
-static int16_t __CDECL DPMI_SwitchProtectedMode(uint32_t LinearDS)
+static int16_t __CDECL DPMI_SwitchProtectedMode(uint16_t CS_SEL, uint32_t LinearDS)
 { //care on printf msg in mode switch, because printf will switch back and forth and cause recursion
     if(DPMI_PM)
         return DPMI_PM;
@@ -838,12 +841,14 @@ static int16_t __CDECL DPMI_SwitchProtectedMode(uint32_t LinearDS)
     CLIS();
     //DO NOT access any static data befoe switch, because this may be called from a RMCB block from outside
     _ASM_BEGIN
+        _ASM(push ax)
         _ASM(push bx)
         _ASM(push bp)
+        _ASM2(mov ax, CS_SEL) //save parameter to ax
         _ASM2(mov bp, sp)
-        _ASM2(lss bx, DPMI_Rmcb);
-        _ASM2(mov sp, ss:[bx + RMCB_OFF_RMSP]);
-        _ASM(push SEL_CS*8)
+        _ASM2(lss bx, DPMI_Rmcb); //changing stack
+        _ASM2(mov sp, ss:[bx + RMCB_OFF_RMSP]);//stack changed, no access to parameters from now on
+        _ASM(push ax)
 #if defined(__BC__)
         _ASM(push offset SwitchPMDone)
 #else
@@ -873,6 +878,7 @@ static int16_t __CDECL DPMI_SwitchProtectedMode(uint32_t LinearDS)
         _ASM2(mov sp, bp)
         _ASM(pop bp)
         _ASM(pop bx)
+        _ASM(push ax)
     _ASM_END
     DPMI_PM = DPMI_V86 ? PM_VCPI : PM_DIRECT;
     DPMI_Rmcb = (DPMI_RMCB far*)MK_FP(SEL_RMCB_DS*8, 0);
@@ -926,6 +932,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM2(mov ss:[bx + RMCB_OFF_PMSP], sp);
         _ASM2(mov sp, ss:[bx + RMCB_OFF_RMSP]);
         _ASM(push _DATA_SEG)
+        //push real mode far return address from RMCB_OFF_SwitchRM
         _ASM(push _CODE_SEG)
 #if defined(__BC__)
         _ASM(push offset SwitchRMDone)
@@ -941,6 +948,7 @@ static void __CDECL DPMI_SwitchRealMode(uint32_t LinearDS)
         _ASM(xchg bx, word ptr ss:[bp+2]);
         _ASM(pop bp)
 #endif
+        //call pm entry of RMCB_OFF_SwitchRM by push cs+ip and retf
         _ASM(push SEL_RMCB_CS*8)
         _ASM(push word ptr ss:[bx + RMCB_OFF_SwitchRM]);
         _ASM2(mov ax, ss)
@@ -1030,7 +1038,13 @@ static void (*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
 extern "C" void __CDECL DPMI_DumpExcept(short expn, short error, short ip, short cs, short flags)
 {
     unused(expn);unused(error);unused(ip);unused(cs);unused(flags);
+    #if DEBUG //TODO: non debug output
     _LOG("Excpetion: 0x%02x, Error: %x, CS:IP: %04x:%04x, FLAGS: %04x\n", expn, error, cs, ip, flags);
+    const char far* csip = (char far*)MK_FP(cs, ip);
+    int base = 0; //modify this, i.e. -8 to get prevous instuctions
+    _LOG("CS:IP: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+    csip[base], csip[base+1], csip[base+2], csip[base+3], csip[base+4], csip[base+5], csip[base+6], csip[base+7]);
+    #endif
 }
 
 #pragma option -k-
@@ -1176,9 +1190,9 @@ void __NAKED DPMI_HWIRQHandler()
         //note: flags always has bit1 set, but selector last 4 bits are always 0 or 8
         _ASM2(cmp word ptr [bp+8], SEL_HIMEM_CS*8)
         _ASM(je Except)
-        _ASM2(cmp word ptr [bp+8], SEL_RMCB_CS*8) //DPMI_CallRealMode
+        _ASM2(cmp word ptr [bp+8], SEL_RMCB_CS*8)
         _ASM(je Except)
-        _ASM2(cmp word ptr [bp+8], SEL_CS*8) //DPMI_CallRealMode
+        _ASM2(cmp word ptr [bp+8], SEL_CS*8)
         _ASM(je Except)
         _ASM(jmp NormalINT)
     _ASMLBL(Except:)

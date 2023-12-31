@@ -6,9 +6,14 @@
 #include "USBDDOS/DPMI/dpmi_ldr.h"
 #include "USBDDOS/DPMI/dpmi.h"
 #if DEBUG
-#define _LOG_ENABLE 1
+#define _LOG_ENABLE 0
 #endif
 #include "USBDDOS/dbgutil.h"
+
+//Note: This file works on BC, but currently not built for BC (not included in Makeifle.BC)
+//beause BC's exit routine doesn't reload real mode DS (DGROUP), and it 
+//doesn't current DS (protected mode ds) on the stack.
+//Just exclude it from BC to save code size.
 
 MZHEADER DPMI_LOADER_Header;
 static RELOC_TABLE* DPMI_LOADER_RelocTable;
@@ -71,11 +76,12 @@ BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
     {
         uint32_t offset = (((uint32_t)DPMI_LOADER_RelocTable[i].segment)<<4) + (uint32_t)DPMI_LOADER_RelocTable[i].offset;
-        _LOG("offset: %08lx, codesize: %08lx\n", offset, code_size);
+        //_LOG("offset: %08lx, codesize: %08lx\n", offset, code_size);
         assert(offset < size); unused(size);
-        BOOL incode = offset < code_size;
+        BOOL incode = offset < code_size; unused(incode);
         uint16_t seg = DPMI_LoadW(address + offset);                    //this segment is in memory, already rellocated, 
-        _LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
+        //_LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
+        unused(ds);
         uint32_t relative = ((uint32_t)(seg-cs))<<4;                    //apply -start to get relative value
         uint16_t selector;
 
@@ -90,8 +96,8 @@ BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs
             uint16_t index = (relative-code_size) / (64UL*1024UL);
             selector = ds_sel + index*8;
         }
-        _LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
-        _LOG("DPMI_LOADER: %s segment %d in %s: %04x->%04x\n", iscode ? "CODE" : "DATA", i, incode ? "CODE" : "DATA", seg, selector);
+        //_LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
+        _LOG("DPMI_LOADER: %d: [%08lx] segment %s in %s: %04x->%04x\n", i, offset, iscode ? "CODE" : "DATA", incode ? "CODE" : "DATA", seg, selector);
         DPMI_StoreW(address+offset, selector);
     }
     _LOG("DPMI_LOADER: patching done.\n");
@@ -104,11 +110,11 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
     {
         uint32_t offset = (((uint32_t)DPMI_LOADER_RelocTable[i].segment)<<4) + (uint32_t)DPMI_LOADER_RelocTable[i].offset;
-        _LOG("offset: %08lx, codesize: %08lx, size: %08lx\n", offset, code_size, size);
+        //_LOG("offset: %08lx, codesize: %08lx, size: %08lx\n", offset, code_size, size);
         assert(offset < size); unused(size); //unpatch not done, assert will freeze on exit
-        BOOL incode = offset < code_size;
+        BOOL incode = offset < code_size; unused(incode);
         uint16_t selector = DPMI_LoadW(address + offset);
-        _LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
+        //_LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
         uint16_t seg;
         BOOL iscode = selector < ds_sel;
         if(iscode)
@@ -121,11 +127,37 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
             uint16_t index = (selector-ds_sel)/8;
             seg = ((((uint32_t)(ds)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
         }
-        _LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
-        _LOG("DPMI_LOADER: %s segment %d in %s: %04x<-%04x\n", iscode ? "CODE" : "DATA", i, incode ? "CODE" : "DATA", selector, seg);
+        //_LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
+        _LOG("DPMI_LOADER: %d: [%08lx] segment %s in %s: %04x->%04x\n", i, offset, iscode ? "CODE" : "DATA", incode ? "CODE" : "DATA", selector, seg);
         DPMI_StoreW(address+offset, seg);
     }
     _LOG("DPMI_LOADER: unpatching done.\n");
+    return TRUE;
+}
+
+BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth)
+{
+    //unsafe & dirty hack for Watcom, as method 1 described in header o dpmi_ldr.h
+    //there should be 3 of them. open-watcom-v2/bld/clib/startup/c/initrtns.c
+    uint16_t far* stack = (uint16_t far*)MK_FP(_SS, sp);
+    uint16_t pmds = _DS;
+    uint16_t pmes = _ES;
+    for(int i = 0; i < depth; ++i)
+    {
+        if(stack[i] == pmds || stack[i] == pmes)
+        {
+            uint16_t index = (stack[i] - ds_sel)/8;
+            #if defined(__LARGE__)
+			if(index >= 16)//ES may point to RMCB_DS, we don't care about that
+            #else
+            if(index >= 1)
+            #endif
+				continue;
+            uint16_t seg = ((((uint32_t)(ds)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
+            _LOG("DPMI_LOADER: stack: %04x->%04x\n", stack[i], seg);
+            stack[i] = seg;
+        }
+    }
     return TRUE;
 }
 
