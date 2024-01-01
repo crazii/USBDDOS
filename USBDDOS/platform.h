@@ -263,6 +263,7 @@ extern void outpw(uint16_t port, uint16_t val);
 extern void outpd(uint16_t port, uint32_t val);
 extern int _dos_open(const char* file, int mode, int* fd);
 extern int _dos_close(int fd);
+extern int _fstrlen(const char*);
 
 extern uint16_t _ES;
 extern uint16_t _DS;
