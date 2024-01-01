@@ -26,9 +26,10 @@
 // a int 21 handler to translate DOS terminate & IO function call.
 // This sounds intriguing but may have problems, because a 16 bit
 // C library might potentially use any real mode segment besieds the CS/DS
-// so it needs a customized C lib to work perfectly(like DJGPP).
+// so it needs a customized C lib to work perfectly (like DJGPP).
 // but if a customized C lib is used, the problem itself can
-// be avoid without any hacks/patches used here.
+// be avoid without any hacks used here.
+// This method tested OK for WC.
 //
 // 4.a custom C lib that take care of any use of real mode segments
 // and so we don't need this loader patch as compiled in BC.
@@ -45,7 +46,7 @@
 #define _DPMI_LDR_H_
 #include "USBDDOS/platform.h"
 
-#define DPMI_LOADER_METHOD 1
+#define DPMI_LOADER_METHOD 3 //working method: 1,3
 
 #ifdef __cplusplus
 extern "C" {

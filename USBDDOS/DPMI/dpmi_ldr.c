@@ -159,6 +159,9 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
 BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth)
 {
     unused(ds);unused(ds_sel);unused(sp);unused(depth);
+    //hacking stack is unsafe that there's a chance when some value
+    //happens to be the same value of ds/es selector
+    //and changing it will cause disasters.
     #if DPMI_LOADER_METHOD == 1
     //unsafe & dirty hack for Watcom, as method 1 described in header of dpmi_ldr.h
     //there should be 3 of them, 2 DS and 1 ES pushed on stack:

@@ -106,6 +106,18 @@ static void DPMI_SetupPaging()
         DPMI_InitVCPI(); //VCPI will init first 4M page.
 }
 
+#if defined(__WC__)
+#if DPMI_LOADER_METHOD == 3
+static void DPMI_Shutdown(void);
+static uint32_t DPMI_Protected_FP2L(uint16_t ds, uint16_t off)
+{
+    int index = ds/8 - SEL_HIMEM_DS;
+    GDT far* gdt = (GDT far*)MK_FP(SEL_SYS_DS, 0);
+    return (uint32_t)gdt[SEL_HIMEM_DS+index].base_low + (uint32_t)off;
+}
+#endif
+#endif
+
 static void DPMI_SetupIDT()
 {
     assert(DPMI_Temp);
@@ -157,6 +169,14 @@ static void DPMI_SetupIDT()
         DPMI_Temp->idt[j].offset_low = DPMI_IRQHANDLER_ADDR(0x08) + size * (j-DPMI_Temp->ProtectedModeIRQ0Vec);
     for(int k = DPMI_Temp->ProtectedModeIRQ8Vec; k <= DPMI_Temp->ProtectedModeIRQ8Vec+7; ++k)
         DPMI_Temp->idt[k].offset_low = DPMI_IRQHANDLER_ADDR(0x70) + size * (k-DPMI_Temp->ProtectedModeIRQ8Vec);
+
+    #if defined(__WC__)
+    #if DPMI_LOADER_METHOD == 3
+    DPMI_Temp->idt[0x21].offset_low = (uintptr_t)DPMI_INT21H;
+    DPMI_I21H_pfnTerminate = DPMI_Shutdown;
+    DPMI_I21H_PM_FP2L = DPMI_Protected_FP2L;
+    #endif
+    #endif
 
     DPMI_Temp->idtr.size = sizeof(IDT)*256 - 1;
     DPMI_Temp->idtr.offset = DPMI_Ptr16ToLinear(DPMI_Temp->idt);
@@ -414,7 +434,9 @@ void DPMI_Init(void)
     //BC: static data : heap : stack; fixed 64K data seg size.
     //WC: static data : stack (fixed size, set on linker) : heap; incremental: memory allocated from DOS on request.
     _LOG("sbrk: %x, SP: %x, stack: %u\n", FP_OFF(sbrk(0)), _SP, stackavail());
+    #if defined(__BC__) || (defined(__WC__) && defined(DPMI_LOADER_METHOD) && DPMI_LOADER_METHOD != 3)
     atexit(&DPMI_Shutdown);
+    #endif
 
     DPMI_V86 = (uint8_t)DPMI_IsV86();
     DPMI_PM = 0;
@@ -499,8 +521,11 @@ static void DPMI_Shutdown(void)
         XMS_Free(DPMI_XMSPageHandle[i]);
 
 #if defined(__WC__) //we're going to real mode in conventional memory, not need to unpatch himem, but need to hack it for stack
+#if DPMI_LOADER_METHOD == 1
     //DPMI_LOADER_Unpatch(_CODE_SIZE, _CODE_SEG, _DATA_SEG, SEL_HIMEM_CS*8, SEL_HIMEM_DS*8, DPMI_HimemCode, _CODE_SIZE+_DATA_SIZE);
     DPMI_LOADER_UnpatchStack(_DATA_SEG, SEL_HIMEM_DS*8, _SP, 32);
+#endif
+    DPMI_LOADER_Shutdown();
 #endif
     DPMI_SwitchRealMode(DPMI_Rmcb->LinearDS);
 
@@ -882,6 +907,10 @@ BOOL DPMI_TSR(void)
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCode, DPMI_HimemData);
     //printf("CR3: %08lx\n", DPMI_Rmcb->CR3);
+
+#if defined(__WC__)
+    DPMI_LOADER_Shutdown();
+#endif
 
     if(DPMI_XMSBelow4MHandle)
     {

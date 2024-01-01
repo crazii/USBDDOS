@@ -23,7 +23,10 @@
 #include "USBDDOS/pic.h"
 #if defined(__WC__)
 #include "USBDDOS/DPMI/dpmi_ldr.h"
-#endif
+#   if DPMI_LOADER_METHOD == 3
+#   include "USBDDOS/DPMI/dpmi_i21.h"
+#   endif
+#endif//defined(__WC__)
 #include "USBDDOS/dbgutil.h"
 
 #if defined(__BC__)
