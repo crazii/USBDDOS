@@ -30,34 +30,56 @@ BOOL DPMI_LOADER_Init()
         return FALSE;
     _LOG("argv[0]: %s\n", __ARGV[0]);
 
-    FILE* fp = fopen(__ARGV[0], "rb");
-    if(fp == NULL)
-        return FALSE;
-    if(fread(&DPMI_LOADER_Header, sizeof(DPMI_LOADER_Header), 1, fp) != 1)
-    {
-        fclose(fp);
-        return FALSE;
-    }
-    if(DPMI_LOADER_Header.MZ != 0x5A4D)
-    {
-        fclose(fp);
-        return FALSE;
-    }
-    if(fseek(fp, DPMI_LOADER_Header.relocation_tbl, SEEK_SET) != 0)
-    {
-        fclose(fp);
-        return FALSE;
-    }
+    DPMI_REG r = {0};
+    r.h.ah = 0x3D; //open file
+    r.h.al = 0;
+    r.w.ds = FP_SEG(__ARGV[0]);
+    r.w.dx = FP_OFF(__ARGV[0]);
 
-    DPMI_LOADER_RelocTable = (RELOC_TABLE*)malloc(DPMI_LOADER_Header.relocations*sizeof(RELOC_TABLE));
-    memset(DPMI_LOADER_RelocTable, 0, DPMI_LOADER_Header.relocations*sizeof(RELOC_TABLE));
-    if( fread(DPMI_LOADER_RelocTable, sizeof(RELOC_TABLE), DPMI_LOADER_Header.relocations, fp) != DPMI_LOADER_Header.relocations)
-    {
-        free(DPMI_LOADER_RelocTable);
-        DPMI_LOADER_RelocTable = NULL;
-        fclose(fp);
+    //note: we're in real mode. we can call int86x/intdosx directly,
+    //but DPMI_CallRealModeINT also works, also avoid linking int86x code
+    if(DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&CPU_CFLAG))
         return FALSE;
-    }
+
+    BOOL done = FALSE;
+    uint16_t handle = r.w.ax;
+    do
+    {
+        r.h.ah = 0x3F; //read
+        r.w.bx = handle;
+        r.w.cx = sizeof(DPMI_LOADER_Header);
+        r.w.ds = FP_SEG(&DPMI_LOADER_Header);
+        r.w.dx = FP_OFF(&DPMI_LOADER_Header);
+        if(DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&CPU_CFLAG) || r.w.ax != r.w.cx)
+            break;
+        if(DPMI_LOADER_Header.MZ != 0x5A4D)
+            break;
+        
+        r.h.ah = 0x42; //seek
+        r.h.al = 0; //seek_set
+        r.w.bx = handle;
+        r.w.dx = DPMI_LOADER_Header.relocation_tbl;
+        r.w.cx = 0;
+        if(DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&CPU_CFLAG))
+            break;
+        
+        DPMI_LOADER_RelocTable = (RELOC_TABLE*)malloc(DPMI_LOADER_Header.relocations*sizeof(RELOC_TABLE));
+        memset(DPMI_LOADER_RelocTable, 0, DPMI_LOADER_Header.relocations*sizeof(RELOC_TABLE));
+
+        r.h.ah = 0x3F;
+        r.w.bx = handle;
+        r.w.cx = sizeof(RELOC_TABLE) * DPMI_LOADER_Header.relocations;
+        r.w.ds = FP_SEG(DPMI_LOADER_RelocTable);
+        r.w.dx = FP_OFF(DPMI_LOADER_RelocTable);
+        if(DPMI_CallRealModeINT(0x21, &r) != 0 || (r.w.flags&CPU_CFLAG) || r.w.ax != r.w.cx)
+            break;
+        done = TRUE;
+    } while(0);
+
+    //close file
+    r.h.ah = 0x3E;
+    r.w.bx = handle;
+    DPMI_CallRealModeINT(0x21, &r);
 
     #if DEBUG
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
@@ -66,8 +88,7 @@ BOOL DPMI_LOADER_Init()
     _LOG("min_alloc: %08lx max_alloc: %08lx\n", ((uint32_t)DPMI_LOADER_Header.min_alloc)<<4, ((uint32_t)DPMI_LOADER_Header.max_alloc)<<4);
     _LOG("pages: %d\n", DPMI_LOADER_Header.pages);
 
-    fclose(fp);
-    return TRUE;
+    return done;
 }
 
 BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size)
@@ -137,7 +158,7 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
 
 BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth)
 {
-    unused(ds);unused(ds_sel);unused(depth);
+    unused(ds);unused(ds_sel);unused(sp);unused(depth);
     #if DPMI_LOADER_METHOD == 1
     //unsafe & dirty hack for Watcom, as method 1 described in header of dpmi_ldr.h
     //there should be 3 of them, 2 DS and 1 ES pushed on stack:
