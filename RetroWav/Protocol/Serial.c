@@ -42,7 +42,7 @@
     并将在法律允许的最大范围内被起诉。
 */
 
-#include "Retrowav/Protocol/Serial.h"
+#include "Serial.h"
 
 #ifdef __cplusplus
 extern "C" {

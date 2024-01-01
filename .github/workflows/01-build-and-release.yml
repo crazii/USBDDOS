@@ -1,0 +1,69 @@
+# With thanks to https://gist.github.com/weibeld/f136048d0a82aacc063f42e684e3c494
+name: build-and-release
+on: push
+permissions:
+  contents: write
+jobs:
+  build-job:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/volkertb/debian-djgpp:v0.2
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Build with debug
+        run: |
+          cd Make
+          make clean
+          make DEBUG=1
+          mv output/usbddosp.exe output/usbddosp_dbg.exe
+          test -f output/usbddosp_dbg.exe
+      - name: Build without debug
+        run: |
+          cd Make
+          make clean
+          make
+          test -f output/usbddosp.exe
+          test -f output/usbddosp_dbg.exe
+          # Verify that the non-debug variant is actually different from the debug variant.
+          ! diff output/usbddosp.exe output/usbddosp_dbg.exe
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-usbddosp-executables
+          path: |
+            Make/output/usbddosp.exe
+            Make/output/usbddosp_dbg.exe
+          retention-days: 1
+
+  publish-job:
+    # TODO: uncomment following line (and remove this TODO) once the PR is approved, just before merging to master/main
+    #if: github.event.ref_name == github.event.repository.default_branch
+    needs: build-job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "release_tag=UserBuild_$(date +"%Y.%m.%d_%H-%M")" >> $GITHUB_OUTPUT
+      - name: 'Download Artifacts'
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-usbddosp-executables
+      - name: Release compiled executables
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          files: |
+            usbddosp.exe
+            usbddosp_dbg.exe
+          body: |
+            ## Description of files
+
+            - `usbddosp.exe` -> Regular build that you should use normally.
+            - `usbddosp_dbg.exe` -> Debug-enabled build to help with debugging and troubleshooting.
+
+            When the tool isn't working on the hardware you're trying it on, then please try the debug-enabled build.
+            When opening a GitHub issue to report incompatible hardware, please include any debug output.

@@ -8,7 +8,15 @@ RM := del
 clean:
 	$(RM) output\*.o
 else #PROMPT
+ifeq (, $(shell which i586-pc-msdosdjgpp-gcc)) # If i586-pc-msdosdjgpp-gcc is not in the path
+ifeq (, $(shell which gcc)) # If gcc is also not in the path
+$(error "No compiler found in $(PATH), make sure that either i586-pc-msdosdjgpp-gcc or gcc (DJGPP) is installed.")
+else # gcc IS in the path
+CC = gcc
+endif # If gcc is also not in the path
+else # i586-pc-msdosdjgpp-gcc IS in the path
 CC = i586-pc-msdosdjgpp-gcc
+endif # If i586-pc-msdosdjgpp-gcc is not in the path
 SRC = $(shell find .. -name '*.c')
 clean:
 	$(RM) $(OBJS)
@@ -24,7 +32,7 @@ LDFLAGS = -lm
 
 ifeq ($(DEBUG),0)
 LDFLAGS += -s
-CFLAGS += -DNDEBUG
+CFLAGS += -DNDEBUG -DDEBUG=0
 else
 CFLAGS += -DDEBUG=1
 endif
