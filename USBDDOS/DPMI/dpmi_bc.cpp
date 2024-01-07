@@ -716,10 +716,6 @@ void DPMI_Init(void)
     _STACK_PTR = 0xFFF8;
     #endif
 
-    uint16_t far* sssp2 = (uint16_t far*)MK_FP(_SS, 0xFFC6);
-    _LOG("sssp: %x %x\n", sssp2[0], sssp2[1]);
-    //while(1);
-
     BOOL loaded = DPMI_LOADER_Init(_CODE_SEG, _DATA_SEG, _CODE_SIZE);
     assert(loaded);unused(loaded);
     if(!loaded)

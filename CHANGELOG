@@ -1,6 +1,7 @@
 
 
-??/??/????: support OpenWatcom
+01/08/2024: add medium model support for BC/WC build, add trace debug using int3
+01/01/2024: support OpenWatcom
 12/24/2023: add EHCI & HUB; if IRQ=0xFF, set IRQ from PCI IRQ routing options.
 
 Version 1.0:
