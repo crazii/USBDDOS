@@ -172,10 +172,11 @@ void DBG_Log(const char* fmt, ...)
     DBG_Logv(fmt, aptr);
     va_end(aptr);
 }
-
-#else//_LOG_ENABLE
-int DBG_Nolog(const char* fmt, ...) {return 0;}
 #endif //_LOG_ENABLE
+
+#if defined(__BC__)
+int DBG_Nolog(const char* fmt, ...) {unused(fmt);return 0;}
+#endif
 
 #if DEBUG
 static DBG_DBuff dbuff;
@@ -323,9 +324,9 @@ void DBG_Flush(DBG_DBuff* buff)
 
 void DBG_DumpREG(DPMI_REG* reg)
 {
-    DBG_Log("eax:%08lx ebx:%08lx ecx:%08lx edx:%08lx\n", reg->d.eax, reg->d.ebx, reg->d.ecx, reg->d.edx);
-    DBG_Log("ds:%04x es:%04x esi:%08lx edi:%08lx\n", reg->w.ds, reg->w.es, reg->d.esi, reg->d.edi);
-    DBG_Log("ss:sp:%04x:%04x cs:ip:%04x:%04x flags:%04x\n", reg->w.ss, reg->w.sp, reg->w.cs, reg->w.ip, reg->w.flags);
+    DBG_Log("EAX:%08lx EBX:%08lx ECX:%08lx EDX:%08lx ESI:%08lx EDI:%08lx\n", reg->d.eax, reg->d.ebx, reg->d.ecx, reg->d.edx, reg->d.esi, reg->d.edi);
+    DBG_Log("DS:%04x ES:%04x EBP:%08lx ", reg->w.ds, reg->w.es, reg->d.ebp);
+    DBG_Log("SS:SP:%04x:%04x CS:IP:%04x:%04x FLAGS:%04x\n", reg->w.ss, reg->w.sp, reg->w.cs, reg->w.ip, reg->w.flags);
 }
 
 #endif //DEBUG

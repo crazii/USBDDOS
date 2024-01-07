@@ -2,7 +2,6 @@
 #define _DBGUTIL_H_
 #include <stdlib.h>
 #include <stdarg.h>
-#include "USBDDOS/DPMI/dpmi.h"
 
 #define DUMP_BUFF_SIZE 1024U
 
@@ -16,17 +15,20 @@ extern "C"
 {
 #endif
 
+int DBG_Nolog(const char* fmt, ...);
+#if DEBUG
+void DBG_Logv(const char* fmt, va_list aptr);
+void DBG_Log(const char* fmt, ...);
+#endif
+
 #if _LOG_ENABLE
 
 //_LOG() can be called in interrupt handler. DO NOT use sys calls, i.e. printf/INT10h in interrupt handler.
-void DBG_Logv(const char* fmt, va_list aptr);
-void DBG_Log(const char* fmt, ...);
 #define _LOG DBG_Log
 
 #else //_LOG_ENABLE
 
 #if defined(__BC__) //no variadic macro, so string constants may not optimized out
-int DBG_Nolog(const char* fmt, ...);
 #define _LOG DBG_Nolog
 #else
 #define _LOG(...) 
@@ -57,6 +59,8 @@ void DBG_DumpPD(uint32_t addr, unsigned n, DBG_DBuff* nullable buff);
 void DBG_Printf(DBG_DBuff* nullable buff, const char* fmt, ...);
 void DBG_Flush(DBG_DBuff* buff);
 
+union _DPMI_REG;
+typedef union _DPMI_REG DPMI_REG;
 void DBG_DumpREG(DPMI_REG* reg);
 
 #endif//DEBUG

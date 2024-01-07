@@ -3,6 +3,7 @@
 #include <dos.h>
 #include <assert.h>
 #include <string.h>
+#include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/usb.h"
 #include "USBDDOS/CLASS/msc.h"
 #include "USBDDOS/CLASS/hid.h"
@@ -282,5 +283,5 @@ int main(int argc, char* argv[])
         unused(uninstalled);
     }
 #endif
-    return 0;
+    return DPMI_Exit(0);
 }

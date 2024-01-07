@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -10,10 +9,7 @@
 #endif
 #include "USBDDOS/dbgutil.h"
 
-//Note: This file works on BC, but currently not built for BC (not included in Makeifle.BC)
-//beause BC's exit routine doesn't reload real mode DS (DGROUP), and it 
-//doesn't current DS (protected mode ds) on the stack.
-//Just exclude it from BC to save code size.
+extern int main(int argc, char** argv);
 
 MZHEADER DPMI_LOADER_Header;
 static RELOC_TABLE* DPMI_LOADER_RelocTable;
@@ -24,7 +20,52 @@ static RELOC_TABLE* DPMI_LOADER_RelocTable;
 #define __ARGV __argv
 #endif
 
-BOOL DPMI_LOADER_Init()
+int DPMI_LOADER_CS_Count;
+int DPMI_LOADER_DS_Count;
+uint16_t DPMI_LOADER_SegMain;
+uint16_t DPMI_LOADER_CS[DPMI_CS_MAX];
+uint16_t DPMI_LOADER_DS[DPMI_DS_MAX];
+
+static BOOL DPMI_LOADER_AddSeg(uint16_t* segs, int* pcount, uint16_t seg, int MAX)
+{
+    int count = *pcount;
+    for(int i = 0; i < count; ++i)
+    {
+        if(segs[i] == seg)
+            return TRUE;
+    }
+    assert(count < MAX);
+    if(count >= MAX)
+        return FALSE;
+    segs[count] = seg;
+    return (*pcount)++;
+}
+
+static uint16_t DPMI_LOADER_FindSeg(const uint16_t* segs, int count, uint16_t seg, BOOL debug)
+{
+    for(int i = 0; i < count; ++i)
+    {
+        if(segs[i] == seg)
+            return i;
+    }
+    if(debug)
+    {
+        _LOG("invalid segment: %04x\nvalid segments:\n",seg);
+        for(int j = 0; j < count; ++j)
+            _LOG("segment %02d: %04x\n",j, segs[j]);
+        assert(FALSE);
+    }
+    return -1;
+}
+
+static int DPMI_SortSeg(const void* l, const void* r)
+{
+    const uint16_t* lseg = (const uint16_t*)l;
+    const uint16_t* rseg = (const uint16_t*)r;
+    return (int16_t)(*lseg - *rseg);
+}
+
+BOOL DPMI_LOADER_Init(uint16_t cs, uint16_t ds, uint32_t code_size)
 {
     if(__ARGV == NULL || __ARGV[0] == NULL)
         return FALSE;
@@ -81,17 +122,153 @@ BOOL DPMI_LOADER_Init()
     r.w.bx = handle;
     DPMI_CallRealModeINT(0x21, &r);
 
-    #if DEBUG
+    #if DEBUG && 0
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
         _LOG("relocation %u: %04x:%04x\n", i, DPMI_LOADER_RelocTable[i].segment, DPMI_LOADER_RelocTable[i].offset);
     #endif
     _LOG("min_alloc: %08lx max_alloc: %08lx\n", ((uint32_t)DPMI_LOADER_Header.min_alloc)<<4, ((uint32_t)DPMI_LOADER_Header.max_alloc)<<4);
     _LOG("pages: %d\n", DPMI_LOADER_Header.pages);
+    _LOG("cs: %04x, size: %lu\n", cs, code_size);
 
+    assert(done);
+    if(done)
+    {
+        for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
+        {
+            uint16_t seg = *(uint16_t far*)MK_FP(cs + DPMI_LOADER_RelocTable[i].segment, DPMI_LOADER_RelocTable[i].offset);
+            uint32_t relative = ((uint32_t)(seg-cs))<<4; //apply -start to get relative value
+            BOOL iscode = relative < code_size;
+            //_LOG("%s segment: %04x\n", iscode?"CODE":"DATA", seg);
+            if(iscode)
+                DPMI_LOADER_AddSeg(DPMI_LOADER_CS, &DPMI_LOADER_CS_Count, seg, DPMI_CS_MAX);
+            else
+                DPMI_LOADER_AddSeg(DPMI_LOADER_DS, &DPMI_LOADER_DS_Count, seg, DPMI_DS_MAX);
+        }
+
+        if(DPMI_LOADER_CS_Count == 0) //no relocations, tiny/small/compact?
+            DPMI_LOADER_AddSeg(DPMI_LOADER_CS, &DPMI_LOADER_CS_Count, cs, DPMI_CS_MAX);
+
+        if(DPMI_LOADER_DS_Count == 0) //no relocations, tiny/small/medium?
+            DPMI_LOADER_AddSeg(DPMI_LOADER_DS, &DPMI_LOADER_DS_Count, ds, DPMI_DS_MAX);
+
+        //sort segments addresses in ascending order
+        qsort(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, sizeof(uint16_t), DPMI_SortSeg);
+        qsort(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, sizeof(uint16_t), DPMI_SortSeg);
+        DPMI_LOADER_SegMain = FP_SEG(&main);
+
+        _LOG("Total segments: CODE: %u, DATA: %u\n", DPMI_LOADER_CS_Count, DPMI_LOADER_DS_Count);
+        for(int j = 0; j < DPMI_LOADER_CS_Count; ++j)
+            _LOG("CODE segment %02d: %04x\n",j, DPMI_LOADER_CS[j]);
+        _LOG("seg main: %04x\n", DPMI_LOADER_SegMain);
+    }
     return done;
 }
 
-BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size)
+BOOL DPMI_LOADER_PatchRM(uint32_t code_size, uint16_t cs, uint16_t cs_sel, uint16_t ds_sel, uint32_t size)
+{
+    //we're pathcing in place, extern functions cannot be called.
+    //cannot call _LOG while/after patching, to the log before patching.
+    #if DEBUG && 0
+    {for(uint16_t i = 0; i < DPMI_LOADER_CS_Count; ++i)
+    {
+        uint16_t seg = DPMI_LOADER_CS[i];
+        uint32_t relative = ((uint32_t)(seg-cs))<<4; //apply -start to get relative value
+        BOOL iscode = relative < code_size;
+        uint16_t selector;
+        if(iscode)
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, seg, TRUE);
+            selector = cs_sel + index*8;
+        }
+        else
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, seg, TRUE);
+            selector = ds_sel + index*8;
+        }
+        _LOG("%s segment: %04x->%04x\n", iscode?"CODE":"DATA", seg, selector);
+    }}
+
+    {for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
+    {
+        uint16_t far* entry = (uint16_t far*)MK_FP(cs + DPMI_LOADER_RelocTable[i].segment, DPMI_LOADER_RelocTable[i].offset);
+        uint16_t seg = *entry;
+        uint32_t relative = ((uint32_t)(seg-cs))<<4; //apply -start to get relative value
+        BOOL iscode = relative < code_size;
+        uint16_t selector;
+        if(iscode)
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, seg, TRUE);
+            selector = cs_sel + index*8;
+        }
+        else
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, seg, TRUE);
+            selector = ds_sel + index*8;
+        }
+        uint32_t linear = (((uint32_t)FP_SEG(entry))<<4) + (uint32_t)FP_OFF(entry);
+        _LOG("[%08lx] %s segment: %04x->%04x\n", linear, iscode?"CODE":"DATA", seg, selector);
+    }}
+
+    #endif
+
+    unused(size);
+    for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
+    {
+        assert((((uint32_t)DPMI_LOADER_RelocTable[i].segment)<<4) + (uint32_t)DPMI_LOADER_RelocTable[i].offset < size);
+
+        uint16_t far* entry = (uint16_t far*)MK_FP(cs + DPMI_LOADER_RelocTable[i].segment, DPMI_LOADER_RelocTable[i].offset);
+        uint16_t seg = *entry;
+        uint32_t relative = ((uint32_t)(seg-cs))<<4; //apply -start to get relative value
+        BOOL iscode = relative < code_size;
+        uint16_t selector;
+        if(iscode)
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, seg, TRUE);
+            selector = cs_sel + index*8;
+        }
+        else
+        {
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, seg, TRUE);
+            selector = ds_sel + index*8;
+        }
+        *entry = selector;
+    }
+    return TRUE;
+}
+
+int DPMI_LOADER_GetCSIndex(uint16_t segment)
+{
+    return DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, segment, TRUE);
+}
+
+int DPMI_LOADER_GetDSIndex(uint16_t segment)
+{
+    return DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, segment, TRUE);
+}
+
+int DPMI_LOADER_FindCSIndex(uint16_t segment)
+{
+    return DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, segment, FALSE);
+}
+
+int DPMI_LOADER_FindDSIndex(uint16_t segment)
+{
+    return DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, segment, FALSE);
+}
+
+uint16_t DPMI_LOADER_GetCS(int index)
+{
+    assert(index < DPMI_LOADER_CS_Count);
+    return index < DPMI_LOADER_CS_Count ? DPMI_LOADER_CS[index] : 0xFFFF;
+}
+
+uint16_t DPMI_LOADER_GetDS(int index)
+{
+    assert(index < DPMI_LOADER_DS_Count);
+    return index < DPMI_LOADER_DS_Count ? DPMI_LOADER_DS[index] : 0xFFFF;
+}
+
+BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size)
 {
     _LOG("DPMI_LOADER: patching...\n");
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
@@ -102,19 +279,17 @@ BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs
         BOOL incode = offset < code_size; unused(incode);
         uint16_t seg = DPMI_LoadW(address + offset);                    //this segment is in memory, already rellocated, 
         //_LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
-        unused(ds);
         uint32_t relative = ((uint32_t)(seg-cs))<<4;                    //apply -start to get relative value
         uint16_t selector;
-
         BOOL iscode = relative < code_size;
         if(iscode)
         {
-            uint16_t index = relative / (64UL*1024UL);
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_CS, DPMI_LOADER_CS_Count, seg, TRUE);
             selector = cs_sel + index*8;
         }
         else
         {
-            uint16_t index = (relative-code_size) / (64UL*1024UL);
+            uint16_t index = DPMI_LOADER_FindSeg(DPMI_LOADER_DS, DPMI_LOADER_DS_Count, seg, TRUE);
             selector = ds_sel + index*8;
         }
         //_LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
@@ -125,7 +300,7 @@ BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs
     return TRUE;
 }
 
-BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size)
+BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs_sel, uint16_t cs_selend, uint16_t ds_sel, uint16_t ds_selend, uint32_t address, uint32_t size)
 {
     _LOG("DPMI_LOADER: unpatching...\n");
     for(uint16_t i = 0; i < DPMI_LOADER_Header.relocations; ++i)
@@ -135,20 +310,23 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
         assert(offset < size); unused(size); //unpatch not done, assert will freeze on exit
         BOOL incode = offset < code_size; unused(incode);
         uint16_t selector = DPMI_LoadW(address + offset);
-        //_LOG("selector: %04x, cs_sel: %04x, ds_sel: %04x\n", selector, cs_sel, ds_sel);
+        //_LOG("selector: %04x in %s, cs_sel: %04x, ds_sel: %04x\n", selector, incode?"CODE":"DATA", cs_sel, ds_sel);
         uint16_t seg;
-        BOOL iscode = selector < ds_sel;
+        assert((selector >= cs_sel && selector <= cs_selend) || (selector >= ds_sel && selector <= ds_selend)); unused(ds_selend);
+        BOOL iscode = (selector >= cs_sel && selector <= cs_selend);
         if(iscode)
         {
             uint16_t index = (selector-cs_sel)/8;
-            seg = ((((uint32_t)(cs)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
+            assert(index < DPMI_LOADER_CS_Count);
+            seg = DPMI_LOADER_CS[index];
         }
         else
         {
             uint16_t index = (selector-ds_sel)/8;
-            seg = ((((uint32_t)(ds)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
+            assert(index < DPMI_LOADER_DS_Count);
+            seg = DPMI_LOADER_DS[index];
         }
-        //_LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs, ds);
+        //_LOG("segment: %04x, cs: %04x, ds: %04x\n", seg, cs_sel, ds_sel);
         _LOG("DPMI_LOADER: %d: [%08lx] segment %s in %s: %04x->%04x\n", i, offset, iscode ? "CODE" : "DATA", incode ? "CODE" : "DATA", selector, seg);
         DPMI_StoreW(address+offset, seg);
     }
@@ -156,69 +334,31 @@ BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t 
     return TRUE;
 }
 
-BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth)
+BOOL DPMI_LOADER_PatchStack(uint16_t cs_seg, uint16_t cs_sel, uint16_t sp, int depth, int count)
 {
-    unused(ds);unused(ds_sel);unused(sp);unused(depth);
-    //hacking stack is unsafe that there's a chance when some value
-    //happens to be the same value of ds/es selector
-    //and changing it will cause disasters.
-    #if DPMI_LOADER_METHOD == 1
-    //unsafe & dirty hack for Watcom, as method 1 described in header of dpmi_ldr.h
-    //there should be 3 of them, 2 DS and 1 ES pushed on stack:
-    //open-watcom-v2/bld/clib/startup/c/initrtns.c
     uint16_t far* stack = (uint16_t far*)MK_FP(_SS, sp);
-    uint16_t pmds = _DS;
-    uint16_t pmes = _ES;
-    for(int i = 0; i < depth; ++i)
+    int c = 0;
+    for(int i = 0; i <= depth; ++i)
     {
-        if(stack[i] == pmds || stack[i] == pmes)
+        if(cs_seg == stack[i])
         {
-            uint16_t index = (stack[i] - ds_sel)/8;
-            #if defined(__LARGE__)
-            if(index >= 16)
-            #else
-            if(index >= 1)
-            #endif
-                continue; //ES may point to RMCB_DS, we don't care about that
-            uint16_t seg = ((((uint32_t)(ds)) << 4) + ((uint32_t)index)*64UL*1024UL) >> 4;
-            _LOG("DPMI_LOADER: stack: %04x->%04x\n", stack[i], seg);
-            stack[i] = seg;
+            _LOG("DPMI_LOADER: stack [%04x:%04x]: %04x->%04x\n", _SS, &stack[i], stack[i], cs_sel);
+            stack[i] = cs_sel;
+            if(++c == count)
+                break;
         }
     }
-    #endif
-    return TRUE;
+    return c>0;
 }
 
-#if defined(_WC__) && DPMI_LOADER_METHOD == 2
-//this hacks to WC's C lib to perform RM switch at last
-//but it doesn't work because the finalizing routine
-//saves PM DS on stack before calling every finializing fucntion,
-//it doesn't know it's the last one and will realod PM DS and continue
-//checking the list (although the list is empty), but with the invalid PM DS
-extern void DPMI_Shutdown(void);
-#pragma pack(__push,1)
-#pragma pack(1)
-struct rt_init
+#if DEBUG
+void DPMI_LOADER_DumpSegments()
 {
-    uint8_t  rtn_type;
-    uint8_t  priority;
-    void*  rtn;
-#if !defined( __MEDIUM__ ) && defined( __LARGE__ )
-    uint16_t  padding;
-#endif
-};
-#pragma pack(__pop)
-
-struct rt_init __based( __segname("YI") ) shutdown =
-{
-    #if defined(__MEDIUM__) || defined(__LARGE__)
-    1,
-    #else
-    0,
-    #endif
-    0, //priority 0
-    &DPMI_Shutdown,
-};
+    for(int j = 0; j < DPMI_LOADER_CS_Count; ++j)
+        DBG_Log("CODE segment %02d: %04x\n",j, DPMI_LOADER_CS[j]);
+    for(int i = 0; i < DPMI_LOADER_DS_Count; ++i)
+        DBG_Log("DATA segment %02d: %04x\n",i, DPMI_LOADER_DS[i]);
+}
 #endif
 
 BOOL DPMI_LOADER_Shutdown()

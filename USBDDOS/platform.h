@@ -14,8 +14,8 @@
 //compiler specific preprossor directive
 #if defined(__BC__)
 
-#if !defined(__TINY__) && !defined(__SMALL__)
-#error only tiny/small model supported.
+#if !defined(__TINY__) && !defined(__SMALL__) && !defined(__MEDIUM__)
+#error only tiny/small/medium model supported.
 #endif
 
 #include <stddef.h>
@@ -65,13 +65,6 @@ typedef uint16_t uintptr_t;
 extern uint32_t PLTFM_BSF(uint32_t x); //386+ (386 included)
 #define PLTFM_CPU_FLAGS() _FLAGS
 
-//copy code to data. as long as the compiler doesn't touch the PM segment selector
-#define memcpy_c2d(dest, src, size) do{\
-    void far* fdest = MK_FP(_DS, FP_OFF(dest));\
-    void far* fsrc = MK_FP(_CS, FP_OFF(src));\
-    _fmemcpy(fdest, fsrc, size);\
-}while(0)
-
 #elif defined(__DJ2__)
 #include <stdint.h>
 #include <stddef.h>
@@ -105,12 +98,10 @@ static inline uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; __asm__("bsf %1, %0" :
 static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint32_t flags = 0; __asm__("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
 static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
 
-#define memcpy_c2d memcpy
-
 #elif defined(__WC__)
 
-#if !defined(__TINY__) && !defined(__SMALL__)
-#error only tiny/small model supported.
+#if !defined(__TINY__) && !defined(__SMALL__) && !defined(__MEDIUM__)
+#error only tiny/small/medium model supported.
 #endif
 
 #include <stdint.h>
@@ -212,12 +203,6 @@ typedef uint16_t (*PFN_PLTFM_CPU_FLAGS_ASM)(void);
 static const volatile PFN_PLTFM_CPU_FLAGS_ASM pfnPLTFM_CPU_FLAGS_ASM = &PLTFM_CPU_FLAGS_ASM;  //prevent optimization, need get FLAGS every time
 static inline uint16_t PLTFM_CPU_FLAGS() { return pfnPLTFM_CPU_FLAGS_ASM();}
 
-#define memcpy_c2d(dest, src, size) do{\
-    void far* fdest = MK_FP(_DS, FP_OFF(dest));\
-    void far* fsrc = MK_FP(_CS, FP_OFF(src));\
-    _fmemcpy(fdest, fsrc, size);\
-}while(0)
-
 #else //stub
 #if !defined(_WIN32) && !defined(__linux__)   //make editor happy
 #error "Not supported."
@@ -264,12 +249,15 @@ extern void outpd(uint16_t port, uint32_t val);
 extern int _dos_open(const char* file, int mode, int* fd);
 extern int _dos_close(int fd);
 extern int _fstrlen(const char*);
+extern int _fmemcmp(const void*, const void*, int);
+extern int _bios_keybrd(int);
 
 extern uint16_t _ES;
 extern uint16_t _DS;
 extern uint16_t _CS;
 extern uint16_t _SS;
 extern uint16_t _SP;
+extern uint16_t _BP;
 extern uint16_t _AX;
 extern uint8_t _AH;
 extern uint8_t _AL;
@@ -282,8 +270,8 @@ extern uint8_t _AL;
 #define _Cdecl 
 #define _pascal
 #define stackavail() 0
+#define _psp 0
 
-#define memcpy_c2d memcpy
 #define _fmemset memset
 #define _fmemcpy memcpy
 
@@ -297,7 +285,7 @@ extern uint8_t _AL;
 
 #if defined(__DJ2__)
 #define static_assert _Static_assert
-#else
+#elif defined(__BC__) || defined(__WC__)
 
 #define static_assert_CONCAT2(a, b) a ## b
 #define static_assert_CONCAT(a, b) static_assert_CONCAT2(a, b)
@@ -332,6 +320,10 @@ extern uint8_t _AL;
 
 #define unused(x) (void)x
 
+#ifndef _countof
+#define _countof(x) (sizeof(x)/sizeof(x[0]))
+#endif
+
 //align down
 #define align(x,a) ((uint32_t)((x)+(a)-1)&(uint32_t)(~((uint32_t)(a)-1)))
 //align up
@@ -351,6 +343,7 @@ static __INLINE uint32_t EndianSwap32(uint32_t x) {return (x<<24) | ((x<<8)&0xFF
 #define CPU_CFLAG 0x0001    //carry flag (CF)
 #define CPU_IFLAG 0x0200    //interrupt flag (IF)
 #define CPU_ZFLAG 0x0040    //zero flag
+#define CPU_TFLAG 0x0100    //trap flag
 
 #define BSF PLTFM_BSF
 #define CPU_FLAGS() PLTFM_CPU_FLAGS()

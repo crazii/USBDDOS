@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // A DPMI run time patcher to alt real mode relocation segments to protected
 // mode selectors.
-// It is still a hack, not a REAL LOADER.
+// It is a patch, not a REAL LOADER.
 // The potential problems of using the pather is if app code (client)
 // programatically copys the rellocation data before switching
 // to proteced mode, then the copied data cannot be patched.
@@ -41,12 +41,20 @@
 // https://sourceforge.net/projects/pdos/ (supports BC & WC)
 // may be used as base to cusmize a small C lib
 // 
+// 5. when invalid segment happens, handle it in exception hander,
+// changing real mode segments to selectors.
+// this also may not work because
+// although selectors value now are very small, 
+// real mode lib may try to access the segment in very low memory(i.e IVT)
+// thus made CPU treat the segments as selectors.
+//
+//
+// Currently the combined methods of 3 and 5 are used.
+//
 //////////////////////////////////////////////////////////////////////////////
 #ifndef _DPMI_LDR_H_
 #define _DPMI_LDR_H_
 #include "USBDDOS/platform.h"
-
-#define DPMI_LOADER_METHOD 3 //working method: 1,3
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,16 +81,40 @@ typedef struct MZHeader
 }MZHEADER;
 static_assert(sizeof(MZHEADER) == 0x1E, "size error");
 
-extern MZHEADER DPMI_LOADER_Header;
-
 typedef struct RelocationTable
 {
     uint16_t offset;
     uint16_t segment;
 }RELOC_TABLE;
 
-BOOL DPMI_LOADER_Init();
+extern MZHEADER DPMI_LOADER_Header;
 
+#if defined(__MEDIUM__) || defined(__LARGE__)
+#define DPMI_CS_MAX 32 //some compiler (i.e.) generate a segment for each compile unit, currently 32 is enough. for WC the link will merge segments and there'll be 2 or more.
+#else
+#define DPMI_CS_MAX 1
+#endif
+
+#if defined(__COMPACT__) || defined(__LARGE__)
+#define DPMI_DS_MAX 32
+#else
+#define DPMI_DS_MAX 1
+#endif
+
+//segments might not be in full 64K sizes, need record the starts
+extern int DPMI_LOADER_CS_Count;
+extern int DPMI_LOADER_DS_Count;
+extern uint16_t DPMI_LOADER_SegMain; //this a C wrapper to get address of main for C++
+extern uint16_t DPMI_LOADER_CS[DPMI_CS_MAX];
+extern uint16_t DPMI_LOADER_DS[DPMI_DS_MAX];
+
+BOOL DPMI_LOADER_Init(uint16_t cs, uint16_t ds, uint32_t code_size);
+
+//patch relocation in place, in conventional memory in real mode
+//note: extern functions called be called in real mode anymore after patching.
+BOOL DPMI_LOADER_PatchRM(uint32_t code_size, uint16_t cs, uint16_t cs_sel, uint16_t ds_sel, uint32_t size);
+
+//patch relocations.
 //input:
 //          code_size: total size of the code segments
 //          cs, ds: real mode segments
@@ -91,11 +123,26 @@ BOOL DPMI_LOADER_Init();
 //          address: proteced mode linear address of the beginging of whole program data in HIMEM
 //          size:    size of whole program data
 //MUST be called in PM mode.
-BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
+BOOL DPMI_LOADER_Patch(uint32_t code_size, uint16_t cs, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
 
-BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs, uint16_t ds, uint16_t cs_sel, uint16_t ds_sel, uint32_t address, uint32_t size);
+int DPMI_LOADER_GetCSIndex(uint16_t segment);
+int DPMI_LOADER_GetDSIndex(uint16_t segment);
 
-BOOL DPMI_LOADER_UnpatchStack(uint16_t ds, uint16_t ds_sel, uint16_t sp, int depth);
+//same as DPMI_LOADER_Get*, without debug checks
+int DPMI_LOADER_FindCSIndex(uint16_t segment);
+int DPMI_LOADER_FindDSIndex(uint16_t segment);
+
+uint16_t DPMI_LOADER_GetCS(int index);
+uint16_t DPMI_LOADER_GetDS(int index);
+
+BOOL DPMI_LOADER_Unpatch(uint32_t code_size, uint16_t cs_sel, uint16_t cs_selend, uint16_t ds_sel, uint16_t ds_selend, uint32_t address, uint32_t size);
+
+//replace cs_seg to cs_sel directly on stack, limit stack depth, and count of replacements
+BOOL DPMI_LOADER_PatchStack(uint16_t cs_seg, uint16_t cs_sel, uint16_t sp, int depth, int count);
+
+#if DEBUG
+void DPMI_LOADER_DumpSegments();
+#endif
 
 BOOL DPMI_LOADER_Shutdown();
 

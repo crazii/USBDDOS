@@ -2,9 +2,13 @@
 #define _DPMI_H_
 #include "USBDDOS/platform.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 //a DPMI wrapper for different compilers. Borland C++, DJGPP, WatCom etc.
 //the porpose of this file is to hide all __dpmi* or int 31h calls from outside
-
 typedef union _DPMI_REG {
 struct
 {
@@ -80,12 +84,8 @@ typedef struct //old interrupt handler info returned by install isr.
     uint8_t user; //user defined
 }DPMI_ISR_HANDLE;
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #if defined(__BC__) || defined(__WC__)
+#include <stdlib.h>
 
 //convert a linear (virtual) addr to physical addr (current segment)
 //only working with memory allocated with DPMI_DMAMalloc, or DPMI_MapMemory
@@ -100,6 +100,10 @@ extern "C"
 uint32_t DPMI_PTR2L(void* ptr);
 
 void* DPMI_L2PTR(uint32_t addr);
+
+int DPMI_Exit(int c);
+
+#define exit(c) DPMI_Exit(c)
 
 #elif defined(__DJ2__)
 
@@ -118,6 +122,8 @@ uint32_t DPMI_PTR2L(void* ptr);
 
 void* DPMI_L2PTR(uint32_t addr);
 
+#define DPMI_Exit(c) (c)
+
 #else //stub
 
 //convert a linear (virtual) addr to physical addr
@@ -127,6 +133,7 @@ uint32_t DPMI_P2L(uint32_t addr);
 //convert a ptr to linear (page mapped) addr
 uint32_t DPMI_PTR2L(void* ptr);
 void* DPMI_L2PTR(uint32_t addr);
+int DPMI_Exit(int);
 
 #endif
 

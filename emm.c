@@ -203,7 +203,7 @@ _ASMLBL(found_entry:)
 
     /**handler code**/
 
-#if !defined(__BC__)
+#if !defined(__BC__) && !defined(__WC__)
     _ASM2(mov ebx, 0x18)   //setup return addr. 0x18=current cs
     _ASM(push ebx)  //segment hiword ignored by cpu
     _ASM2(mov ebx, offset callret)
@@ -325,9 +325,7 @@ static /*uint32_t*/ void __NAKED EMM_IOPortTrap_Wrapper()
     _ASM(push ebx)
 #if defined(__DJ2__)
     _ASM(call _EMM_IOPortTrap_WrapperC)
-#elif defined(__WC__)
-    _ASM(call EMM_IOPortTrap_WrapperC)
-#elif defined(__BC__)
+#elif defined(__BC__) || defined(__WC__)
     _ASM(call EMM_IOPortTrap_WrapperC)
     _ASM2(shl dx, 16)
     _ASM2(mov dx, ax)
@@ -373,7 +371,11 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt,
     //handler entry code
     uint16_t code_offset = offset;
     size_t code_size = (uintptr_t)&EMM_IOPortTrap_EndCode - (uintptr_t)&EMM_IOPortTrap_StartCode;
-    memcpy_c2d(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_StartCode, code_size);
+    #if defined(__DJ2__)
+    memcpy(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_StartCode, code_size);
+    #else
+    _fmemcpy(buff + offset, &EMM_IOPortTrap_StartCode, code_size);
+    #endif
     offset = (uint16_t)(offset+code_size);
     offset = (uint16_t)align(offset, 4);
 
@@ -400,7 +402,11 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt,
     //installation code
     uint16_t installfunc_offset = offset;
     size_t installcode_size = (uintptr_t)&EMM_IOPortTrap_Install_V86End - (uintptr_t)&EMM_IOPortTrap_Install_V86;
-    memcpy_c2d(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_Install_V86, installcode_size);
+    #if defined(__DJ2__)
+    memcpy(buff + offset, (void*)(uintptr_t)&EMM_IOPortTrap_Install_V86, installcode_size);
+    #else
+    _fmemcpy(buff + offset, (void*)&EMM_IOPortTrap_Install_V86, installcode_size);
+    #endif
     offset = (uint16_t)(offset + installcode_size);
     //_LOG("installation code size:%d\n", installcode_size);
 #endif
@@ -441,7 +447,7 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt,
         header.gdt[1].present = 1;
         header.gdt[1].available = 0;
         header.gdt[1].zero = 0;
-        #if defined(__BC__)    //always use 16bit seg for BC, even in protected mode.
+        #if defined(__BC__) || defined(__WC__)    //always use 16bit seg for BC/WC, even in protected mode.
         header.gdt[1].bits32 = 0;
         #else
         header.gdt[1].bits32 = 1;
@@ -473,9 +479,6 @@ BOOL EMM_Install_IOPortTrap(uint16_t start, uint16_t end, EMM_IODT* inputp iodt,
         header.gdt[3].base_high = 0;
         header.gdt[3].bits32 = 0;
         header.gdt[3].granuarity = 0;
-        #if !defined(__WC__)    //watcom inline asm doesn't support use16, we need to set segment to 32bit
-                                //TODO: not working. EMM386 set a 16 bit segment for the handler code
-        #endif
 
         //data segment after switching GDT, based at allocated memory start, 64k limit
         header.gdt[4] = header.gdt[2];

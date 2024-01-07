@@ -8,9 +8,17 @@ DEBUG = 1
 !endif
 
 !if $(DEBUG) == "1"
-_NDEBUG =
+DEF_NDEBUG =
+MODEL = -mm
+TASM_OPT = -TM2
+STARTUP = C0M.obj
+LIB = CM.lib
 !else
-_NDEBUG = NDEBUG
+DEF_NDEBUG = NDEBUG
+MODEL = -ms
+TASM_OPT =
+STARTUP = C0S.obj
+LIB = CS.lib
 !endif
 
 #.PATH.obj = output
@@ -54,6 +62,7 @@ all: $(TARGET)
 EXE_dependencies = \
  output\dpmi_bc.obj \
  output\dpmi.obj \
+ output\dpmi_ldr.obj \
  output\xms.obj \
  output\pci.obj \
  output\pic.obj \
@@ -72,7 +81,7 @@ EXE_dependencies = \
 
 # Explicit Rules
 $(TARGET): $(CFLAGS_FILE) $(LINKRESP_FILE) $(EXE_dependencies)
-  $(TLINK) /v/s/c/P-/L$(LIBPATH) @$(LINKRESP_FILE),$@,,cs.lib
+  $(TLINK) /v/s/c/P-/L$(LIBPATH) @$(LINKRESP_FILE),$@,,$(LIB)
 
 #add dummy obj so that OBJS.CFG will generated propery. and then only EXE_dependencies need to be modifed on adding new files
 output\_endummy.obj: output\_endummy.c
@@ -97,20 +106,22 @@ $(CFLAGS_FILE): Makefile.BC
 -d
 -B
 -Tt
+$(TASM_OPT)
 -vi-
 -wpro
 -weas
 -wpre
+$(MODEL)
 -n.\OUTPUT
 -I$(INCLUDEPATH)
 -L$(LIBPATH)
--DDEBUG=$(DEBUG);$(_NDEBUG)
+-DDEBUG=$(DEBUG);$(DEF_NDEBUG)
 -P
 | $@
 
 $(LINKRESP_FILE): Makefile.BC output\_endummy.obj
   copy &&|
-c0s.obj+
+$(STARTUP)+
 $(EXE_dependencies:.obj=.obj+)
 output\_endummy.obj
 | $@

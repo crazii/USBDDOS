@@ -323,7 +323,11 @@ uint8_t EHCI_ControlTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir
 uint8_t EHCI_IsoTransfer(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, uint8_t* inoutp pBuffer,
     uint16_t length, HCD_COMPLETION_CB pCB, void* nullable pCBData)
 {
-    assert(FALSE); //not implemented. TODO:
+    //since we already record it in the TODO, skip compiler warning for reminding.
+    unused(pDevice);unused(pEndpoint);unused(dir);unused(pBuffer);
+    unused(length);unused(pCB);unused(pCBData);
+
+    assert(FALSE && "not impelemented"); //not implemented. TODO:
     return 0xFF;
 }
 

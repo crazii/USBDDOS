@@ -122,7 +122,6 @@ HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir,
         STIL();
     }
     #endif
-    assert( sizeof(HCD_Request) <= 32);
     HCD_Request* pRequest = (HCD_Request*)USB_TAlloc32(sizeof(HCD_Request));
     if(!pRequest)
         return pRequest;

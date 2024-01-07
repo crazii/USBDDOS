@@ -345,6 +345,7 @@ void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size)
         push esi
         push edi
         push ebx
+        push eax
         mov esi, dword ptr src
         mov edi, dword ptr dest
         mov ecx, dword ptr size
@@ -354,6 +355,58 @@ void DPMI_CopyLinear(uint32_t dest, uint32_t src, uint32_t size)
         xor ebx, ebx
 #if defined(__BC__)
     }
+
+    #ifdef DEBUG1
+    _asm{
+        push ds
+        pusha
+        mov bx, 3*8
+        mov ds, bx
+        //mov dword ptr ds:[0], 'AAAA'
+        mov bx, offset next
+        mov cx, 32
+        xor bp, bp
+        }
+    pnt:
+    _asm{
+        mov al, cs:[bx];
+        shr al, 4
+        and al, 0xF
+        mov dl, al
+        cmp al, 0xA
+        jb cont
+        sub dl, 10
+        add dl, 'A'-'0'
+        }
+    cont:
+    _asm{
+        add dl, '0'
+        mov byte ptr ds:[bp], dl
+
+        mov ax, cs:[bx];
+        and al, 0xF
+        mov dl,al
+        cmp al, 0xA
+        jb cont2
+        sub dl,10
+        add dl, 'A'-'0'
+        }
+    cont2:
+    _asm{
+        add dl, '0'
+        mov byte ptr ds:[bp+2], dl
+
+        inc bx
+        add bp, 4
+        loop pnt
+        popa
+        pop ds
+    next:
+        }
+    next:
+    #endif
+
+
 #endif
 loop4b:
 #if defined(__BC__)
@@ -390,6 +443,7 @@ end:
 #if defined(__BC__)
     __asm {
 #endif
+        pop eax
         pop ebx
         pop edi
         pop esi
@@ -453,6 +507,7 @@ end:
         pop edi
     }
     RESTORE_DS();
+
 }
 
 int32_t DPMI_CompareLinear(uint32_t addr1, uint32_t addr2, uint32_t size)

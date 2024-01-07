@@ -55,9 +55,15 @@ typedef struct HCD_RequestBlock //TODO: use request block as transfer parameter?
     uint8_t error;      //error code
     uint8_t padding1[1]; //pad to 32 bytes
     #if defined(__BC__) || defined(__WC__)
+    #if defined(__MEDIUM__) || defined(__LARGE__)
+    uint16_t padding2[4]; //TODO:
+    #else
     uint16_t padding2[6]; //TODO:
     #endif
+    #endif
 }HCD_Request;
+
+static_assert(sizeof(HCD_Request) <= 32, "size error");
 
 //note: pSetupData & setup8 must be allocated with DPMI_DMAMalloc, or from device buffer
 typedef uint8_t (*HCD_CONTROL_FUNCTION) (HCD_Device* pDevice, void* pEndPoint, HCD_TxDir dir, uint8_t inputp setup8[8],
