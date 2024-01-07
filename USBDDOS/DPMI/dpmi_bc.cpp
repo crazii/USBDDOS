@@ -710,14 +710,7 @@ void DPMI_Init(void)
 
     #if defined(__WC__)
     //avoid further DOS mem call in PM mode for malloc
-    short inc = (short)(0xFFFEU - (unsigned)FP_OFF(sbrk(0)));
-    while(inc < 0)
-    {
-        sbrk(0x7FFF);
-        unsigned nb = (unsigned)FP_OFF(sbrk(0));
-        inc = (short)(0xFFFEU - nb);
-    }
-    sbrk(inc);
+    _heapgrow(); //sbrk won't work. the heap doesn't know the gap between heap end and the brk. it just assmes brk is the end of the heap.
     _STACK_PTR = _STACKTOP;
     #else
     _STACK_PTR = 0xFFF8;
