@@ -7,6 +7,10 @@ DEBUG = 0
 DEBUG = 1
 !endif
 
+!ifndef BCDIR
+BCDIR = C:\BORLANDC
+!endif
+
 !if $(DEBUG) == "1"
 DEF_NDEBUG =
 MODEL = -mm
@@ -32,8 +36,8 @@ CC = bcc +$(CFLAGS_FILE)
 TASM = TASM
 TLIB = tlib
 TLINK = tlink
-LIBPATH = C:\BORLANDC\LIB
-INCLUDEPATH = C:\BORLANDC\INCLUDE;..;
+LIBPATH = $(BCDIR)\LIB
+INCLUDEPATH = $(BCDIR)\INCLUDE;..;
 
 # Implicit Rules
 {..\}.c.obj:

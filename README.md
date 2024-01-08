@@ -56,9 +56,11 @@ Here's a quick comparison of different toolchains and its generated executables:
 For DOS host, download from here: https://www.delorie.com/djgpp/  and set the envs: ```set PATH=%PATH%;C:\DJGPP```, ```set DJGPP=C:\DJGPP\DJGPP.ENV```
 
 ## Borland C++ setup
-The makefile uses hard coded path: ```C:\BORLANDC``` for includes and libs.  
-* Set exec path: ```set PATH=%PATH%;C:\BORLANDC```  
+The makefile uses default BC path: ```C:\BORLANDC``` for includes and libs.  
+* Set exec path: ```set PATH=%PATH%;C:\BORLANDC\BIN```  
 * Make: ```make -f Makefile.BC```
+* If Borland C is installed on another location, i.e. C:\BC31,   
+Then ```set PATH=%PATH%;C:\BC31\BIN```  and ```make -f Makefile.BC -DBCDIR=C:\BC31```
 
 ## Open Watcom setup
 * Download Open Watcom from here: https://github.com/open-watcom/open-watcom-v2
@@ -73,12 +75,12 @@ Add ```DEBUG=1``` on make commandline, the built executable will have its logs/a
 
 # Requirements
 * HIMEM.SYS or other XMS manager
-* EMM386 4.46+(optional, for RetroWave driver)
+* EMM386 4.46+/HDPMI32i(optional, for RetroWave driver)
 * 80386 CPU or later
-* MS-DOS (FreeDOS is still in debugging)
+* MS-DOS (FreeDOS support is still in debugging)
 
 # Features
-The fllowwing drivers are added/planned:
+The following drivers are added/planned:
 * - [x] OHCI driver
 * - [x] UHCI driver
 * - [x] EHCI driver
