@@ -1,18 +1,22 @@
 TARGET := output/usbddosp.exe
 all: $(TARGET)
 
-ifdef PROMPT # dirty hack to detect DOS, won't work if Linux has PROMPT defined
-CC = gcc
-SRC = $(shell dir ..\*.c /b/s)
-RM := del
-clean:
-	$(RM) output\*.o
-else #PROMPT
+ifdef OSTYPE #defined on linux
+
 CC = i586-pc-msdosdjgpp-gcc
 SRC = $(shell find .. -name '*.c')
 clean:
 	$(RM) $(OBJS)
-endif #PROMPT
+
+else #DOS/FreeDOS
+
+CC = gcc
+SRC = $(shell dir ..\*.c /b/s/l/-p) #-p will remove /p in DIRCMD, which causes problems if used.
+RM := del
+clean:
+	$(RM) output\*.o
+    
+endif #OSTYPE
 
 DEBUG ?= 0
 
@@ -30,7 +34,7 @@ CFLAGS += -DDEBUG=1
 endif
 
 VPATH = .. ../USBDDOS ../USBDDOS/CLASS ../USBDDOS/DPMI ../USBDDOS/HCD ../RetroWav ../RetroWav/Platform ../RetroWav/Protocol ../RetroWav/Board
-EXCLUDES = MasterGear.c MiniBlaster.c Linux_SPI.c POSIX_SerialPort.c STM32_HAL_SPI.c Win32_SerialPort.c dpmi_wc.c sample.c dpmi_ldr.c
+EXCLUDES = dpmi_wc.c sample.c dpmi_ldr.c
 
 SRC := $(notdir $(SRC))
 SRC := $(filter-out $(EXCLUDES), $(SRC))
