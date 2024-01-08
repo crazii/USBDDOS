@@ -466,22 +466,12 @@ static inline void DPMI_StorePDE(uint32_t addr, uint32_t i, const PDE* pde) { DP
 static void __NAKED far DPMI_DirectProtectedMode()
 {
     _ASM_BEGIN
-        _ASM(push eax)
-        _ASM(push ebx) //the C code uses bx but never restore it
+        _ASM(pushad)
         _ASM(pushfd)
         _ASM(cli)
 
-        //XMS global enable A20
-        _ASM(call XMS_EnableA20)
-        _ASM2(test al, al)
-        _ASM(je Enable20Done)
-        _ASM(push 1)
-#if defined(__BC__)
-        _ASM(call far ptr exit)
-#else
-        _ASM(callf exit)
-#endif
-    _ASMLBL(Enable20Done:)
+        //enable A20 through XMS
+        _ASM(call enableA20)
 
         _ASM(sidt fword ptr ds:[RMCB_OFF_OldIDTR]);//';' is added to work around vscode highlight problem
         _ASM(lgdt fword ptr ds:[RMCB_OFF_GDTR]);
@@ -516,13 +506,33 @@ static void __NAKED far DPMI_DirectProtectedMode()
         _ASM2(mov ss, ax)
         _ASM2(mov fs, ax)
         _ASM2(mov gs, ax)
-    _ASM_END
 
-    _ASM_BEGIN
+    _ASMLBL(directPMdone:)
         _ASM(popfd)
-        _ASM(pop ebx)
-        _ASM(pop eax)
-        _ASM(retf)
+        _ASM(popad)
+        _ASM(retf)  //return successfully
+
+    _ASMLBL(enableA20:)
+        _ASM2(mov ax, 0x4300)
+        _ASM(int 0x2F)
+        _ASM2(cmp al, 0x80) //XMS installed?
+        _ASM(jne enableA20End)
+        _ASM2(mov ax, 0x4310)
+        _ASM(int 0x2F) //get entry function in es:bx
+
+        _ASM(push es)
+        _ASM(push bx)
+        _ASM2(mov bx, sp)
+        _ASM2(mov ah, 0x07) //query a20
+        _ASM(call dword ptr ss:[bx]);
+        _ASM2(cmp ax, 1)
+        _ASM(je enableA20End) //already enabled
+
+        _ASM2(mov ah, 0x03) //global enable a20
+        _ASM(call dword ptr ss:[bx]);
+    _ASMLBL(enableA20End:)
+        _ASM2(add sp, 4)
+        _ASM(retn)
     _ASM_END
 }
 static void __NAKED DPMI_DirectProtectedModeEnd() {}
@@ -530,8 +540,7 @@ static void __NAKED DPMI_DirectProtectedModeEnd() {}
 static void __NAKED far DPMI_DirectRealMode()
 {
     _ASM_BEGIN
-        _ASM(push eax)
-        _ASM(push ebx)
+        _ASM(pushad)
         _ASM(pushfd)
         _ASM(cli)
     _ASM_END
@@ -569,22 +578,11 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
 
-        //XMS global enable A20
-        _ASM(call XMS_DisableA20)
-        _ASM2(test al, al)
-        _ASM(je Disable20Done)
-        _ASM(push 1)
-#if defined(__BC__)
-        _ASM(call far ptr exit)
-#else
-        _ASM(callf exit)
-#endif
-    _ASMLBL(Disable20Done:)
+        //note: don't disable A20 as some DOS extender doesn't like it.
 
         _ASM(popfd)
-        _ASM(pop ebx)
-        _ASM(pop eax)
-        _ASM(retf)
+        _ASM(popad)
+        _ASM(retf) //return successfully
     _ASM_END
 }
 static void __NAKED DPMI_DirectRealModeEnd() {}
@@ -934,6 +932,14 @@ static int16_t __CDECL near DPMI_SwitchProtectedMode()
 { //care on printf msg in mode switch, because printf will switch back and forth and cause recursion
     if(DPMI_PM)
         return DPMI_PM;
+    if(!DPMI_V86)
+    { //add pre-test for A20. during the real mode switching in RMCB, there's no error torlances
+        if(!XMS_EnableA20())
+        {
+            printf("Error enabling A20.\n");
+            exit(1);
+        }
+    }
 
     //map real mode segments to protected mode selectors
     //_LOG("ds: %04x, ss: %04x, cs: %04x\n",_DS,_SS,_CS);

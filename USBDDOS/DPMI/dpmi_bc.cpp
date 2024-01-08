@@ -691,6 +691,8 @@ int DPMI_Exit(int c)
 {
     //don't enable segment patch for normal execution (normal code may cause seg fault by bug), only use it at exit.
     DPMI_ExceptionPatch = TRUE; 
+    if(!DPMI_PM) //clean up memory for real mode. //in PM shutdown is called via INT21H
+        DPMI_Shutdown();
     #undef exit
     exit(c);
     #define exit(c) DPMI_Exit(c)

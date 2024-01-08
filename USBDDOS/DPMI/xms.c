@@ -178,6 +178,12 @@ BOOL XMS_EnableA20()
     }
 
     DPMI_REG r = XMSReg;
+    r.h.ah = 0x07; //query A20
+    DPMI_CallRealModeRETF(&r);
+    if(r.w.ax == 1)
+        return TRUE;
+    
+    r = XMSReg;
     r.h.ah = 0x03;
     DPMI_CallRealModeRETF(&r);
     return r.w.ax == 1;
