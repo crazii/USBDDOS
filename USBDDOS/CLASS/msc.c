@@ -525,6 +525,11 @@ static void USB_MSC_DOS_DriverINT()
             request.MediaCheck.Returned = 0xFF;
         if(request.Header.Cmd == DOS_DRSCMD_BUILD_BPB)
             request.BuildBPB.BPBPtr = 0;
+        if(request.Header.Cmd == DOS_DRSCMD_READ || request.Header.Cmd == DOS_DRSCMD_WRITE || request.Header.Cmd == DOS_DRSCMD_WRITEVERIFY)
+        {
+            request.ReadWrite.Count = 0;
+            request.Header.Status = request.Header.Cmd == DOS_DRSCMD_READ ? DOS_DRSS_READ_FAULT : DOS_DRSS_WRITE_FAULT;
+        }
     }
     else switch(request.Header.Cmd)
     {
@@ -886,7 +891,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     DPMI_CopyLinear(DPMI_SEGOFF2L(DrvMem,0), DPMI_PTR2L(&TSRData), sizeof(TSRData));
 
     //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for block device driver to find the right USB device, and for uninstall)
-    //FreeDOS will read block on build DBP, make driver data valid before build DBP,
+    //FreeDOS will read block on build DBP, make driver data valid before build DBP, (fatfs.c:1649)
     //so that the USB_MSC_DOS_DriverINT can work properly
     assert(pDriverData->DOSDriverMem == 0);
     pDriverData->DOSDriverMem = DrvMem;
