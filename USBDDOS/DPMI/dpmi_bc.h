@@ -472,10 +472,23 @@ static void __NAKED far DPMI_DirectProtectedMode()
 
         //enable A20 through XMS
         _ASM(call enableA20)
+        
+        //FreeDOS+HIMEMEX(or maybe other driver) will set CR3
+        //we need paging disabled, or we cannot get the DMA physical address
+        //even the GDT/IDT in himem is wrong in real mode, need clear CR3 before loading himem gdt on 2nd switch PM
+        _ASM2(mov eax, cr3)
+        _ASM2(mov dword ptr ds:[RMCB_OFF_CR3], eax) //backup. restored on switching to RM
+        _ASM2(xor eax, eax)
+        _ASM2(mov cr3, eax) //cr3=0
 
+        //on FreeDOS with vast amount of modules loaded, the XMS address might be above 0xFFFFFF
+        //we need 32bit lgdt/lidt
         _ASM(sidt fword ptr ds:[RMCB_OFF_OldIDTR]);//';' is added to work around vscode highlight problem
+        _ASM_OPERAND_SIZE //use 32bit operand size
         _ASM(lgdt fword ptr ds:[RMCB_OFF_GDTR]);
+        _ASM_OPERAND_SIZE //use 32bit operand size
         _ASM(lidt fword ptr ds:[RMCB_OFF_IDTR]);
+
         _ASM(push SEL_RMCB_CS*8)
 #if defined(__BC__)
         _ASM2(mov ax, offset reload_cs)
@@ -571,12 +584,15 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM(retf)
         //jmp reload_cs2 //WTF. inline asm can only perform near jump via C label.
     _ASMLBL(reload_cs2:) //reload_cs2 label far
-        _ASM2(mov ax, ds:[RMCB_OFF_RMSEG]); //rmds
+        _ASM2(mov ax, ds:[RMCB_OFF_RMSEG]); //pmds to rmds
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
         _ASM2(mov ss, ax)
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
+
+        _ASM2(mov eax, dword ptr ds:[RMCB_OFF_CR3]) //restore CR3
+        _ASM2(mov cr3, eax)
 
         //note: don't disable A20 as some DOS extender doesn't like it.
 
@@ -1298,7 +1314,7 @@ static BOOL DPMI_ExceptPatchSegment(DPMI_REG far* r, const uint8_t far* csip, ui
         {BX+SI+I16, BX+DI+I16,  BP+SI+I16,  BP+DI+I16,  SI+I16, DI+I16, BP+I16, BX+I16,},
     };
     uint16_t far* table3[8] = {&AX,        &CX,         &DX,         &BX,         &SP,     &BP,     &SI,     &DI};
-    static const char* segnames[8] = {"es", "cs", "ss", "ds", "fs", "gs", "invalid", "invalid"}; unused(segnames);
+    static const char* segnames[8] = {"es", "cs", "ss", "ds", "fs", "gs", "invalid", "invalid"};    
 
     uint8_t mod = (uint8_t)(modrm >> 6);
     uint8_t reg = (uint8_t)((modrm>>3)&0x7);
@@ -1837,7 +1853,7 @@ static void DPMI_SetupGDT()
     {for(int i = 0; i < SEL_TOTAL; ++i)
     {
         uint32_t far* entry = (uint32_t far*)&gdt[i];
-        _LOG("GDT: %d: %08lx %08lx\n", i, entry[0], entry[1]);
+        _LOG("GDT: %d: %08lx %08lx %08lx\n", i, entry[0], entry[1], DPMI_GetSelectorBase(i*8, NULL));
     }}
     #endif
 }
