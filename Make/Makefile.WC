@@ -7,17 +7,21 @@ all: $(TARGET)
 !ifndef DEBUG
 DEBUG = 0
 !endif
-
 !ifeq DEBUG 1
 STACK_SIZE = 4096 # for debug output buffer
 !else
 STACK_SIZE = 1024
 !endif
 
+#resolve arglist too long for DOS, set flags through env vars
+.BEFORE
+    set WCC = -za99 -wx -zq -3 -bt=dos -ze -ms -os -s
+    set WPP = -wx -zq -3 -bt=dos -ze -ms -os -s -ei
+
 CC = wcc
-CFLAGS = -za99 -DDEBUG=$(DEBUG) -wx -zq -3 -bt=dos -ze -ms -os -s -i..
+CFLAGS = -DDEBUG=$(DEBUG) -i..
 CXX = wpp
-CXXFLAGS = -DDEBUG=$(DEBUG) -wx -zq -3 -bt=dos -ze -ms -os -s -ei -i..
+CXXFLAGS = -DDEBUG=$(DEBUG) -i..
 
 LDFLAGS = SYS DOS &
 OPTION Q &
@@ -33,17 +37,27 @@ CXXFLAGS += -DNDEBUG
 SILENT = @
 !endif
 
+
+!ifndef BUILD
+
 !ifdef __MSDOS__
-clean: .symbolic
-    del output\*.obj
-    del output\*.log
-    del output\map.txt
+DEF_BUILD = "Open Watcom DOS"
 !else
-clean: .symbolic
-    rm -f output/*.obj
-    rm -f output/*.log
-    rm -f output/map.txt
+DEF_BUILD = "\"Open Watcom\""
 !endif
+
+!else
+
+!ifdef __MSDOS__
+DEF_BUILD = "$(BUILD), Open Watcom"
+!else
+DEF_BUILD = "\"$(BUILD), Open Watcom\""
+!endif
+
+!endif
+
+CFLAGS += -dUSBDDOS_BUILD=$(DEF_BUILD)
+CXXFLAGS += -dUSBDDOS_BUILD=$(DEF_BUILD)
 
 {../}.c{output/}.obj: .AUTODEPEND
     @echo $<
@@ -92,3 +106,8 @@ $(TARGET) : $(OBJS)
     wlink NAME $(TARGET) $(LDFLAGS) @<<
 FIL $(OBJS:.obj=.obj,)
 <<
+
+clean: .symbolic
+    rm -f output/*.obj
+    rm -f output/*.log
+    rm -f output/map.txt
