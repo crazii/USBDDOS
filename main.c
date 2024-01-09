@@ -9,6 +9,11 @@
 #include "USBDDOS/CLASS/hid.h"
 #include "USBDDOS/dbgutil.h"
 
+#define USBDDOS_VERSION 0x0200 //BCD
+#ifndef USBDDOS_BUILD
+#define USBDDOS_BUILD "Local build"
+#endif
+
 #if defined(__BC__) || defined(__WC__)
 #define ENABLE_RETROWAVE 0 //code exceed 64K
 #else
@@ -143,10 +148,10 @@ struct
 {
     "/?", "Show help.", FALSE,
 #if ENABLE_RETROWAVE
-    "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ needed.", FALSE,
+    "/RW", "Enable RetroWave OPL3 supprt. EMM386 v4.46+ / HDPMI32i needed.", FALSE,
 #endif    
     "/disk", "Enable USB-disk support", FALSE,
-    "/HID", "Enable USB keyboard & mouse support", FALSE,
+    "/hid", "Enable USB keyboard & mouse support", FALSE,
 
     #if DEBUG
     "/test", "debug tests", FALSE,
@@ -172,7 +177,8 @@ int main(int argc, char* argv[])
 {
     if(argc == 1 || (argc == 2 && stricmp(argv[1],"/?") == 0))
     {
-        printf("USBDDOS: USB driver for DOS. Usage:\n");
+        printf("USBDDOS: USB driver for DOS. https://github.com/crazii/USBDDOS\n");
+        printf("Version: %d.%02d, Build: %s. Usage:\n", USBDDOS_VERSION>>8, USBDDOS_VERSION&0xFF, USBDDOS_BUILD);
         int i = 0;
         while(MAIN_Options[i].option)
         {
