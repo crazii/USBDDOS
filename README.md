@@ -23,7 +23,9 @@ USBDDOSP doesn't need HDPMI32i unless you want Retrowave support, normal HDPMI32
 
 If you get problems with the mouse/keyboard driver, make sure those settings in your BIOS settings:
 * Disable USB Legacy Support (USB Keyboard/Mouse Support). (some p4 laptop have buggy mouse support in BIOS)
-* Disable OnBoard LAN
+* Disable OnBoard LAN  
+
+If you're using USB boot disk to boot the system, then ```/disk``` parameter is mandatory, because USBDDOS will take over from BIOS and make the BIOS's USB disk emulation unavailable, so the disk support need to be taken over too, otherwise the system drive will not function.
 
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
@@ -35,6 +37,7 @@ If you get problems with the mouse/keyboard driver, make sure those settings in 
 # How to Build
 The build scripts support multiple hosts: Linux, Windows(WSL/MinGW), DOS/FreeDOS.  
 Three set of toolchians are supported: DJGPP, Borland C++ 3.1, Open Watcom v2.  
+Basically the Borland C++3.1 built executable has the same features as the Open Watcom build.  
 Here's a quick comparison of different toolchains and its generated executables:  
 |             | DJGPP         | Borland C++3.1 | Open Watcom |
 |-------------|:-------------:|:--------------:|:-----------:|
@@ -46,11 +49,12 @@ Here's a quick comparison of different toolchains and its generated executables:
 |Output Name  | usbddosp.exe  | usbddos.exe    | usbddos.exe |
 |Executable            ||
 |DPMI Host Required    |Yes   |No              |No           |
+|Instruction Set       |32-bit|16-bit          |16-bit       |
 |Conventional Mem Usage|0K    |12K             |12K          |
 
 ## DJGPP setup
 * Download DGJPP from here: https://github.com/andrewwutw/build-djgpp  
-* Run ```djgpp/setenv``` : ```. /djgpp/setenv``` or ```source /djgpp/setenv```  
+* Setup environment, Run : ```. /djgpp/setenv``` or ```source /djgpp/setenv```  
 * Make: ```make```  
 
 For DOS host, download from here: https://www.delorie.com/djgpp/  and set the envs: ```set PATH=%PATH%;C:\DJGPP```, ```set DJGPP=C:\DJGPP\DJGPP.ENV```
@@ -59,7 +63,7 @@ For DOS host, download from here: https://www.delorie.com/djgpp/  and set the en
 The makefile uses default BC path: ```C:\BORLANDC``` for includes and libs.  
 * Set exec path: ```set PATH=%PATH%;C:\BORLANDC\BIN```  
 * Make: ```make -f Makefile.BC```
-* If Borland C is installed on another location, i.e. C:\BC31,   
+* If Borland C++ is installed on another location, i.e. C:\BC31,   
 Then ```set PATH=%PATH%;C:\BC31\BIN```  and ```make -f Makefile.BC -DBCDIR=C:\BC31```
 
 ## Open Watcom setup
@@ -71,7 +75,11 @@ DOS setup: ```set PATH=%PATH%;C:\OW2\BINW```, ```set WATCOM=C:\OW2```,
 ```set INCLUDE=C:\OW2\H```
 
 # How to Debug
-Add ```DEBUG=1``` on make commandline, the built executable will have its logs/assertion enabled.  Use ```-DDEBUG``` for Borland C++'s make file.
+Add ```DEBUG=1``` on make commandline, i.e.  
+ ```make DEBUG=1``` for DJGPP,  
+  ```wmake -f Makefile.WC DEBUG=1``` for Open Watcom,  
+  the built executable will have its logs/assertion enabled.  
+  Use ```-DDEBUG``` for Borland C++'s make file.
 
 # Requirements
 * HIMEM.SYS or other XMS manager
