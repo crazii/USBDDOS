@@ -102,7 +102,10 @@ static void Init_XMS()
     assert((uint16_t)((size+XMS_HEAP_SIZE)/1024) == (uint32_t)((size+XMS_HEAP_SIZE)/1024)); //check overflow
     XMS_Handle = XMS_Alloc((uint16_t)((size+XMS_HEAP_SIZE)/1024), &XMS_Physical);
     if(XMS_Handle == 0)
+    {
+        printf("Failed allocating XMS memory, size: %d.\n", size+XMS_HEAP_SIZE);
         exit(1);
+    }
 
     XMS_Bias = offset >= 4096 ? 4096 : 0; //re-enable null pointer page fault
     uint32_t XMSBase = DPMI_MapMemory(XMS_Physical, size + XMS_HEAP_SIZE);
@@ -212,7 +215,7 @@ static void DPMI_Shutdown(void)
 {
     #if NEW_IMPL
     _LOG("Cleanup TSR...\n");
-    uint32_t size = mspace_mallinfo(XMS_Space).uordblks;
+    uint32_t size = XMS_Space ? mspace_mallinfo(XMS_Space).uordblks : 0;
     unused(size); //make compiler happy. log not always enabled.
     #if DEBUG
     size = XMS_Allocated;

@@ -156,6 +156,7 @@ BOOL USB_MSC_IssueCommand(USB_Device* pDevice, void* inputp cmd, uint32_t CmdSiz
     cbw.bCBWCBLength = ((uint8_t)CmdSize)&0x1FU;
     memcpy(cbw.CBWCB, cmd, CmdSize);
     uint8_t* dma = (uint8_t*)DPMI_DMAMalloc(max(max(sizeof(USB_MSC_CBW),sizeof(USB_MSC_CSW)),DataSize), 16);
+    assert(dma);
     memcpy(dma, &cbw, sizeof(cbw));
     uint16_t len = 0;
     uint16_t size = sizeof(cbw);
@@ -747,6 +748,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     DPMI_REG reg;
 
     uint32_t DrvMem = DPMI_HighMalloc((sizeof(USB_MSC_DOS_TSRDATA)+15)>>4, TRUE); //allocate resident memory
+    assert(DrvMem);
 
     //DOS 2.0+ internal: get list of lists http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2983.htm
     memset(&reg, 0, sizeof(reg));
@@ -754,14 +756,16 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     DPMI_CallRealModeINT(0x21, &reg); //return ES:BX pointing to buffer
 
     uint8_t* buf = (uint8_t*)malloc(DOS_LOL_SIZE);
+    assert(buf);
     DPMI_CopyLinear(DPMI_PTR2L(buf), DPMI_SEGOFF2L(reg.w.es, reg.w.bx), DOS_LOL_SIZE); //copy to dpmi mem for easy access
     uint8_t DriveCount = buf[DOS_LOL_DRIVE_COUNT]; //usually 26
-    //uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
+    uint8_t DeviceCount = buf[DOS_LOL_BLOCK_DEVICE_COUNT];  //actual device count
     DOS_DDH* NULHeader = (DOS_DDH*)&buf[DOS_LOL_NULDEV_HEADER];
-    //_LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount); unused(DeviceCount);
+    _LOG("Drive Count: %d, Device Count: %d\n", DriveCount, DeviceCount); unused(DeviceCount);
 
     //fill CDS
     DOS_CDS* cds = (DOS_CDS*)malloc(DriveCount*sizeof(DOS_CDS)); //local cache
+    assert(cds);
     uint32_t CDSFarPtr = *(uint32_t*)&buf[DOS_LOL_CDS_PTR];
     DPMI_CopyLinear(DPMI_PTR2L(cds), DPMI_FP2L(CDSFarPtr), sizeof(DOS_CDS)*DriveCount); //copy cds memory to dpmi
     uint8_t CDSIndex; //find an empty entry in CDS list
@@ -832,7 +836,7 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
         #undef ALT_BUFFER_DPB
         #endif
 
-        //This is another way around: whereever the old DPB is referenced (maybe disk buffer, FCB or system file table), we don't update the referenced pointer,
+        //This is another way around: whereever the old DPB is referenced (maybe in disk buffer, FCB or system file table), we don't update the referenced pointer,
         //we replace the driver header in old DPB once and for all
         //and this works
         DPMI_StoreD(DPMI_FP2L(cds[CDSIndex].DPBptr)+offsetof(DOS_DPB,DriverHeader), DPMI_MKFP(DrvMem, offsetof(USB_MSC_DOS_TSRDATA, ddh)));
@@ -880,6 +884,12 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     TSRData.INT_opcodes[idx++] = 0xCB;
     assert(idx == sizeof(TSRData.INT_opcodes));
     DPMI_CopyLinear(DPMI_SEGOFF2L(DrvMem,0), DPMI_PTR2L(&TSRData), sizeof(TSRData));
+
+    //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for block device driver to find the right USB device, and for uninstall)
+    //FreeDOS will read block on build DBP, make driver data valid before build DBP,
+    //so that the USB_MSC_DOS_DriverINT can work properly
+    assert(pDriverData->DOSDriverMem == 0);
+    pDriverData->DOSDriverMem = DrvMem;
 
     //build DPB http://mirror.cs.msu.ru/oldlinux.org/Linux.old/docs/interrupts/int-html/rb-2985.htm
     memset(&reg, 0, sizeof(reg));
@@ -939,9 +949,6 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     free(cds);
     free(buf);
 
-    //put DrvMem to DOSDriverMem of USB_MSC_DriverData (for uninstall)
-    assert(pDriverData->DOSDriverMem == 0);
-    pDriverData->DOSDriverMem = DrvMem;
     if(overriden)
         printf("USB Disk \'%s %s\': BIOS driver overrided, remounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
     else
