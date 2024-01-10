@@ -94,7 +94,7 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
     {
         //_LOG("HUB ClearPortFeature: enable\n");
         result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_ENABLE) && result;
-        delay(5);
+        delay(55);
         //assert(!(USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)&PS_ENABLE));
     }
 

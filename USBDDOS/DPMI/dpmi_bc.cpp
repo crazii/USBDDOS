@@ -666,7 +666,7 @@ uint32_t DPMI_PTR2L(void* ptr)
 {
     assert(ptr != NULL);
     if(DPMI_PM)
-        return (DPMI_HimemData + FP_OFF(ptr));
+        return DPMI_PTR16P2L(ptr);
     else
     {
         assert(0 && "real mode ptr mapping called.\n");
@@ -1005,6 +1005,7 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment)
         offset = (uint16_t)(align(addr, alignment) - addr + extra);
         //_LOG("%lx ", align(addr,alignment)+extra);
         //_LOG("%lx %lx ", ((align(addr,alignment)+extra)&~0xFFFUL), ((align(addr,alignment)+extra+size-1)&~0xFFFUL));
+        //_LOG("%lx ", addr + offset);
     };
 
     void* aligned = ptr + offset;

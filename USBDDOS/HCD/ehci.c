@@ -169,12 +169,12 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
         uint8_t i;
         for(i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
             DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower|PortReset);
-        delay(50);
+        delay(55);
         for(i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
         {
             uint32_t pa = OperationalBase+PORTSC+i*4U;
             DPMI_StoreD(pa, PortEnable|PortPower); //PortEnable won't enable port but avoid disabling it
-            delay(2); //spec require 2ms to enable ports with high speed devices after reset
+            delay(22); //spec require 2ms to enable ports with high speed devices after reset
             uint32_t status = DPMI_LoadD(pa);
             if((status&ConnectStatus) && !(status&PortEnable)) //not enabled: low/full speed
                 DPMI_StoreD(pa, PortOwner); //handoff to companion HC
@@ -495,7 +495,10 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
         if(pDeviceData->ControlEPCreated)
             return EHCI_EP_MAKE(&pDeviceData->ControlQH, 0);
         else
+        {
             pDeviceData->ControlEPCreated = TRUE;
+            _LOG("EHCI: create default control pipe, addr:%d, maxpacket:%d\n", pDevice->bAddress, MaxPacketSize);
+        }
     }
     assert(EPAddr <= 0xF);
     assert(bTransferType != USB_ENDPOINT_TRANSFER_TYPE_INTR || bInterval >= 1);
@@ -504,7 +507,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
 
     EHCI_QH* pQH = EPAddr == 0 ? &pDeviceData->ControlQH : (EHCI_QH*)DPMI_DMAMalloc(sizeof(EHCI_QH), EHCI_ALIGN);
     memset(pQH, 0, sizeof(*pQH));
-    pQH->Caps.DeviceAddr = pDevice->bAddress&0x3FU;
+    pQH->Caps.DeviceAddr = pDevice->bAddress&0x7FU;
     pQH->Caps.Endpoint = EPAddr&0xFU;
     pQH->Caps.EndpointSpd = EPS&0x3U;
     pQH->Caps.MaxPacketSize = MaxPacketSize&0x7FFU;
@@ -515,7 +518,7 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
     pQH->Caps2.uFrameSMask = (bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC) ? (bInterval<=4?EHCI_HighSpeedSMask1to8[bInterval-1]:0x1) : 0;
     if(EPS != EPS_HIGH)
     {
-        pQH->Caps2.PortNum_1x = (pDevice->bHubPort+1U)&0x3FU; //1 based for hub device
+        pQH->Caps2.PortNum_1x = (pDevice->bHubPort+1U)&0x7FU; //1 based for hub device
         pQH->Caps2.HubAddr_1x = pDevice->pHub->bHubAddress&0x7FU;
         if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
         {
@@ -562,8 +565,11 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
     if(pDeviceData == NULL)
         return FALSE;
-    if(&pDeviceData->ControlQH == pEndpoint) //default control pipe
+    if(&pDeviceData->ControlQH == pQH) //default control pipe
+    {
         pDeviceData->ControlEPCreated = FALSE;
+        _LOG("EHCI remove default control pipe\n");
+    }
 
     BOOL result = FALSE;
     EHCI_qTD* pTail = pQH->EXT.Tail;

@@ -87,7 +87,7 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 
     assert(pDevice->pRequest == NULL);
 
-    BOOL result = TRUE;//pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_RESET); //No need to do that
+    BOOL result = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_RESET); //No need to do that, but do it for safety
     assert(result);
     result = result && pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
     assert(result);

@@ -172,7 +172,8 @@ void USB_Init(void)
 void USB_Shutdown(void)
 {
     //clean up (if app exit normally without TSR)
-    for(int address = 0; address < USB_MAX_DEVICE_COUNT; ++address)
+    //remove device in reverse order (HUBs inited before its downstream devices, need HUB device to operate on ports)
+    for(int address = USB_MAX_DEVICE_COUNT-1; address >= 0; --address)
     {
         USB_Device* pDevice = &USBT.Devices[address];
         if(!HCD_IS_DEVICE_VALID(&pDevice->HCDDevice))
@@ -331,6 +332,7 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
         //pHub->SetPortStatus(pHub, portIndex, USB_PORT_DISABLE); //disable it to continue enumeration on next port - RemoveDevice will do it
     }
     // install device driver
+    BOOL NoDriver = FALSE;
     if(pDevice->bStatus == DS_Configured)
     {
         uint8_t bClass = pDevice->Desc.bDeviceClass;
@@ -360,11 +362,13 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
                 return TRUE;
         }
         else
-            _LOG("No driver found for device (class %x), skip\n", bClass);
-
+            NoDriver = TRUE;
     }
 
-    printf("Error initializing device at port: %d.\n", portIndex);
+    if(NoDriver)
+        printf("No driver found at port: %d for device (class %02x), skip\n", portIndex, pDevice->Desc.bDeviceClass);
+    else
+        printf("Error initializing device at port: %d, address: %d.\n", portIndex, address);
     USB_RemoveDevice(pDevice); //this will disable the hub port
     return FALSE;
 }
@@ -382,16 +386,16 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
     for(int e = 0; e < pDevice->bNumEndpoints; ++e)
         pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pEndpoints[e]);
     pDevice->HCDDevice.pHCI->pHCDMethod->RemoveEndPoint(&pDevice->HCDDevice, pDevice->pDefaultControlEP); //HCD implementation probably do nothing but better do the call.
-    _LOG("Removing HCD device\n");
+    _LOG("USB Removing HCD device\n");
     HCD_RemoveDevice(&pDevice->HCDDevice);
 
-    //_LOG("Free device buffers\n");
+    _LOG("USB Free device buffers\n");
     if(pDevice->pDeviceBuffer)
         DPMI_DMAFree(pDevice->pDeviceBuffer);
     if(pDevice->pSetup)
         DPMI_DMAFree(pDevice->pSetup);
 
-    //_LOG("Free device configs\n");
+    _LOG("USB Free device configs\n");
     if(pDevice->pConfigList != NULL)
     {
         for(int i = 0; i < pDevice->Desc.bNumConfigurations; ++i)
@@ -404,6 +408,7 @@ BOOL USB_RemoveDevice(USB_Device* pDevice)
         }
         free(pDevice->pConfigList);
     }
+    _LOG("USB Free endpoints\n");
     free(pDevice->pEndpoints);
     free(pDevice->pEndpointDesc);
     memset(pDevice, 0, sizeof(USB_Device));
@@ -604,6 +609,7 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 {
     assert(((USB_ConfigDesc*)pBuffer)->wTotalLength == length);
     pDevice->pConfigList = (USB_ConfigDesc*)malloc(sizeof(USB_ConfigDesc)*pDevice->Desc.bNumConfigurations);
+    assert(pDevice->pConfigList);
     memset(pDevice->pConfigList, 0, sizeof(USB_ConfigDesc)*pDevice->Desc.bNumConfigurations);
     pDevice->bCurrentConfig = 0;
 
@@ -626,6 +632,7 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
             USB_ConfigDesc* pConfigDesc = (USB_ConfigDesc*)(pBuffer + i);
             pDevice->pConfigList[ConfigIndex] = *pConfigDesc;
             USB_InterfaceDesc* pInterfaceDesc = (USB_InterfaceDesc*)malloc(sizeof(USB_InterfaceDesc)*pConfigDesc->bNumInterfaces);
+            assert(pInterfaceDesc);
             memset(pInterfaceDesc, 0, sizeof(USB_InterfaceDesc)*pConfigDesc->bNumInterfaces);
             pDevice->pConfigList[ConfigIndex].pInterfaces = pInterfaceDesc;
         }
@@ -633,9 +640,12 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
         {
             ++InterfaceIndex;
             EndpointIndex = -1;
-            //assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces); //why would it happen? bad descriptor in device?
+            //assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces); //why would it happen? - vendor specific descriptors, ignore
             if(InterfaceIndex >= pDevice->pConfigList[ConfigIndex].bNumInterfaces)
-                continue;
+            {
+                _LOG("USB skip vendor specific config descriptors.\n");
+                break;
+            }
 
             USB_InterfaceDesc *pInterfaceDesc = (USB_InterfaceDesc*)(pBuffer + i);
             pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex] = *(USB_InterfaceDesc*)(pBuffer + i);
@@ -648,6 +658,8 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 
             uint8_t EndPointNum = pInterfaceDesc->bNumEndpoints;
             USB_EndpointDesc* pEndPointDesc = (USB_EndpointDesc*)malloc(sizeof(USB_EndpointDesc)*EndPointNum);
+            _LOG("interface %d endpoint num:%d\n",InterfaceIndex, EndPointNum);
+            assert(EndPointNum == 0 || pEndPointDesc);
             memset(pEndPointDesc, 0, sizeof(USB_EndpointDesc)*EndPointNum);
             pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints = pEndPointDesc;
             pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].offset = i;
@@ -840,7 +852,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     // set device address.
     // before set address, nothing can be done except get desc.
     // the device will be adressed state
-    _LOG("USB: set device address\n");
+    _LOG("USB: set device address: %d\n", address);
     assert(pDevice->HCDDevice.bAddress == 0);
     USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, 0, 0, 0};
     Request2.wValue = address;
@@ -898,7 +910,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
         return FALSE;
     }
     uint16_t TotalLength = ((USB_ConfigDesc*)Buffer)->wTotalLength;
-    //_LOG("USB: config descirptor total length: %d\n", TotalLength);
+    _LOG("USB: config descirptor total length: %d\n", TotalLength);
     uint8_t* DescBuffer = Buffer;
     if(TotalLength > USB_DEVBUFFER_SIZE)
         DescBuffer = (uint8_t*)DPMI_DMAMalloc(TotalLength, 4);
@@ -946,7 +958,9 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 
     pDevice->bNumEndpoints = bNumEndpoints;
     pDevice->pEndpoints = (void**)malloc(sizeof(void*)*bNumEndpoints);
+    assert(pDevice->pEndpoints);
     pDevice->pEndpointDesc = (USB_EndpointDesc**)malloc(sizeof(USB_EndpointDesc*)*bNumEndpoints);
+    assert(pDevice->pEndpointDesc);
 
     USB_InterfaceDesc* pCurrentInterface = pDevice->pConfigList[pDevice->bCurrentConfig].pInterfaces;
     int currentEP = 0;
