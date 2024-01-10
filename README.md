@@ -59,7 +59,8 @@ Here's a quick comparison of different toolchains and its generated executables:
 * Setup environment, Run : ```. /djgpp/setenv``` or ```source /djgpp/setenv```  
 * Make: ```make```  
 
-For DOS host, download from here: https://www.delorie.com/djgpp/  and set the envs: ```set PATH=%PATH%;C:\DJGPP```, ```set DJGPP=C:\DJGPP\DJGPP.ENV```
+For DOS host, download from here: https://www.delorie.com/djgpp/  and set the envs: ```set PATH=%PATH%;C:\DJGPP```, ```set DJGPP=C:\DJGPP\DJGPP.ENV```  
+The Makefile will try to auto-detect DOS host, but may fail on FreeDOS, use ```make DOS=1``` to force DOS build.
 
 ## Borland C++ setup
 The makefile uses default BC path: ```C:\BORLANDC``` for includes and libs.  

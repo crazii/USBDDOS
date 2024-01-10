@@ -2,11 +2,16 @@ TARGET := output/usbddosp.exe
 all: $(TARGET)
 
 DOS_ENV =
+#try auto detect DOS
 ifdef PROMPT
 DOS_ENV = MSDOS
 endif
 ifdef OS_NAME
 DOS_ENV = FREEDOS
+endif
+#auto detect may fail on FreeDOS, specify DOS=1 to work
+ifdef DOS
+DOS_ENV = DOS
 endif
 
 ifeq "$(DOS_ENV)" ""
