@@ -1,8 +1,8 @@
 
-1. Isochronous transfer for UHCI is not properly implemented.
+1. - [ ] Isochronous transfer for UHCI is not properly implemented.
 
-2. Isochronous transfer for EHCI is not implemented.
+2. - [ ] Isochronous transfer for EHCI is not implemented.
 
-3. 16 bit build (Borland C & OpenWatcom): a real LOADER to support medium & large memory models.
+3. - [x] 16 bit build (Borland C & OpenWatcom): a real LOADER to support medium & large memory models. - The relocation patcher works with some extra handling.
 
-4. xHCI.
+4. - [ ] xHCI.

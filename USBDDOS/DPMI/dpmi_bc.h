@@ -477,7 +477,7 @@ static void __NAKED far DPMI_DirectProtectedMode()
         //we need paging disabled, or we cannot get the DMA physical address
         //even the GDT/IDT in himem is wrong in real mode, need clear CR3 before loading himem gdt on 2nd switch PM
         _ASM2(mov eax, cr3)
-        _ASM2(mov dword ptr ds:[RMCB_OFF_CR3], eax) //backup. restored on switching to RM
+        _ASM2(mov dword ptr ds:[RMCB_OFF_CR3], eax); //backup. restored on switching to RM
         _ASM2(xor eax, eax)
         _ASM2(mov cr3, eax) //cr3=0
 
