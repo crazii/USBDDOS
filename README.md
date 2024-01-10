@@ -25,7 +25,9 @@ If you get problems with the mouse/keyboard driver, make sure those settings in 
 * Disable USB Legacy Support (USB Keyboard/Mouse Support). (some p4 laptop have buggy mouse support in BIOS)
 * Disable OnBoard LAN  
 
-If you're using USB boot disk to boot the system, then ```/disk``` parameter is mandatory, because USBDDOS will take over from BIOS and make the BIOS's USB disk emulation unavailable, so the disk support need to be taken over too, otherwise the system drive will not function.
+If you're using USB boot disk to boot the system, then ```/disk``` parameter is mandatory, because USBDDOS will take over from BIOS and make the BIOS's USB disk emulation unavailable, so the disk support need to be taken over too, otherwise the system drive will not function.  
+
+Do not use ```LH/LOADHIGH``` for USBDDOS - A DPMI (or a DOS Extender) program is executed above 1M, so no need to do that. Actually if ```LH``` is used, then after TSR the PSP segment will resident in high memory with its' real mode data/code freed, which may generate fragmentations. A DPMI TSR also doesn't need to use assembly to strictly control/optimize the memory layout for TSR, as a common real mode program does.
 
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
