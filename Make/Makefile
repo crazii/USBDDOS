@@ -45,7 +45,9 @@ else
 CFLAGS += -DDEBUG=1
 endif
 
-VPATH = .. ../USBDDOS ../USBDDOS/CLASS ../USBDDOS/DPMI ../USBDDOS/HCD ../RetroWav ../RetroWav/Platform ../RetroWav/Protocol ../RetroWav/Board
+VPATH = .. ../USBDDOS ../USBDDOS/CLASS ../USBDDOS/DPMI ../USBDDOS/HCD ../USBDDOS/DPMI/djgpp \
+	../RetroWav ../RetroWav/Platform ../RetroWav/Protocol ../RetroWav/Board
+
 EXCLUDES = dpmi_wc.c sample.c dpmi_ldr.c
 
 SRC := $(notdir $(SRC))
@@ -55,6 +57,10 @@ OBJS := $(patsubst %.c,output/%.o,$(SRC))
 
 $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
+
+#don't use strict warning on this file
+output/gormcb.o: gormcb.c
+	$(CC) -march=i386 -Os -fno-exceptions -c $< -o $@
 
 output/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
