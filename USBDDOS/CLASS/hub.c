@@ -73,13 +73,15 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
     {
         _LOG("HUB port %d resetting\n", port);
         result = USB_HUB_SetPortFeature(HC2USB(pHub->pDevice), port, PORT_RESET) && result;
-        delay(55);
-        result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_RESET) && result;
-        delay(5);
+        delay(55); //apply reset signal for 10ms+
+        result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_RESET) && result; //release reset signal
+        do
+        {
+            delay(5);
+            USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
+            current = ps.bm.status;
+        } while((current&PS_RESET)); //wait until reset is actually done. this also reload the current states
 
-        //reload states after reset
-        USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
-        current = ps.bm.status;
         _LOG("HUB port %d reset %x\n", port, current);
     }
 
@@ -94,8 +96,10 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
     {
         //_LOG("HUB ClearPortFeature: enable\n");
         result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_ENABLE) && result;
-        delay(55);
-        //assert(!(USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)&PS_ENABLE));
+        do
+        {
+            delay(55);
+        } while((USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port)&PS_ENABLE));
     }
 
     if((status&USB_PORT_SUSPEND) && !(current&PS_SUSPEND))

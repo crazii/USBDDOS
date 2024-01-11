@@ -438,7 +438,8 @@ void UHCI_ISR_ProcessTD(HCD_Interface* pHCI, UHCI_QH* pQH)
             && !pTD->ControlStatusBits.Active)
         {
             uint8_t error = (pTD->ControlStatus&CS_ErrorMask)>>CS_ErrorShift;
-            //_LOG("Invoke CB %x ", error);
+            if(error)
+                _LOG("UHCI CB with error: %02x ", error);
             uint32_t BufferBegin = pTD->pRequest->pBuffer ? DPMI_PTR2P(pTD->pRequest->pBuffer) : pTD->BufferPointer;
             HCD_InvokeCallBack(pTD->pRequest, (uint16_t)(pTD->BufferPointer - BufferBegin + pTD->ControlStatusBits.ActualLen + 1), error);
         }
@@ -495,23 +496,24 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         const int timeout = 100; //5sec timeout
         outpw(portbase, PR);
         int i = 0;
-        do
-        {
-            delay(55);// spec require at least 10ms, 50+ms get more compatibility
-            ++i;
-        } while(!(inpw(portbase)&PR) && i < timeout);
+        do { ++i; delay(5); } while(!(inpw(portbase)&PR) && i < timeout); //wait until reset signal actually applies
         if(i == timeout)
+        {
+            assert(FALSE);
             return FALSE;
+        }
 
-        outpw(portbase, 0);//inpw(portbase)&~PR);
+        delay(55);// spec require keeping reset signal at least 10ms, 50+ms get more compatibility
+
+        outpw(portbase, 0);//inpw(portbase)&~PR); //release reset signal
+
         i = 0;
-        do
-        {
-            delay(1);
-            ++i;
-        } while((inpw(portbase)&PR) && i < timeout*50);
+        do { delay(5); ++i; } while((inpw(portbase)&PR) && i < timeout*50); //wait until reset actually done.
         if(i == timeout)
+        {
+            assert(FALSE);
             return FALSE;
+        }
         outpw(portbase, PEDC|CSC);
         portsc = 0; //initially disabled after reset. clear enable in case reset & enable in one call
     }
@@ -519,10 +521,7 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     if((status&USB_PORT_ENABLE) && !(portsc&PED))
     {
         outpw(portbase, PED);
-        do
-        {
-            delay(1);
-        } while(!(inpw(portbase)&PED));
+        do { delay(1); } while(!(inpw(portbase)&PED));
         _LOG("UHCI port %d status: %04x\n", port, inpw(portbase));
         outpw(portbase, CSC|PEDC|PED);
         delay(55);
@@ -531,28 +530,18 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
     if((status&USB_PORT_DISABLE) && (portsc&PED))
     {
         outpw(portbase, 0);//portsc & ((uint16_t)~PED));
-        do
-        {
-            delay(1);
-        } while((inpw(portbase)&PED));
+        do { delay(1); } while((inpw(portbase)&PED));
     }
 
     if((status&USB_PORT_SUSPEND) && !(portsc&SUSPEND))
     {
-        do
-        {
-            outpw(portbase, SUSPEND);
-            delay(1);
-        } while(!(inpw(portbase)&SUSPEND));
+        do { outpw(portbase, SUSPEND); delay(1); } while(!(inpw(portbase)&SUSPEND));
     }
 
     if((status&USB_PORT_CONNECT_CHANGE))
     {
         outpw(portbase, CSC); //clear connect status change
-        do
-        {
-            delay(10);
-        } while(inpw(portbase)&CSC);
+        do { delay(10); } while(inpw(portbase)&CSC);
         delay(150);
     }
     return TRUE;

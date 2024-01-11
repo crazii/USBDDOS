@@ -152,7 +152,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
 
     DPMI_StoreD(OperationalBase+USBSTS, ~0UL); //clear all sts
     DPMI_StoreD(OperationalBase+USBINTR, EHCI_INTERRUPTS); //enable interrups
-    DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action
+    DPMI_StoreD(OperationalBase+CONFIGFLAG, ConfigureFlag); //CF: last action, gain ownership for all ports
     EHCI_RunStop(pHCI, TRUE);
 
     //power up ports.
@@ -174,10 +174,15 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
         {
             uint32_t pa = OperationalBase+PORTSC+i*4U;
             DPMI_StoreD(pa, PortEnable|PortPower); //release reset. PortEnable won't enable port but avoid disabling it
-            delay(5); //spec require 2ms to enable ports with high speed devices after reset
+            while(DPMI_LoadD(pa)&PortReset) //wait until reset is actually done
+                delay(5);
+            delay(5); //spec require 2ms for HC to enable ports with high speed devices after reset
             uint32_t status = DPMI_LoadD(pa);
             if((status&ConnectStatus) && !(status&PortEnable)) //not enabled: low/full speed
+            {
+                _LOG("EHCI: low/full speed device on port %d: handoff to companion.\n", i);
                 DPMI_StoreD(pa, PortOwner); //handoff to companion HC
+            }
         }
     }
     //delay(50); //UBSTS not updated immediately
@@ -423,9 +428,13 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
         DPMI_StoreD(addr, forcebits); //release reset signal, and don't disable port
 
         int i = 0;
-        do { delay(55); ++i; } while((DPMI_LoadD(addr)&PortReset) && i < timeout); //spec require 2ms to enable high speed ports
+        do { delay(55); ++i; } while((DPMI_LoadD(addr)&PortReset) && i < timeout); //wait until reset is actaully done
         if(i == timeout)
-            return FALSE;
+        {
+            assert(FALSE);
+            return FALSE; //reset time out
+        }
+        delay(5); //after reset, spec require 2ms for HC to enable high speed ports
         current = DPMI_LoadD(addr); //reload enable/disable state
         _LOG("EHCI port reset: %x\n",current);
     }
