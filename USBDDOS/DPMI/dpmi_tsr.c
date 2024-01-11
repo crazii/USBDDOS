@@ -5,8 +5,11 @@
 #include <string.h>
 
 //the purpose of this file is to move the program to a known physical addr so
-//that external (i.e.EMM386 ring0 callback) code can access it.
+//that external (i.e.EMM386 ring0 callback) can access it.
 //if TSR is only for INT handler or from real mode call, use DPMI callback or DPMI interrupt vector will work without this.
+
+//WARNING: this file uses undocmented details of DJGPP and thus not portable.
+//used data: __djgpp_ds_alias, __djgpp_base_address, __djgpp_memory_handle_list
 
 #if defined(__DJ2__)
 #include <sys/stat.h>
@@ -24,13 +27,11 @@
 #include "USBDDOS/dbgutil.h"
 
 #pragma GCC diagnostic ignored "-Wpedantic"
-#define NEW_BASE_ALIGNMENT (64*1024UL)
-//#define NEW_BASE_ALIGNMENT (4*1024)
 
 static uint32_t ProgramOffset = 0xFFFFFFFF;//total offset
 static uint32_t SectionOffset[3];   //text,data,bss
 static uint32_t SectionSize[3];     //text,data,bss
-static uint32_t ProgramSize = 0;
+static uint32_t ProgramSize = 0;    //total size: text+data+bss+stack+heap (from the start to sbrk(0))
 static uint16_t ProgramOldCS;
 static uint16_t ProgramOldDS;
 static uint16_t ProgramNewCS;
@@ -103,10 +104,8 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
             return FALSE;
         }
 
-        void (*volatile pfree)(void*) = free; //prevent optimization
-        void*(*volatile pmalloc)(size_t) = malloc;
-        // |CODE|DATA|BSS|STACK|C HEAP|XMS_HEAP| (all fixed size)
-        pfree(pmalloc(NEW_BASE_ALIGNMENT));   //preserve space for C runtime heap
+        // |CODE|DATA|BSS|STACK|Initial C HEAP|XMS_HEAP|dynamic HEAP| (all fixed size except dynamic HEAP used by future malloc)
+
         /*uintptr_t end0 = (uintptr_t)sbrk(0);
         //printf("%08lx\n",_go32_info_block.size_of_transfer_buffer);
         if(!stdout->_base)  //printf hack
@@ -118,18 +117,14 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
             stdout->_ptr = stdout->_base;
             //printf("pre alloc stdout buffer: %08lx, %08lx\n", end0, sbrk(0));
         }*/
-        uintptr_t end = (uintptr_t)sbrk(0);
+        uintptr_t end = (uintptr_t)sbrk(0); //add stacks and dynamic allocated data by now
+        //_LOG("sbrk0: %x, size %x, offset %x\n", end, ProgramSize, ProgramOffset);
         ProgramSize = (uintptr_t)max(end - ProgramOffset, ProgramSize);
 
         *poffset = ProgramOffset;
-        *psize = align(ProgramOffset+ProgramSize, NEW_BASE_ALIGNMENT);
-        //sbrk(*psize - end);
-        //assert((uintptr_t)sbrk(0) == *psize);
-        if(*psize > (uintptr_t)sbrk(0) + 0x100)
-            pfree(pmalloc(*psize - (uintptr_t)sbrk(0) - 0x100));
+        *psize = __dpmi_get_segment_limit(_my_ds())+1;
         return FALSE;
     }
-    *psize = align(*psize, NEW_BASE_ALIGNMENT);
     
     uint32_t offset = *poffset;
     uint32_t size = *psize;
@@ -149,6 +144,8 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
     __dpmi_set_segment_base_address(ProgramNewCS, newbase);
     
     ProgramNewDS = (uint16_t)__dpmi_create_alias_descriptor(_my_ds());
+    _LOG("old limit: %x, new limit: %x\n", __dpmi_get_segment_limit(_my_ds()), size);
+    assert(__dpmi_get_segment_limit(_my_ds()) <= size);
     __dpmi_set_segment_limit(ProgramNewDS, size-1);
     __dpmi_set_segment_base_address(ProgramNewDS, newbase);
 
@@ -164,6 +161,10 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
     "pushw %%cs\n\t popw %1\n\t"
     :"=m"(ProgramOldDS),"=m"(ProgramOldCS)
     ::"memory");
+
+    //record data to old data segment before switch data segment
+    __djgpp_ds_alias_old = __djgpp_ds_alias;
+    __djgpp_base_address_old = __djgpp_base_address;
 
     //jump buffer
     uint32_t fjmp[2] = {(uintptr_t)&&switch_space, ProgramNewCS};
@@ -182,11 +183,12 @@ switch_space:
     ::"m"(ProgramNewDS)
     :"memory");
     //*(int*)0=0;
-    __djgpp_ds_alias_old = __djgpp_ds_alias;
-    __djgpp_base_address_old = __djgpp_base_address;
     __djgpp_ds_alias = ProgramNewDS;
     __djgpp_base_address = newbase;
-    //make address persistent
+    //make address persistent. altering this flags only once at runtime has no unexcpected effect.
+    //this will make DS not change (no reallocations): further malloc/sbrk will not change linear base of DS.
+    //but new malloc/sbrk later may not be contigous (and be in multiple blocks)
+    //@see https://www.delorie.com/djgpp//doc/libc-2.02/libc_113.html
     _crt0_startup_flags = (_crt0_startup_flags&~_CRT0_FLAG_UNIX_SBRK) | _CRT0_FLAG_NONMOVE_SBRK;
     return TRUE;
 }
@@ -194,46 +196,69 @@ switch_space:
 //enable normal exit, if fails out before TSR
 BOOL DPMI_ShutdownTSR(void)
 {
+    int x = __dpmi_get_and_disable_virtual_interrupt_state();
+    __djgpp_exception_toggle();    
+    
     volatile uint32_t PreventOptimize;//prevent optimization out code after ljmp
     asm __volatile__("xor %0, %0":"=r"(PreventOptimize) : :"memory");
     if(PreventOptimize)
         goto switch_back;
     uint32_t fjmp[2] = {(uintptr_t)&&switch_back, ProgramOldCS};
-    
+      
     uintptr_t oldend = ProgramSize + ProgramOffset;
     uintptr_t end = (uintptr_t)sbrk(0);
-    //assert(oldend <= end);
-    if(end > oldend)
-    {
-        /*asm __volatile__("pushw %0\n\t popw %%ds\n\t" ::"m"(ProgramOldDS));
-        sbrk(end-oldend);
-        asm __volatile__("pushw %0\n\t popw %%ds\n\t": :"m"(ProgramNewDS));*/
-        //ProgramSize = end - ProgramOffset;
-    }
 
-    __djgpp_exception_toggle();
-    int x = __dpmi_get_and_disable_virtual_interrupt_state();
-    //DPMI_CopyLinear(__djgpp_base_address_old + ProgramOffset, __djgpp_base_address + ProgramOffset, ProgramSize);
-    uint32_t stack = SectionOffset[2] + SectionSize[2];
-    DPMI_CopyLinear(__djgpp_base_address_old + stack, __djgpp_base_address + stack, ProgramSize-stack);
-    __dpmi_get_and_set_virtual_interrupt_state(x);
-    __djgpp_exception_toggle();
+    #define COPY_FULL 0
+    #define COPY_ALL 1
+    #define COPY_DATA 2
+    #define COPY_STACK 3
+
+    #define COPYBACK COPY_DATA
+
+    #if COPYBACK == COPY_FULL
+    #error not available
+    if(end > oldend) //new allocation happens after we switch to new DS.
+    {
+        //the idea is to switch to old data seg and call sbrk to expand the old data seg, then switch back & perform a full copy.
+        //but new data may not contigous after _CRT0_FLAG_NONMOVE_SBRK and allocation after switching to old ds might not be contigous
+        //so it is not possible do it
+
+        //we're shutting down and just discarded the extra new data.
+    }
+    #elif COPYBACK == COPY_ALL
+    //copy code+data+stack+heap
+    DPMI_CopyLinear(__djgpp_base_address_old + ProgramOffset, __djgpp_base_address + ProgramOffset, ProgramSize);
+    #elif COPYBACK == COPY_DATA
+    //copy data+stack+heap
+    uint32_t codesize = SectionOffset[0] + SectionSize[0];
+    DPMI_CopyLinear(__djgpp_base_address_old + codesize, __djgpp_base_address + codesize, ProgramSize-codesize);
+    #elif COPYBACK == COPY_STACK
+    #error need copy data modified in libc //many function will change libc's static data, i.e. sbrk/malloc
+    //copy stack+heap only
+    uint32_t stackbegin = SectionOffset[2] + SectionSize[2];
+    DPMI_CopyLinear(__djgpp_base_address_old + stackbegin, __djgpp_base_address + stackbegin, ProgramSize-stackbegin);
+    #endif
+    sbrk((int)(oldend-end)); //release memory if possible (although djgpp doesn't shrink)
 
     asm("ljmp *%0" :: "m"(fjmp));
 switch_back:
-    asm __volatile__(   //if we don't copy data back, we must restore data segs after jump(cs seg)
+    asm __volatile__(
     "pushw %0\n\t popw %%es\n\t"
     "pushw %0\n\t popw %%ss\n\t"
     "pushw %0\n\t popw %%ds\n\t"
     :
     :"m"(ProgramOldDS)
     :"memory");
-    /*
+    
+    //if we copy data+stack back, we must restore data segs after long jump
     __djgpp_ds_alias = __djgpp_ds_alias_old;
     __djgpp_base_address = __djgpp_base_address_old;
     __djgpp_ds_alias_old = 0;
     __djgpp_base_address_old = 0;
-    */
+
+    __dpmi_get_and_set_virtual_interrupt_state(x);
+    __djgpp_exception_toggle();
+
     __dpmi_free_ldt_descriptor(ProgramNewCS);
     __dpmi_free_ldt_descriptor(ProgramNewDS);
     ProgramNewCS = ProgramNewDS = 0;
@@ -244,6 +269,7 @@ switch_back:
 BOOL DPMI_TSR()
 {
     __djgpp_exception_toggle();
+
     //free all old app memory
     for(int i = 1; __djgpp_memory_handle_list[i].address; ++i)
     {
@@ -262,6 +288,7 @@ BOOL DPMI_TSR()
     __dpmi_free_memory((unsigned)__djgpp_memory_handle_list[0].handle); //free stub memory
     __djgpp_memory_handle_list[0].handle = 0;
     __djgpp_memory_handle_list[0].address = 0;
+    //END undocumented
 
     __dpmi_free_ldt_descriptor(ProgramOldCS);
     __dpmi_free_ldt_descriptor(ProgramOldDS);
@@ -275,7 +302,10 @@ BOOL DPMI_TSR()
     mem.address = __djgpp_base_address;
     mem.size = ProgramSize;
     if( __dpmi_lock_linear_region(&mem) != 0)
+    {
+        assert(FALSE && "failed to lock memory");
         return FALSE;
+    }
 
     DPMI_REG r = {0};
 

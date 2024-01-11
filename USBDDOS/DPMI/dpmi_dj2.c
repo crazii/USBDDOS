@@ -51,14 +51,10 @@ static void AddAddressMap(const __dpmi_meminfo* info, uint32_t PhysicalAddr)
 
 static void DPMI_Shutdown(void);
 
-#define NEW_IMPL 1
-#if NEW_IMPL
 extern uint32_t DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* poffset, uint32_t* psize);
 extern BOOL DPMI_ShutdownTSR();
 static uint32_t XMS_Bias;
-#else
-static __dpmi_meminfo XMS_Info;
-#endif
+
 #define ONLY_MSPACES 1
 #define NO_MALLOC_STATS 1
 #define USE_LOCKS 1
@@ -72,7 +68,7 @@ static __dpmi_meminfo XMS_Info;
 #include "dlmalloc.h"
 #pragma pop_macro("DEBUG")
 
-#define XMS_HEAP_SIZE (1024*1024*4)  //maxium around 64M (actual size less than 64M)
+#define XMS_HEAP_SIZE (1024*1024*1)  //maxium around 64M (actual size less than 64M)
 static_assert((uint16_t)(XMS_HEAP_SIZE/1024) == (uint32_t)(XMS_HEAP_SIZE/1024), "XMS_HEAP_SIZE must be < 64M");
 static mspace XMS_Space;
 static uint32_t XMS_Physical;
@@ -86,21 +82,21 @@ static uint16_t XMS_Handle; //handle to XMS API
 //to do that. for most DOS Extenders like DOS/4G is OK to use choice 1 since there DS have a base of 0, thus DOS memory are near ptr.
 static void Init_XMS()
 {
-    #if NEW_IMPL
     //use XMS memory since we need know the physical base for some non-DPMI DOS handlers, or drivers.
-    //it is totally physically mapped, and doesn't support realloc, making malloc/brk/sbrk not working.
-    //it will work if djgpp support srbk hook. stdout buffer will be pre-alloced for msg output & debug use.
-    //doesn't matter, this is a driver anyway.
+    //the physical address is used to perform address translation (DPMI_L2P/DPMIP2L) for drivers
+    
+    //notify runtime of brk change
+    uintptr_t XMSBegin = (uintptr_t)sbrk(4096+XMS_HEAP_SIZE);
+    XMSBegin = align(XMSBegin, 4096);
+
     uint32_t size = 0;
     uint32_t offset = 0;
     DPMI_InitTSR(0, 0, &offset, &size);
 
-    //notify runtime of brk change
-    sbrk(XMS_HEAP_SIZE);
-    __dpmi_get_segment_base_address(_my_ds(), &DPMI_DSBase); //_CRT0_FLAG_UNIX_SBRK may have re-allocation
+    __dpmi_get_segment_base_address(_my_ds(), &DPMI_DSBase); //_CRT0_FLAG_UNIX_SBRK may have re-allocation, get new base address
 
-    assert((uint16_t)((size+XMS_HEAP_SIZE)/1024) == (uint32_t)((size+XMS_HEAP_SIZE)/1024)); //check overflow
-    XMS_Handle = XMS_Alloc((uint16_t)((size+XMS_HEAP_SIZE)/1024), &XMS_Physical);
+    assert((uint16_t)(size/1024) == (uint32_t)(size/1024)); //check overflow
+    XMS_Handle = XMS_Alloc((uint16_t)(size/1024), &XMS_Physical);
     if(XMS_Handle == 0)
     {
         printf("Failed allocating XMS memory, size: %d.\n", size+XMS_HEAP_SIZE);
@@ -108,61 +104,20 @@ static void Init_XMS()
     }
 
     XMS_Bias = offset >= 4096 ? 4096 : 0; //re-enable null pointer page fault
-    uint32_t XMSBase = DPMI_MapMemory(XMS_Physical, size + XMS_HEAP_SIZE);
+    uint32_t XMSBase = DPMI_MapMemory(XMS_Physical, size);
     DPMI_TSR_Inited = DPMI_InitTSR(DPMI_DSBase, XMSBase - XMS_Bias, &offset, &size);
     _LOG("TSR inited.\n");
     int ds; //reload ds incase this function inlined and ds optimized as previous
     asm __volatile__("mov %%ds, %0":"=r"(ds)::"memory");
     //_LOG("ds: %02x, limit: %08lx, new limit: %08lx\n", ds, __dpmi_get_segment_limit(ds), size-1);
     assert(__dpmi_get_segment_limit(ds) == size-1);
-    __dpmi_set_segment_limit(ds, size + XMS_HEAP_SIZE - 1);
-    XMS_Space = create_mspace_with_base((void*)size, XMS_HEAP_SIZE, 0);
+    XMS_Space = create_mspace_with_base((void*)XMSBegin, XMS_HEAP_SIZE, 0);
     _LOG("XMS init done.\n");
     //update mapping
     DPMI_DSBase = XMSBase - XMS_Bias;
-    DPMI_DSLimit = size + XMS_HEAP_SIZE;
-    _LOG("XMS base %08lx, XMS lbase %08lx XMS heap base %08lx\n", XMS_Physical, XMSBase, XMS_Physical+size);
-    #else
-    //the idea is to allocate XMS memory in physical addr and mapped it after current ds's limit region,
-    //then expand current ds' limit so that the mapped addr are within the current ds segment,
-    //and the mapped data can be directly accessed as normal pointer (near ptr)
-    //another trick is to use dlmalloc with mapped based ptr to allocate arbitary memory.
-    XMS_Handle = XMS_Alloc((XMS_HEAP_SIZE+4096)/1024, &XMS_Physical);
-    if(XMS_Handle == 0)
-        exit(1);
-    XMS_Physical = align(XMS_Physical, 4096);
-    __dpmi_meminfo info = {0};
-    info.size = XMS_HEAP_SIZE;
-    #if 0     //Not supported by CWSDPMI and Windows, but by DPMIONE or HDPMI
-    info.address = (DPMI_DSBase + DPMI_DSLimit + 4095) / 4096 * 4096;
-    if( __dpmi_allocate_linear_memory(&info, 0) == -1)
-    #else
-    if(__dpmi_allocate_memory(&info) == -1)
-    #endif
-    {
-        XMS_Free(XMS_Handle);
-        printf("Failed to allocate linear memory (%08lx). \n", info.address);
-        exit(1);
-    }
-
-    __dpmi_meminfo info2 = info;
-    info2.address = 0;
-    info2.size = XMS_HEAP_SIZE / 4096;
-    if( __dpmi_map_device_in_memory_block(&info2, XMS_Physical) == -1) //supported by CWSDPMI and others
-    {
-        XMS_Free(XMS_Handle);
-        printf("Error: Failed to map XMS memory %08lx, %08lx.\n", info.address, info.size);
-        exit(1);
-    }
-    uint32_t XMSBase = info.address;
-    XMS_Info = info;
-    info.handle = -1;
-    AddAddressMap(&info, XMS_Physical);
-    __dpmi_set_segment_limit(_my_ds(), XMSBase - DPMI_DSBase + XMS_HEAP_SIZE - 1);
-    __dpmi_set_segment_limit(__djgpp_ds_alias, XMSBase - DPMI_DSBase + XMS_HEAP_SIZE - 1); //interrupt used.
-    _LOG("XMS base %08lx, XMS lbase %08lx offset %08lx\n", XMS_Physical, XMSBase, XMSBase - DPMI_DSBase);
-    XMS_Space = create_mspace_with_base((void*)(XMSBase - DPMI_DSBase), XMS_HEAP_SIZE, 0);
-    #endif
+    DPMI_DSLimit = size;
+    _LOG("XMS base %08lx, XMS lbase %08lx XMS heap base %08lx\n", XMS_Physical, XMSBase, XMSBegin);
+    //*((int*)NULL) = 0; //test null ptr
 }
 
 static void sig_handler(int signal)
@@ -213,7 +168,6 @@ void DPMI_Init(void)
 
 static void DPMI_Shutdown(void)
 {
-    #if NEW_IMPL
     _LOG("Cleanup TSR...\n");
     uint32_t size = XMS_Space ? mspace_mallinfo(XMS_Space).uordblks : 0;
     unused(size); //make compiler happy. log not always enabled.
@@ -227,16 +181,6 @@ static void DPMI_Shutdown(void)
         asm __volatile__("":::"memory");
         DPMI_TSR_Inited = FALSE;
     }
-    #else
-    //libc may expand this limit, if we restore it to a smaller value, it may cause crash
-    //__dpmi_set_segment_limit(_my_ds(), DPMI_DSLimit);
-    _LOG("Free mapped XMS space...\n");
-    if(XMS_Info.handle != 0)
-    {
-        __dpmi_free_memory(XMS_Info.handle);
-        XMS_Info.handle = 0;
-    }
-    #endif
 
     _LOG("Free mapped space...\n");
     for(int i = 0; i < AddressMapCount; ++i)
@@ -369,6 +313,17 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment/* = 4*/)
     uint8_t* ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+8) + 8;
     uintptr_t addr = (uintptr_t)ptr;
     uint32_t offset = align(addr, alignment) - addr;
+
+    uint32_t extra = 0;
+    while(((addr+offset+extra)&~0xFFF) != ((addr+offset+extra+size)&~0xFFF))
+    {
+        extra += align(size, alignment);
+        mspace_free(XMS_Space, ptr-8);
+        ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+extra+8) + 8;
+        addr = (uintptr_t)ptr;
+        offset = align(addr, alignment) - addr + extra;
+    }
+
     uint32_t* uptr = (uint32_t*)(ptr + offset);
     uptr[-1] = size;
     uptr[-2] = offset + 8;
@@ -528,7 +483,6 @@ uint32_t DPMI_AllocateRMCB_IRET(void(*Fn)(void), DPMI_REG* reg)
 
 void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
 {
-    #if NEW_IMPL//doesn't work with old method.
     spc->baseds = XMS_Physical - XMS_Bias;
     spc->limitds = __dpmi_get_segment_limit(_my_ds());
     spc->basecs = spc->baseds;
@@ -537,9 +491,6 @@ void DPMI_GetPhysicalSpace(DPMI_SPACE* outputp spc)
     extern uint32_t __djgpp_stack_top;
     _LOG("DPMI_GetPhysicalSpace: physical ds base: %08lx, limit: %08lx, esp %08lx\n", spc->baseds, __dpmi_get_segment_limit(_my_ds()), __djgpp_stack_top);
     spc->stackpointer = __djgpp_stack_top;
-    #else
-    #error not supported. cannot get physical base from DPMI.
-    #endif
 }
 
 #endif
