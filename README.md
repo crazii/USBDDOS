@@ -52,7 +52,10 @@ Here's a quick comparison of different toolchains and its generated executables:
 |Executable            ||
 |DPMI Host Required    |Yes   |No              |No           |
 |Instruction Set       |32-bit|16-bit          |16-bit       |
-|Conventional Mem Usage|0K    |12K             |12K          |
+|Conventional Mem Usage|0K[\[1\]](README.md#note)|12K|12K    |
+
+#### Note:
+USBDDOSP itself uses almost 0K (around 1K), but it depends on the DPMI host used, for HPDMI it is actually around 1K, and for CWSDPMI, the total usage is about 200K, most of them are used by CWSDPMI itself, after TSR.
 
 ## DJGPP setup
 * Download DGJPP from here: https://github.com/andrewwutw/build-djgpp  
