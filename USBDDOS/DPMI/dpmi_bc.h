@@ -3,12 +3,13 @@
 //works for 16 bit compilers (Borland C, OpenWatcom C)
 //the local DPMI can work standalone without a DPMI host,
 //which removes the dependency of external DPMI servers.
-//it simply copy the code & data to protected mode segments,
-//thus MEDIUM/LARGE model not supported
+//it simply copy the code & data to protected mode segments(in extended memory),
+//all 'himem' here in this file (comments,names) means 'extended memory', not HMA.
 //
 //a LOADER/patcher which read the EXE's rellocation info and 
 //setup multiple protected segments and apply the relllocation will
-//make it work for MEDIUM/LARGE model
+//make it work for MEDIUM/LARGE model - this's done.
+
 //for LARGE model, there also need to be a #define which replace the default _fmalloc
 //and uses the protected mode method.
 //////////////////////////////////////////////////////////////////////////////
@@ -355,7 +356,7 @@ static uint16_t _STACK_PTR;
 static uint32_t _DATA_SIZE; //total size of all data segments
 static uint32_t _CODE_SIZE; //total size of all code segments
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
-static uint32_t DPMI_HimemCode = 0;  //starting address of himem code (also starting address of the whole program data in himem)
+static uint32_t DPMI_HimemCode = 0;  //starting address of himem code (also starting address of the whole program data in himem).
 static uint32_t DPMI_HimemData = 0;  //starting address of himem data, right following the himem code
 static uint16_t DPMI_XMSHimemHandle;
 static uint16_t DPMI_XMSBelow4MHandle;
@@ -388,9 +389,9 @@ static uint32_t DPMI_GetSelectorBase(uint16_t selector, uint32_t* limit)
     return base;
 }
 
-//convert a 16 bit far ptr to linear addr
+//convert a real mode 16 bit far ptr to linear addr
 #define DPMI_PTR16R2L(ptr) ((((uint32_t)FP_SEG((ptr)))<<4)+(uint32_t)FP_OFF((ptr)))
-//convert a linear addr to a far pointer
+//convert a linear addr to a 16 bit real mode far pointer: ptr16r, r for real mode
 static void far* near DPMI_L2PTR16R(uint32_t addr)
 {
     for(uint16_t i = 0; i < DPMI_LOADER_DS_Count; ++i)
@@ -415,7 +416,8 @@ static uint32_t near DPMI_SEGOFFP2L(uint16_t selector, uint16_t off)
     return base + (uint32_t)off;
 }
 
-#pragma off (unreferenced)
+//convert a protected mode 16 bit far ptr to linear addr. ptr16p, p for protected mode
+//ptr16r is used internally on initialization, while ptr16p is the implementation used for DPMI_PTR2L/DPMI_L2PTR
 static uint32_t near DPMI_PTR16P2L(void far* ptr)
 {
     return DPMI_SEGOFFP2L(FP_SEG(ptr), FP_OFF(ptr));
@@ -423,8 +425,9 @@ static uint32_t near DPMI_PTR16P2L(void far* ptr)
 
 static void far* near DPMI_L2PTR16P(uint32_t addr)
 {
-    if(addr <= 0xFFFFFL)
+    if(addr <= 0xFFFFFL) //linear addr below 1M, use low memory ds
     {
+        assert(!DPMI_TSRed); //after TSR low memory ds should not be accessed anymore, client should get linear addr from himem
         for(uint16_t i = SEL_DS; i <= SEL_DSE; ++i)
         {
             uint32_t base = DPMI_GetSelectorBase(i*8, NULL);
@@ -441,7 +444,6 @@ static void far* near DPMI_L2PTR16P(uint32_t addr)
     assert(FALSE);
     return NULL;
 }
-#pragma pop (unreferenced)
 
 //only works for protected mode.
 static inline PDE DPMI_LoadPDE(uint32_t addr) { PDE pde; pde.value = DPMI_LoadD(addr); return pde; }
