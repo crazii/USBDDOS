@@ -83,10 +83,11 @@ static __INLINE void USB_ISR(void);
 static void USB_Completion_SyncCallback(HCD_Request* pRequest); //calledin hc driver interrupt handler
 static void USB_Completion_UserCallback(HCD_Request* pRequest); //calledin hc driver interrupt handler
 
-static int USB_ComparePI(const void* l, const void* r) //compare PCI programming interface
+static int USB_CompareHUB_HC_PI(const void* l, const void* r) //compare PCI programming interface
 {
-    const HCD_Interface* pHCIL = (HCD_Interface*)l;
-    const HCD_Interface* pHCIR = (HCD_Interface*)r;
+    const HCD_Interface* pHCIL = ((const HCD_HUB*)l)->pHCI;
+    const HCD_Interface* pHCIR = ((const HCD_HUB*)r)->pHCI;
+    assert(pHCIL && pHCIR);
     return (long)pHCIR->pType->dwPI - (long)pHCIL->pType->dwPI; //large PI comes first
 }
 
@@ -159,11 +160,12 @@ void USB_Init(void)
     //so we can detect 2.0 devices first instead of its compation HC.
     //after sorting, USB_ISRHandle won't match the HC_List, but that won't hurt
     
-    //note: on detection HC, we can reverse function search order that it iterates from high to low
-    //since EHCI specs require EHCI has higher function num than its companion HC
+    //note: on detection HC, we can reverse function search order that it iterates from high to low,
+    //since EHCI specs require EHCI has higher function num than its companion HC.
     //but on some machine (VirtualBox sometimes) they are on a separated bus
     //so sorting would be a better solution
-    qsort(USBT.HC_List, USBT.HC_Count, sizeof(HCD_Interface), USB_ComparePI);
+    //now we enumerate bus through HUB, we need sort on HUBs, not HCs
+    qsort(USBT.HUB_List, USBT.HUB_Count, sizeof(HCD_HUB), USB_CompareHUB_HC_PI);
 
     USB_EnumerateDevices();
     return;
@@ -643,6 +645,7 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
             //assert(InterfaceIndex < pDevice->pConfigList[ConfigIndex].bNumInterfaces); //why would it happen? - vendor specific descriptors, ignore
             if(InterfaceIndex >= pDevice->pConfigList[ConfigIndex].bNumInterfaces)
             {
+                assert(ConfigIndex == pDevice->Desc.bNumConfigurations-1); //should be the last config
                 _LOG("USB skip vendor specific config descriptors.\n");
                 break;
             }

@@ -168,13 +168,13 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     {
         uint8_t i;
         for(i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
-            DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower|PortReset);
-        delay(55);
+            DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower|PortReset); //set reset.
+        delay(55); //spec required reset time
         for(i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
         {
             uint32_t pa = OperationalBase+PORTSC+i*4U;
-            DPMI_StoreD(pa, PortEnable|PortPower); //PortEnable won't enable port but avoid disabling it
-            delay(22); //spec require 2ms to enable ports with high speed devices after reset
+            DPMI_StoreD(pa, PortEnable|PortPower); //release reset. PortEnable won't enable port but avoid disabling it
+            delay(5); //spec require 2ms to enable ports with high speed devices after reset
             uint32_t status = DPMI_LoadD(pa);
             if((status&ConnectStatus) && !(status&PortEnable)) //not enabled: low/full speed
                 DPMI_StoreD(pa, PortOwner); //handoff to companion HC
