@@ -205,6 +205,17 @@ static BOOL DPMI_IsV86() //should call before init pm
     _ASM_END
     return _AX;
 }
+
+static void DPMI_FlushTLB() //flush TLB. TODO: invlpg(486+)
+{
+    _ASM_BEGIN
+        _ASM(push eax)
+        _ASM2(mov eax, cr3)
+        _ASM2(mov cr3, eax)
+        _ASM(pop eax)
+    _ASM_END
+}
+
 #pragma option -k
 
 #elif defined(__WC__)
@@ -215,10 +226,18 @@ static BOOL DPMI_IsV86();
 "and ax, 1" \
 value[ax]
 
+static void DPMI_FlushTLB(); //flush TLB. TODO: invlpg(486+)
+#pragma aux DPMI_FlushTLB = \
+"push eax" \
+"mov eax, cr3" \
+"mov cr3, eax" \
+"pop eax"
+
 extern "C" uint16_t _STACKTOP;
 #else
 
 #define DPMI_IsV86() 0
+#define DPMI_FlushTLB() 
 
 #endif //__BC__
 
@@ -593,7 +612,7 @@ static void __NAKED far DPMI_DirectRealMode()
         _ASM2(mov gs, ax)
         _ASM2(mov fs, ax)
 
-        _ASM2(mov eax, dword ptr ds:[RMCB_OFF_CR3]) //restore CR3
+        _ASM2(mov eax, dword ptr ds:[RMCB_OFF_CR3]); //restore CR3
         _ASM2(mov cr3, eax)
 
         //note: don't disable A20 as some DOS extender doesn't like it.

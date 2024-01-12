@@ -454,7 +454,8 @@ static void DPMI_SetupRMCB()
 #endif
 
     //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
-    _LOG("CR3: %08lx\n", DPMI_Rmcb->VcpiClient.CR3);
+    if(DPMI_V86)
+        _LOG("CR3: %08lx\n", DPMI_Rmcb->VcpiClient.CR3);
     _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_PTR16R2L(&DPMI_Rmcb->GDTR), DPMI_Rmcb->GDTR.size, DPMI_Rmcb->GDTR.offset);
     _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_PTR16R2L(&DPMI_Rmcb->IDTR), DPMI_Rmcb->IDTR.size, DPMI_Rmcb->IDTR.offset);
     free(buff);
@@ -561,7 +562,8 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
     reg->w.flags &= 0x3ED7;
     reg->w.flags |= 0x3002;
     {//keep original IF
-        reg->w.flags &= CPU_FLAGS()&(~CPU_IFLAG);
+        reg->w.flags &= CPU_FLAGS()|(~CPU_IFLAG);
+        //reg->w.flags |= CPU_FLAGS()&CPU_IFLAG;
     }
     if(!DPMI_PM)
     {
@@ -735,7 +737,7 @@ void DPMI_Init(void)
 
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     //use high malloc because WC's malloc may expand DS size on request, if normal block is allocated, expanding will fail
-    //the sbrk above will solve the problem but still it's better to allocate memory from high address.
+    //the _heapgrow above will solve the problem but still it's better to allocate memory from high address.
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     uint32_t TempMemory = DPMI_HighMalloc((sizeof(DPMI_TempData)+15)>>4, FALSE);
 
@@ -783,7 +785,7 @@ void DPMI_Init(void)
     _fmemset(DPMI_Temp, 0, sizeof(DPMI_TempData));
     uint32_t RMCBMemroyLAddr = (DPMI_RmcbMemory&0xFFFFL)<<4;
     uint32_t PageTable0LAddr = align(RMCBMemroyLAddr, 4096);
-    DPMI_Temp->RMCBLAddr = (!DPMI_V86 || PageTable0LAddr - RMCBMemroyLAddr >= DPMI_RMCB_SIZE) ? RMCBMemroyLAddr : PageTable0LAddr + 4096; //real mode direct to pm with no paging, only v86 uses page table.
+    DPMI_Temp->RMCBLAddr = (!DPMI_V86 || (PageTable0LAddr - RMCBMemroyLAddr >= DPMI_RMCB_SIZE)) ? RMCBMemroyLAddr : PageTable0LAddr + 4096; //real mode direct to pm with no paging, only v86 uses page table.
     DPMI_Temp->PageTable0LAddr = PageTable0LAddr;
 
     _LOG("RMCB: %08lx\n", DPMI_Temp->RMCBLAddr);
@@ -899,20 +901,10 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             CLIS();
             PTE pteold = DPMI_LoadPTE(DPMI_4MPageTableLAddr, 1023);
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &ptetmp);
-            _ASM_BEGIN
-                _ASM(push eax)
-                _ASM2(mov eax, cr3)
-                _ASM2(mov cr3, eax)
-                _ASM(pop eax)
-            _ASM_END //flush TLB. TODO: invlpg(486+)
+            DPMI_FlushTLB();
             DPMI_SetLinear(4L*1024L*1023L, 0, 4096); //clear mapped tb
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &pteold);
-            _ASM_BEGIN
-                _ASM(push eax)
-                _ASM2(mov eax, cr3)
-                _ASM2(mov cr3, eax)
-                _ASM(pop eax)
-            _ASM_END //flush TLB. TODO: invlpg(486+)
+            DPMI_FlushTLB();
             STIL();
         }
 
@@ -922,12 +914,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
             CLIS();
             PTE pteold = DPMI_LoadPTE(DPMI_4MPageTableLAddr, 1023);
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &ptetmp);
-            _ASM_BEGIN
-                _ASM(push eax)
-                _ASM2(mov eax, cr3)
-                _ASM2(mov cr3, eax)
-                _ASM(pop eax)
-            _ASM_END //flush TLB. TODO: invlpg(486+)
+            DPMI_FlushTLB();
             for(uint32_t j = start; j < end; ++j)
             {
                 PTE pte = PTE_INIT(addr + (j<<12L)); //1:1 map
@@ -936,12 +923,7 @@ uint32_t DPMI_MapMemory(uint32_t physicaladdr, uint32_t size)
                 DPMI_StorePTE(4L*1024L*1023L, j, &pte);
             }
             DPMI_StorePTE(DPMI_4MPageTableLAddr, 1023, &pteold);
-            _ASM_BEGIN
-                _ASM(push eax)
-                _ASM2(mov eax, cr3)
-                _ASM2(mov cr3, eax)
-                _ASM(pop eax)
-            _ASM_END //flush TLB. TODO: invlpg(486+)
+            DPMI_FlushTLB();
             STIL();
         }
         else
