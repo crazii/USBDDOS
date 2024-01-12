@@ -8,7 +8,7 @@
 //that external (i.e.EMM386 ring0 callback) can access it.
 //if TSR is only for INT handler or from real mode call, use DPMI callback or DPMI interrupt vector will work without this.
 
-//WARNING: this file uses undocmented details of DJGPP and thus not portable.
+//WARNING: this file uses undocumented details of DJGPP and thus not portable.
 //used data: __djgpp_ds_alias, __djgpp_base_address, __djgpp_memory_handle_list
 
 #if defined(__DJ2__)
@@ -29,6 +29,9 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 
 static uint32_t ProgramOffset = 0xFFFFFFFF;//total offset
+#define CODE_SEC 0
+#define DATA_SEC 1
+#define BSS_SEC 2
 static uint32_t SectionOffset[3];   //text,data,bss
 static uint32_t SectionSize[3];     //text,data,bss
 static uint32_t ProgramSize = 0;    //total size: text+data+bss+stack+heap (from the start to sbrk(0))
@@ -50,6 +53,13 @@ inline uint16_t _my_es()
     return es;
 }
 
+#define PREVENT_OPTIMIZE(label) do {\
+    volatile int PreventOptimize##label; \
+    __asm __volatile__("xor %0, %0":"=r"(PreventOptimize##label) : :"memory"); \
+    if(PreventOptimize##label) \
+        goto label; \
+} while(0)
+
 //copy self to new linear base (relloc)
 //poffset: start offset of code/data with current segment base addr
 //psize: total size starting at current segment base addr
@@ -59,25 +69,27 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
         return 0;
     if(*poffset == 0 || *psize == 0)
     {
-        int fd = open(__dos_argv0, O_RDONLY|O_BINARY, S_IRUSR);
-        BOOL ok = fd >= 0;
-        uint16_t MZ6[3];    //0:
-        if(ok)
-            ok = read(fd, MZ6, 6) == 6;
-        if(ok)
+        int ok = FALSE;
+        int fd = -1;
+        do 
         {
-            if(MZ6[0] == 0x5A4D)    //MZ header, stubbed
-                ok = lseek(fd, MZ6[2]*512+MZ6[1],SEEK_SET) != -1;
-            else if(MZ6[0] == I386MAGIC)
-                ok = lseek(fd, 0, SEEK_SET) != -1;
-        }
-        struct external_filehdr hdr;
-        if(ok)
-            ok = read(fd, &hdr, FILHSZ) == FILHSZ && hdr.f_magic == I386MAGIC;
-        if(ok)
-            ok = lseek(fd, hdr.f_opthdr, SEEK_CUR) != -1;
-        if(ok)
-        {
+            fd = open(__dos_argv0, O_RDONLY|O_BINARY, S_IRUSR);
+            if(fd < 0)
+                break;
+            uint16_t MZ6[3];
+            if(read(fd, MZ6, 6) != 6)
+                break;
+
+            if( !( (MZ6[0] == 0x5A4D && lseek(fd, MZ6[2]*512+MZ6[1],SEEK_SET) != -1) //MZ header, stubbed
+                || (MZ6[0] == I386MAGIC && lseek(fd, 0, SEEK_SET) != -1)) )
+                break;
+
+            struct external_filehdr hdr;
+            if(!(read(fd, &hdr, FILHSZ) == FILHSZ && hdr.f_magic == I386MAGIC))
+                break;
+            if(lseek(fd, hdr.f_opthdr, SEEK_CUR) == -1)
+                break;
+
             for(int i = 0; i < hdr.f_nscns; ++i)
             {
                 struct external_scnhdr sechdr;
@@ -92,31 +104,24 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
                 {
                     ProgramOffset = min(ProgramOffset, sechdr.s_vaddr);
                     ProgramSize += sechdr.s_size;
-                    int index = text ? 0 : (data ? 1 : 2);
+                    int index = text ? CODE_SEC : (data ? DATA_SEC : BSS_SEC);
                     SectionOffset[index] = sechdr.s_vaddr;
                     SectionSize[index] = sechdr.s_size;
                 }                
             }
-        }
+        }while(0);
+        
         if(!ok || ProgramOffset == 0xFFFFFFFF || ProgramSize == 0)
         {
+            if(fd >= 0)
+                close(fd);
             printf("failed reading file.\n");
             return FALSE;
         }
 
         // |CODE|DATA|BSS|STACK|Initial C HEAP|XMS_HEAP|dynamic HEAP| (all fixed size except dynamic HEAP used by future malloc)
 
-        /*uintptr_t end0 = (uintptr_t)sbrk(0);
         //printf("%08lx\n",_go32_info_block.size_of_transfer_buffer);
-        if(!stdout->_base)  //printf hack
-        {
-            stdout->_bufsiz = _go32_info_block.size_of_transfer_buffer;
-            stdout->_base = malloc(stdout->_bufsiz);
-            stdout->_flag |= _IOLBF|0x40;//_IOMYBUF;
-            stdout->_cnt = 0;
-            stdout->_ptr = stdout->_base;
-            //printf("pre alloc stdout buffer: %08lx, %08lx\n", end0, sbrk(0));
-        }*/
         uintptr_t end = (uintptr_t)sbrk(0); //add stacks and dynamic allocated data by now
         //_LOG("sbrk0: %x, size %x, offset %x\n", end, ProgramSize, ProgramOffset);
         ProgramSize = (uintptr_t)max(end - ProgramOffset, ProgramSize);
@@ -126,9 +131,8 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
         return FALSE;
     }
     
-    uint32_t offset = *poffset;
     uint32_t size = *psize;
-    assert(offset == ProgramOffset);unused(offset);
+    assert(*poffset == ProgramOffset);unused(poffset);
     
     //TODO: shrink stack as we may not need too much space?
     //TODO: custom keep of code & data like DOS TSR. we can do the TSR init on exit (we still need physical addr for driver before TSR)
@@ -149,10 +153,7 @@ BOOL DPMI_InitTSR(uint32_t base, uint32_t newbase, uint32_t* outputp poffset, ui
     __dpmi_set_segment_limit(ProgramNewDS, size-1);
     __dpmi_set_segment_base_address(ProgramNewDS, newbase);
 
-    volatile uint32_t PreventOptimize;//prevent optimization out code after ljmp
-    asm __volatile__("xor %0, %0":"=r"(PreventOptimize) : :"memory");
-    if(PreventOptimize)
-        goto switch_space;
+    PREVENT_OPTIMIZE(switch_space);//prevent optimization out code after ljmp
 
     assert(ProgramOffset+ProgramSize <= size);
 
@@ -197,12 +198,10 @@ switch_space:
 BOOL DPMI_ShutdownTSR(void)
 {
     int x = __dpmi_get_and_disable_virtual_interrupt_state();
-    __djgpp_exception_toggle();    
+    __djgpp_exception_toggle();
     
-    volatile uint32_t PreventOptimize;//prevent optimization out code after ljmp
-    asm __volatile__("xor %0, %0":"=r"(PreventOptimize) : :"memory");
-    if(PreventOptimize)
-        goto switch_back;
+    PREVENT_OPTIMIZE(switch_back);//prevent optimization out code after ljmp
+
     uint32_t fjmp[2] = {(uintptr_t)&&switch_back, ProgramOldCS};
       
     uintptr_t oldend = ProgramSize + ProgramOffset;
@@ -230,12 +229,12 @@ BOOL DPMI_ShutdownTSR(void)
     DPMI_CopyLinear(__djgpp_base_address_old + ProgramOffset, __djgpp_base_address + ProgramOffset, ProgramSize);
     #elif COPYBACK == COPY_DATA
     //copy data+stack+heap
-    uint32_t codesize = SectionOffset[0] + SectionSize[0];
+    uint32_t codesize = SectionOffset[CODE_SEC] + SectionSize[CODE_SEC];
     DPMI_CopyLinear(__djgpp_base_address_old + codesize, __djgpp_base_address + codesize, ProgramSize-codesize);
     #elif COPYBACK == COPY_STACK
     #error need copy data modified in libc //many function will change libc's static data, i.e. sbrk/malloc
     //copy stack+heap only
-    uint32_t stackbegin = SectionOffset[2] + SectionSize[2];
+    uint32_t stackbegin = SectionOffset[BSS_SEC] + SectionSize[BSS_SEC];
     DPMI_CopyLinear(__djgpp_base_address_old + stackbegin, __djgpp_base_address + stackbegin, ProgramSize-stackbegin);
     #endif
     sbrk((int)(oldend-end)); //release memory if possible (although djgpp doesn't shrink)
@@ -288,7 +287,6 @@ BOOL DPMI_TSR()
     __dpmi_free_memory((unsigned)__djgpp_memory_handle_list[0].handle); //free stub memory
     __djgpp_memory_handle_list[0].handle = 0;
     __djgpp_memory_handle_list[0].address = 0;
-    //END undocumented
 
     __dpmi_free_ldt_descriptor(ProgramOldCS);
     __dpmi_free_ldt_descriptor(ProgramOldDS);
