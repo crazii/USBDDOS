@@ -158,7 +158,7 @@ typedef struct //real mode callback
 {
     //FIXED OFFSET BEGIN used for inline asm
     IDTR OldIDTR;
-    GDTR NullGDTR;
+    GDTR OldGDTR;
     GDTR GDTR; //the RMCB_ prefix is added to prevent ambiguous name for ASM
     IDTR IDTR;
 
@@ -294,7 +294,7 @@ static_assert(VCPI_SIZEOF_CLIENTSTRUCT == sizeof(DPMI_VCPIClientStruct), "consta
 static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP), "constant error");
 
 #define RMCB_OFF_OldIDTR 2 //+2: extra padding
-#define RMCB_OFF_NullGDTR 10 //+2: extra padding
+#define RMCB_OFF_OldGDTR 10 //+2: extra padding
 #define RMCB_OFF_GDTR 18 //+2: extra padding
 #define RMCB_OFF_IDTR 26
 #define RMCB_OFF_CR3 32
@@ -312,7 +312,7 @@ static_assert(VCPI_CLIENTSTRUCT_OFF_EIP == offsetof(DPMI_VCPIClientStruct, EIP),
 #define RMCB_OFF_Table (RMCB_OFF_CommonEntry+2)
 
 static_assert(RMCB_OFF_OldIDTR == offsetof(DPMI_RMCB, OldIDTR) + 2, "constant error"); //2: extra padding
-static_assert(RMCB_OFF_NullGDTR == offsetof(DPMI_RMCB, NullGDTR) + 2, "constant error"); //2: extra padding
+static_assert(RMCB_OFF_OldGDTR == offsetof(DPMI_RMCB, OldGDTR) + 2, "constant error"); //2: extra padding
 static_assert(RMCB_OFF_GDTR == offsetof(DPMI_RMCB, GDTR) + 2, "constant error");
 static_assert(RMCB_OFF_IDTR == offsetof(DPMI_RMCB, IDTR) + 2, "constant error");
 static_assert(RMCB_OFF_CR3 == offsetof(DPMI_RMCB, CR3), "constant error");
@@ -366,7 +366,8 @@ typedef struct //group temporary data and allocate from DOS, exit on release. th
 }DPMI_TempData;
 
 extern "C" DPMI_ADDRESSING DPMI_Addressing;
-uint32_t DPMI_XMS_Size = 64UL*1024UL;   //first 64k of system data, program data will added in run time
+static uint32_t DPMI_XMS_Size = 64UL*1024UL;   //first 64k of system data, program data will added in run time
+BOOL DPMI_TSRed;
 
 static uint16_t _DATA_SEG;  //first data segment for real mode
 static uint16_t _CODE_SEG;  //first code segment for real mode
@@ -375,13 +376,12 @@ static uint16_t _STACK_PTR;
 static uint32_t _DATA_SIZE; //total size of all data segments
 static uint32_t _CODE_SIZE; //total size of all code segments
 static uint32_t DPMI_SystemDS = 0;  //keep GDT, IDT, page table
-static uint32_t DPMI_HimemCode = 0;  //starting address of himem code (also starting address of the whole program data in himem).
+static uint32_t DPMI_HimemCode = 0;  //starting address of himem code (also starting address of the whole program data in himem)
 static uint32_t DPMI_HimemData = 0;  //starting address of himem data, right following the himem code
 static uint16_t DPMI_XMSHimemHandle;
 static uint16_t DPMI_XMSBelow4MHandle;
 static uint8_t DPMI_V86;
 static uint8_t DPMI_PM;
-static uint8_t DPMI_TSRed;
 static uint8_t DPMI_ExceptionPatch = FALSE;
 static uint8_t DPMI_ExtDSCount = 0;
 static uint8_t DPMI_ExtCSCount = 0;
@@ -504,6 +504,7 @@ static void __NAKED far DPMI_DirectProtectedMode()
 
         //on FreeDOS with vast amount of modules loaded, the XMS address might be above 0xFFFFFF
         //we need 32bit lgdt/lidt
+        _ASM(sgdt fword ptr ds:[RMCB_OFF_OldGDTR]);
         _ASM(sidt fword ptr ds:[RMCB_OFF_OldIDTR]);//';' is added to work around vscode highlight problem
         _ASM_OPERAND_SIZE //use 32bit operand size
         _ASM(lgdt fword ptr ds:[RMCB_OFF_GDTR]);
@@ -580,7 +581,9 @@ static void __NAKED far DPMI_DirectRealMode()
     _ASM_END
 
     _ASM_BEGIN
-        _ASM(lgdt fword ptr ds:[RMCB_OFF_NullGDTR]); //load null gdt
+        _ASM_OPERAND_SIZE
+        _ASM(lgdt fword ptr ds:[RMCB_OFF_OldGDTR]); //load null gdt
+        _ASM_OPERAND_SIZE
         _ASM(lidt fword ptr ds:[RMCB_OFF_OldIDTR]);
         _ASM(push word ptr ds:[RMCB_OFF_RMSEG]);
 #if defined(__BC__)
@@ -927,7 +930,7 @@ static void __NAKED DPMI_VCPIRealModeEnd() {}
 #pragma enable_message (13) //WC
 
 //////////////////////////////////////////////////////////////////////////////
-//segment selector mapping
+//RM segment: PM selector mapping
 //////////////////////////////////////////////////////////////////////////////
 static inline uint16_t DPMI_GetCodeSelector(uint16_t segment)
 {
@@ -1427,7 +1430,7 @@ extern "C" void __CDECL near DPMI_Except(short expn, short error, short ip_, sho
         Continue = DPMI_ExceptPatchSegment(reg, csip, (uint16_t far*)(ssbp+OFF));
         //flags |= CPU_TFLAG; //single step DEBUG
     }
-#if DEBUG //single step debug
+#if DEBUG && 0 //single step debug, use if needed
     else if(expn == 3) //int 3 triggers single step debug mode.
     {
         //note: flags/ip are the real ones pushed on exception, because we use the exception stack frame directly in this function
@@ -1696,7 +1699,6 @@ extern "C" void __NAKED __CDECL near DPMI_HWIRQHandler()
 
     _ASM_BEGIN
         _ASM2(add sp, 2) //disacard return address in DPMI_IRQHandlerXX
-        _ASM(pushf)
         _ASM(cli)
         _ASM(pushad)
         _ASM(push ds)
@@ -1704,8 +1706,6 @@ extern "C" void __NAKED __CDECL near DPMI_HWIRQHandler()
         _ASM(push fs)
         _ASM(push gs)
 
-        _ASM2(mov bp, sp)
-        _ASM2(and word ptr [bp+8+DPMI_PUSHAD_SIZE], 0xBFFF) //remove NT flag for flags or iret will do a task return
         _ASM2(mov ax, SEL_INTR_DS*8) //load the DS we're using
         _ASM2(mov ds, ax)
         _ASM(call DPMI_HWIRQHandlerInternal)
@@ -1715,7 +1715,6 @@ extern "C" void __NAKED __CDECL near DPMI_HWIRQHandler()
         _ASM(pop es)
         _ASM(pop ds)
         _ASM(popad)
-        _ASM(popf)
         _ASM(iret)
     _ASM_END
 }

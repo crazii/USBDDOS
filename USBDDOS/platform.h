@@ -251,6 +251,7 @@ extern int _dos_close(int fd);
 extern int _fstrlen(const char*);
 extern int _fmemcmp(const void*, const void*, int);
 extern int _bios_keybrd(int);
+extern void _dos_keep(int code, int para);
 
 extern uint16_t _ES;
 extern uint16_t _DS;

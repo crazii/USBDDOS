@@ -49,12 +49,19 @@ void __CDECL near DPMI_INT21H_Translation(DPMI_REG near* reg)
     reg->w.es = DPMI_GetDataSegment(reg->w.es);
     reg->w.fs = DPMI_GetDataSegment(reg->w.fs);
     reg->w.gs = DPMI_GetDataSegment(reg->w.gs);
+    //_LOG("ds: %04x, es: %04x, fs: %04x, gs: %04x\n", reg->w.ds, reg->w.es, reg->w.fs, reg->w.gs);
 
     if(reg->h.ah == 0x4C)
     {
         if(DPMI_I21H_pfnTerminate)
             (*DPMI_I21H_pfnTerminate)();
+		DPMI_ExceptionPatch = FALSE;
     }
+    if(reg->h.ah == 0x31)
+    {
+        DPMI_ExceptionPatch = FALSE;
+    }
+
     DPMI_CallRealModeINT(0x21, reg);
 
     uint32_t seg = translsationBuffer&0xFFFF;

@@ -191,7 +191,7 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
     uint32_t dwIOBase = pHCI->dwBaseAddress;
     OHCI_HCData* pHCDData = (OHCI_HCData*)pHCI->pHCDData;
     uint32_t Interrupt = DPMI_LoadD(dwIOBase + HcInterruptStatus) & DPMI_LoadD(dwIOBase + HcInterruptEnable);
-    //_LOG("OHCI ISR: interrupt: %x, donehead:%x\n", interrupt, pHCDData->HCCA.dwDoneHead);
+    //_LOG("OHCI ISR: interrupt: %x, donehead:%x\n", Interrupt, pHCDData->HCCA.dwDoneHead);
     if(pHCDData->HCCA.dwDoneHead == 0 && Interrupt == 0)
         return FALSE;
     DPMI_StoreD(dwIOBase + HcInterruptDisable, MasterInterruptEnable); // disable all interrupt
@@ -237,6 +237,7 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
     if(context & ~MasterInterruptEnable) // mask unprocessed interrupts, otherwise ISR will always be called for level triggered interrupt
         DPMI_StoreD(dwIOBase + HcInterruptDisable, context);
     DPMI_StoreD(dwIOBase + HcInterruptEnable, MasterInterruptEnable); // re-enable
+    //_LOG("OHCI isr done");
     return TRUE;
 }
 

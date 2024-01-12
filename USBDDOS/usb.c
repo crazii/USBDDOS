@@ -173,6 +173,8 @@ void USB_Init(void)
 
 void USB_Shutdown(void)
 {
+    if(DPMI_TSRed)  //_dos_keep will call atexit, we just skip for that
+        return;
     //clean up (if app exit normally without TSR)
     //remove device in reverse order (HUBs inited before its downstream devices, need HUB device to operate on ports)
     for(int address = USB_MAX_DEVICE_COUNT-1; address >= 0; --address)
@@ -991,8 +993,6 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 void USB_ISR(void)
 {
     const uint8_t irq = PIC_GetIRQ();
-    if(irq == 0xFF)
-        return;
     BOOL handled = FALSE;
     USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
 
@@ -1020,8 +1020,8 @@ void USB_ISR(void)
         DPMI_REG r = {0};
         r.w.cs = handle.rm_cs;
         r.w.ip = handle.rm_offset;
+        _LOG("call ivt: %04x:%04x ", r.w.cs, r.w.ip);
         DPMI_CallRealModeIRET(&r);
-        CLI(); //TODO: do we need this?
     }
 #endif
 

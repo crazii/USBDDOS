@@ -54,8 +54,6 @@ extern "C" void __NAKED DPMI_RMCbClientWrapper() //wrapper function for user rmc
 static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
 {
     _ASM_BEGIN
-        //_ASM2(add sp, 4) //ugly fix compiler: BC will push si/di if inline asm uses si/di - use EDI,ESI to avoid the problem
-
         //save context and make a DPMI_REG struct
         _ASM(push ss)
         _ASM(push sp) //ss: sp
@@ -115,7 +113,6 @@ static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM2(add esi, edi)
         //restore interrupt flag here. if bx is null, then it is a interrupt, don't restore flags.
         _ASM2(mov ax, ds:[esi+DPMI_REG_OFF_FLAGS]);
-        _ASM2(and ax, 0xBFFF) //mode switching needs clear NT flag 
         _ASM(push ax)
         _ASM(popf)
         //_ASM(int 0x03) //we can debug in pm
@@ -145,9 +142,16 @@ static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(cld)
         _ASM2(rep movs byte ptr es:[edi], byte ptr ds:[esi]);
     _ASMLBL(SkipCopyREG:)
+        _ASM(pushf)
+        _ASM(pop ax)
+        _ASM2(and ax, 0xBFFF) //clear NT flag (protected mode NT need a TSS)
+        _ASM(push ax)
+        _ASM(popf) //alter flags
+
         //call target pm function
-        _ASM(pushf) //push return address. assume target is IRET
-        _ASM(push cs)
+        //push return address. assume target is IRET
+        _ASM(pushf) //IRET frame: flags
+        _ASM(push cs)  //IRET frame: cs
 #if defined(__BC__)
         _ASM2(mov ax, offset RMCB_PmReturn)
         _ASM2(sub ax, offset DPMI_RMCBCommonEntry)
@@ -163,7 +167,7 @@ static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
 #endif
-        _ASM(push ax)
+        _ASM(push ax) //IRET frame: ip
 
         _ASM2(test bx, bx)
         _ASM(jz SkipIRetWrapper)
@@ -178,6 +182,10 @@ static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
         _ASM(push ebp) //saved target far ptr
         _ASM2(mov eax, ebx)
         _ASM2(shr eax, 16) //setup user DS using reg far ptr's segment
+        _ASM2(test ax, ax) //reg ptr could be NULL (ISR with NULL UserReg)
+        _ASM(jnz ValidDS)
+        _ASM2(mov ax, SEL_INTR_DS*8)
+    _ASMLBL(ValidDS:)
         _ASM2(mov ds, ax)
         _ASM2(mov es, ax)
         _ASM2(mov fs, ax)
@@ -454,8 +462,7 @@ static void DPMI_SetupRMCB()
 #endif
 
     //_LOG("RMCB: %08lx\n", (DPMI_RmcbMemory&0xFFFF)<<4);
-    if(DPMI_V86)
-        _LOG("CR3: %08lx\n", DPMI_Rmcb->VcpiClient.CR3);
+    _LOG("CR3: %08lx\n", DPMI_Rmcb->VcpiClient.CR3);
     _LOG("GDTR: %08lx, size %d, offset %08lx\n", DPMI_PTR16R2L(&DPMI_Rmcb->GDTR), DPMI_Rmcb->GDTR.size, DPMI_Rmcb->GDTR.offset);
     _LOG("IDTR: %08lx, size %d, offset %08lx\n", DPMI_PTR16R2L(&DPMI_Rmcb->IDTR), DPMI_Rmcb->IDTR.size, DPMI_Rmcb->IDTR.offset);
     free(buff);
@@ -698,6 +705,9 @@ int DPMI_Exit(int c)
     #undef exit
     exit(c);
     #define exit(c) DPMI_Exit(c)
+#if defined(__BC__)
+    return c;
+#endif
 }
 
 void DPMI_Init(void)
@@ -737,7 +747,7 @@ void DPMI_Init(void)
 
     uint16_t RMCBSize = DPMI_V86 ? (DPMI_RMCB_SIZE<=2048 ? 4096 : 4096 + DPMI_RMCB_SIZE)+4096 : DPMI_RMCB_SIZE; //combine 1st 4k page
     //use high malloc because WC's malloc may expand DS size on request, if normal block is allocated, expanding will fail
-    //the _heapgrow above will solve the problem but still it's better to allocate memory from high address.
+    //the sbrk above will solve the problem but still it's better to allocate memory from high address.
     DPMI_RmcbMemory = DPMI_HighMalloc((RMCBSize+15)>>4, FALSE);
     uint32_t TempMemory = DPMI_HighMalloc((sizeof(DPMI_TempData)+15)>>4, FALSE);
 
@@ -1193,7 +1203,10 @@ BOOL DPMI_TSR(void)
     CLIS();
     DPMI_Rmcb->PM_SP = _STACK_PTR;
     DPMI_TSRed = TRUE;
-    DPMI_SwitchRealMode();
+    //no need to switch to real mode now. in real mode unable to call to _dos_keep because
+    //it call atexit which calls far function with protected mode selectors (medium model)
+    //small model will still work
+    //DPMI_SwitchRealMode();
     //_LOG("FLAGS: %04x\n", CPU_FLAGS());
     STIL();
     //printf("HimemCS: %08lx, HimemDS: %08lx\n", DPMI_HimemCode, DPMI_HimemData);
@@ -1206,12 +1219,12 @@ BOOL DPMI_TSR(void)
         XMS_Free(DPMI_XMSBelow4MHandle);
         DPMI_XMSBelow4MHandle = 0;
     }
-    
-    _ASM_BEGIN
-        _ASM2(mov ax, 0x3100)
-        _ASM2(mov dx, 0)//all stay in himem, RMCB uses INT 21h 48h that won't be released.
-        _ASM(int 0x21)
-    _ASM_END
+
+    DPMI_ExceptionPatch = TRUE;
+    //use lib function to perform clean up, i.e BC will restore interrupt handlers registered by startup routine
+    _dos_keep(0,0);
+
+    //TSR failed?
     DPMI_TSRed = FALSE;
     return FALSE;
 }

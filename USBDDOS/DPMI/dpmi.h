@@ -105,6 +105,8 @@ int DPMI_Exit(int c);
 
 #define exit(c) DPMI_Exit(c)
 
+extern BOOL DPMI_TSRed; //extra flags for _dos_keep, which calls atexit
+
 #elif defined(__DJ2__)
 
 //note: DJGPP use paged flat mode linear address.
@@ -124,6 +126,8 @@ void* DPMI_L2PTR(uint32_t addr);
 
 #define DPMI_Exit(c) (c)
 
+#define DPMI_TSRed (FALSE)
+
 #else //stub
 
 //convert a linear (virtual) addr to physical addr
@@ -134,6 +138,7 @@ uint32_t DPMI_P2L(uint32_t addr);
 uint32_t DPMI_PTR2L(void* ptr);
 void* DPMI_L2PTR(uint32_t addr);
 int DPMI_Exit(int);
+extern BOOL DPMI_TSRed;
 
 #endif
 
