@@ -1223,10 +1223,11 @@ BOOL DPMI_TSR(void)
     DPMI_ExceptionPatch = TRUE;
     //use lib function to perform clean up, i.e BC will restore interrupt handlers registered by startup routine
     _dos_keep(0,0);
-
+#if !defined(__WC__)
     //TSR failed?
     DPMI_TSRed = FALSE;
     return FALSE;
+#endif
 }
 
 //PM to RM translation for debug output

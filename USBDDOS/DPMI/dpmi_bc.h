@@ -21,6 +21,7 @@
 #include <bios.h>
 #endif
 #include "USBDDOS/platform.h"
+#include "USBDDOS/DPMI/xms.h"
 #include "USBDDOS/pic.h"
 #include "USBDDOS/DPMI/dpmi_ldr.h"
 #include "USBDDOS/dbgutil.h"
@@ -1338,7 +1339,7 @@ static BOOL DPMI_ExceptPatchSegment(DPMI_REG far* r, const uint8_t far* csip, ui
         {BX+SI+I16, BX+DI+I16,  BP+SI+I16,  BP+DI+I16,  SI+I16, DI+I16, BP+I16, BX+I16,},
     };
     uint16_t far* table3[8] = {&AX,        &CX,         &DX,         &BX,         &SP,     &BP,     &SI,     &DI};
-    static const char* segnames[8] = {"es", "cs", "ss", "ds", "fs", "gs", "invalid", "invalid"};    
+    static const char* segnames[8] = {"es", "cs", "ss", "ds", "fs", "gs", "invalid", "invalid"}; unused(segnames);
 
     uint8_t mod = (uint8_t)(modrm >> 6);
     uint8_t reg = (uint8_t)((modrm>>3)&0x7);

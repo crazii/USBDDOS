@@ -15,8 +15,8 @@ STACK_SIZE = 1024
 
 #resolve arglist too long for DOS, set flags through env vars
 .BEFORE
-    set WCC = -za99 -wx -zq -3 -bt=dos -ze -os -s
-    set WPP = -wx -zq -3 -bt=dos -ze -os -s -ei
+    set WCC = -za99 -wx -zq -3 -bt=dos -ze -os -s -zp1
+    set WPP = -wx -zq -3 -bt=dos -ze -os -s -ei -zp1
 
 CC = wcc
 CFLAGS = -DDEBUG=$(DEBUG) -i..

@@ -19,10 +19,10 @@ STARTUP = C0M.obj
 LIB = CM.lib
 !else
 DEF_NDEBUG = NDEBUG
-MODEL = -ms
-TASM_OPT =
-STARTUP = C0S.obj
-LIB = CS.lib
+MODEL = -mm
+TASM_OPT = -TM2
+STARTUP = C0M.obj
+LIB = CM.lib
 !endif
 
 #.PATH.obj = output
