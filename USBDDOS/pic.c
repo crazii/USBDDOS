@@ -22,10 +22,14 @@ void PIC_SendEOI(void)
     //get irq mask
     outp(PIC_PORT1, PIC_READISR);
     uint16_t mask = inp(PIC_PORT1);
-    if(mask&(1<<PIC_SLAVE_IRQ))
-        outp(PIC_PORT2, 0x20);
-    //_LOG("EOI: %04x ", mask);
-    outp(PIC_PORT1, 0x20);
+    if(mask&0x4)
+    {
+        outp(PIC_PORT2, PIC_READISR);
+        if(inp(PIC_PORT2))
+            outp(PIC_PORT2, 0x20);
+    }
+    if(mask)
+        outp(PIC_PORT1, 0x20);
     //STIL();
 }
 

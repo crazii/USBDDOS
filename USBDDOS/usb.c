@@ -38,15 +38,14 @@ static void USB_IDLE_WAIT() {
 #else
 
 #define USB_IDLE_WAIT() do {\
-_ASM_BEGIN \
-_ASM(pushf) \
-_ASM(sti) \
-_ASM(nop) \
-_ASM(popf) \
-_ASM_END } while(0)
+ int i = STI(); \
+ NOP(); \
+ if(!i) CLI(); \
+ } while(0)
 
 #endif
 
+#define USB_MASK_IRQ_ON_IDLEWAIT 1
 
 typedef struct
 {
@@ -127,21 +126,12 @@ void USB_Init(void)
                     //note: the PCI BIOS will setup the IRQ and write the IRQ register, the IRQ is setup as level triggered.
                     _LOG("Host Controller: Bus:%d, Dev:%d, Func:%d, pi:0x%02x, IRQ: %d, INT Pin: INT%c#\n", bus, dev, func, pcidev.Header.PInterface, IRQ, 'A'+INTPIN-1);
 
-                    if(IRQ>15) //0xFF: INTPIN not connected to an IRQ
+                    if(IRQ==0xFF) //0xFF: INTPIN not connected to an IRQ
                     {
-                        uint16_t map = PCI_GetIRQMap(bus, dev, INTPIN);
-                        _LOG("IRQ MAP: %x\n",map);
-                        for(int i = 15; i >= 3; --i)
-                        {
-                            if((map&(1<<i))/* && PCI_SetIRQ(bus, dev, func, INTPIN, i)*/) //why PCI_SetIRQ fails?
-                            {
-                                PCI_WriteByte(bus, dev, func, PCI_REGISTER_IRQ, (uint8_t)i);
-                                PIC_SetLevelTriggered((uint8_t)i, TRUE); //make sure it is level triggerred
-                                break;
-                            }
-                        }
-                        IRQ = PCI_ReadByte(bus, dev, func, PCI_REGISTER_IRQ);
-                        if(IRQ>15)
+                        IRQ = PCI_AssignIRQ(bus, dev, func, INTPIN);
+                        if(IRQ != 0xFF)
+                            PIC_SetLevelTriggered((uint8_t)IRQ, TRUE); //make sure it is level triggerred
+                        else
                         {
                             _LOG("Invalid IRQ: %d, skip\n", IRQ);
                             continue;
@@ -456,18 +446,23 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
         return error;
     }
 
+#if USB_MASK_IRQ_ON_IDLEWAIT
     CLIS();
     uint16_t mask = PIC_GetIRQMask();
     PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controller IRQ
     STIL();
+#endif
 
     while(!result.Finished)
         USB_IDLE_WAIT();
+
+#if USB_MASK_IRQ_ON_IDLEWAIT
     {
         CLIS();
         PIC_SetIRQMask(mask);
         STIL();
     }
+#endif
     return result.ErrorCode;
 }
 
@@ -520,19 +515,24 @@ uint8_t USB_SyncTransfer(USB_Device* pDevice, void* pEndpoint, uint8_t* pBuffer,
         return error;
     }
 
+#if USB_MASK_IRQ_ON_IDLEWAIT
     CLIS();
     uint16_t mask = PIC_GetIRQMask();
     PIC_SetIRQMask(PIC_IRQ_UNMASK(0xFFFF,pDevice->HCDDevice.pHCI->PCI.Header.DevHeader.Device.IRQ)); //only enable current controlelr IRQ
     STIL();
+#endif
 
     //idle wait for interrupt (HW notifying finish event and hcd driver call USB_Completion_Callback)
     while(!result.Finished)
         USB_IDLE_WAIT();
+
+#if USB_MASK_IRQ_ON_IDLEWAIT
     {
         CLIS();
         PIC_SetIRQMask(mask);
         STIL();
     }
+#endif
     *txlen = result.Length;
     return result.ErrorCode;
 }
@@ -1006,39 +1006,47 @@ void USB_ISR(void)
         if((handled=pHCI->pType->ISR(pHCI)) != 0)
             break; //exit. level triggered event will still exist for next device
     }
-    //default handler is empty (IRQ 9~11) and do nothing, not even EOI
-    //assume 3rd party driver handler exist if previous irq mask bit is clear
-    if(handled || PIC_IS_IRQ_MASKED(USB_IRQMask, irq))
+    //on some platforms (i.e.VirtualBox), default handler is empty (IRQ 9~11) and do nothing, not even EOI
+    if(handled)
+    {
         PIC_SendEOI();
-#if !defined(__DJ2__)   //now use chained handler for DJGPP, for better compatibility
-                        //with other PM mode TSRs. directly return will work.
-                        //see DPMI_ISR_CHAINED
-    else
+
+        PIC_MaskIRQ(irq); //prevent re-entrance
+
+        USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
+        while(USB_ISR_FinalizerPtr)
+        {
+            USB_ISR_FinalizerPtr->FinalizeISR(USB_ISR_FinalizerPtr->data);
+            USB_ISR_Finalizer* next = USB_ISR_FinalizerPtr->next;
+            free(USB_ISR_FinalizerPtr);
+            USB_ISR_FinalizerPtr = next;
+        }
+        USB_ISR_FinalizerHeader.next = NULL;
+
+        PIC_UnmaskIRQ(irq);
+        //_LOG("EOIE ");
+    }
+    else //if we send EOI, we stop the calling chain because the final handler in the chain may send EOI again.
     {
         //call old handler
         DPMI_ISR_HANDLE handle = *USB_FindISRHandle(irq); //need a copy for lcall
+#if defined(__DJ2__)
+        asm(
+            "pushfl \n\t"
+            "cli \n\t"
+            "lcall *%0 \n\t"
+            ::"m"(handle.offset)
+        );
+#else
         DPMI_REG r = {0};
         r.w.cs = handle.rm_cs;
         r.w.ip = handle.rm_offset;
-        _LOG("call ivt: %04x:%04x ", r.w.cs, r.w.ip);
         DPMI_CallRealModeIRET(&r);
-    }
 #endif
+        //original handler may mask the IRQ agian, enable
+        PIC_UnmaskIRQ(irq);
 
-    PIC_MaskIRQ(irq); //prevent re-entrance
-
-    USB_ISR_FinalizerPtr = USB_ISR_FinalizerHeader.next;
-    while(USB_ISR_FinalizerPtr)
-    {
-        USB_ISR_FinalizerPtr->FinalizeISR(USB_ISR_FinalizerPtr->data);
-        USB_ISR_Finalizer* next = USB_ISR_FinalizerPtr->next;
-        free(USB_ISR_FinalizerPtr);
-        USB_ISR_FinalizerPtr = next;
     }
-    USB_ISR_FinalizerHeader.next = NULL;
-
-    //original handler may mask the IRQ agian, enable
-    PIC_UnmaskIRQ(irq);
 }
 
 DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)

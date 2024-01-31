@@ -55,7 +55,7 @@ void outpd(uint16_t port, uint32_t value);
 #define DEVICE_NOT_FOUND        0x86
 #define BAD_REGISTER_NUMBER     0x87
 #define SET_FAILED              0x88
-#define BUFFER_TOO_SMALL        0x98
+#define BUFFER_TOO_SMALL        0x89
 
 //BDF
 typedef struct _PCIAddress
@@ -197,6 +197,7 @@ typedef union
 }PCI_CMD;
 
 #define PCI_REGISTER_IRQ 0x3C //word: IRQ (low byte) & INTPIN
+#define PCI_REGISTER_INTPIN 0x3D
 
 uint8_t PCI_ReadByte(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
 uint16_t PCI_ReadWord(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
@@ -210,7 +211,7 @@ void PCI_ReadDevice(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* device);
 
 uint32_t PCI_Sizing(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
 
-uint16_t PCI_GetIRQMap(uint8_t bus, uint8_t dev, uint8_t INTPIN);
+uint8_t PCI_AssignIRQ(uint8_t bus, uint8_t dev, uint8_t func, uint8_t INTPIN);
 
 BOOL PCI_SetIRQ(uint8_t bus, uint8_t dev, uint8_t func, uint8_t INTPIN, uint8_t IRQ); //SET_PCI_IRQ, INTPIN=0x1...4
 

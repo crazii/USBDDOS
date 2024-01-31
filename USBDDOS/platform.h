@@ -91,11 +91,28 @@ extern uint32_t PLTFM_BSF(uint32_t x); //386+ (386 included)
 #define _ASM_BEGIN32 _ASM_BEGIN
 #define _ASM_END32 _ASM_END
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+//make platform.h more dependent without including <dpmi.h>
+int __dpmi_get_virtual_interrupt_state(void);
+int __dpmi_get_and_enable_virtual_interrupt_state(void);
+int __dpmi_get_and_disable_virtual_interrupt_state(void);
+int __dpmi_get_and_set_virtual_interrupt_state(int);
+#ifdef __cplusplus
+}
+#endif
+
 #define NOP() __asm__ __volatile__("nop")
-#define CLI() __asm__ __volatile__("cli")
-#define STI() __asm__ __volatile__("sti")
+#define CLI() __dpmi_get_and_disable_virtual_interrupt_state() //asm __volatile__("cli")
+#define STI() __dpmi_get_and_enable_virtual_interrupt_state() //asm __volatile__("sti")
 static inline uint32_t PLTFM_BSF(uint32_t x) {uint32_t i; __asm__("bsf %1, %0" : "=r" (i) : "rm" (x)); return i;} //386+
-static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) { uint32_t flags = 0; __asm__("pushf\n\t" "pop %0\n\t" : "=r"(flags)); return (uint16_t)flags; }
+static inline uint16_t PLTFM_CPU_FLAGS_ASM(void) {
+uint32_t flags = 0; asm("pushf\n\t" "pop %0\n\t" : "=r"(flags));
+if(__dpmi_get_virtual_interrupt_state()) flags |= 0x0200;
+else flags &= (uint32_t)(~0x0200);
+return (uint16_t)flags;
+}
 static inline uint16_t PLTFM_CPU_FLAGS() { uint16_t (* volatile VFN)(void) = &PLTFM_CPU_FLAGS_ASM; return VFN();} //prevent optimization, need get FLAGS every time
 
 #elif defined(__WC__)
@@ -233,9 +250,9 @@ static inline uint16_t PLTFM_CPU_FLAGS() { return pfnPLTFM_CPU_FLAGS_ASM();}
 #define _ASM_SGDT(x) 
 
 //not defined
-extern void NOP();
-extern void CLI();
-extern void STI();
+extern int NOP();
+extern int CLI();
+extern int STI();
 extern uint32_t PLTFM_BSF(uint32_t x);
 extern uint16_t PLTFM_CPU_FLAGS(void);
 

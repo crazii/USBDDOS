@@ -38,6 +38,7 @@ DEBUG ?= 0
 
 CFLAGS = -std=gnu11 -march=i386 -Os -pedantic -Wstrict-aliasing -fno-exceptions -pedantic-errors \
 	-Wreturn-type -Wunused -Wuninitialized -Wundef -Wcast-align -Wwrite-strings -Wconversion -Wsign-compare -Werror \
+	-Wno-unused-function \
 	-I../ \
 	-DUSBDDOS_BUILD="\"$(BUILD)\"" \
 
