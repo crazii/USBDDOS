@@ -186,7 +186,7 @@ void USB_Shutdown(void)
     {
         if(USB_ISRHandle[j].n && !ISR_HANDLE_SHARED(j))
         {
-            _LOG("Unstalling ISR, IRQ: %d, Vector: 0x%02x\n", PIC_VEC2IRQ(USB_ISRHandle[j].n), USB_ISRHandle[j].n);
+            _LOG("Uninstalling ISR, IRQ: %d, Vector: 0x%02x\n", PIC_VEC2IRQ(USB_ISRHandle[j].n), USB_ISRHandle[j].n);
             DPMI_UninstallISR(&USB_ISRHandle[j]);
         }
     }
@@ -811,7 +811,7 @@ static void USB_EnumerateDevices()
                 BOOL stablized = !(pHub->GetPortStatus(pHub, i)&USB_PORT_CONNECT_CHANGE);
                 if(!stablized)
                     continue;
-                delay(10);
+                delay(20);
 
                 _LOG("Enumerate device at port %d.\n",i);
                 USB_InitDevice(pHub, i, status);
@@ -862,7 +862,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     USB_Request Request2 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_ADDRESS, 0, 0, 0};
     Request2.wValue = address;
     result = USB_SyncSendRequest(pDevice, &Request2, NULL);
-    delay(2); // spec required.
+    delay(10); // spec required 2ms.
     if(result != 0)
     {
         assert(FALSE);
@@ -939,6 +939,7 @@ static BOOL USB_ConfigDevice(USB_Device* pDevice, uint8_t address)
     USB_Request Request6 = {USB_REQ_WRITE|USB_REQTYPE_STANDARD, USB_REQ_SET_CONFIGURATION, 0, 0, 0};
     Request6.wValue = pDevice->pConfigList[pDevice->bCurrentConfig].bConfigValue;
     result = USB_SyncSendRequest(pDevice, &Request6, NULL);
+    delay(15); //add proper delay. for some PC usbddosp might freeze on release build, but always work on debug build, guess there's not enough delay in release build
     //assert(result == 0);
     if(result == 0)
         pDevice->bStatus = DS_Configured;
@@ -1033,15 +1034,15 @@ void USB_ISR(void)
 #if defined(__DJ2__)
         asm(
             "pushfl \n\t"
-            "cli \n\t"
             "lcall *%0 \n\t"
             ::"m"(handle.offset)
         );
 #else
-        DPMI_REG r = {0};
-        r.w.cs = handle.rm_cs;
-        r.w.ip = handle.rm_offset;
-        DPMI_CallRealModeIRET(&r);
+        uint32_t farptr = handle.offset&0xFFFF;
+        farptr |= ((uint32_t)handle.cs)<<16;
+        _ASM_BEGIN
+            _ASM(call dword ptr farptr)
+        _ASM_END
 #endif
         //original handler may mask the IRQ agian, enable
         PIC_UnmaskIRQ(irq);

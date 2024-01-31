@@ -161,7 +161,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
         for(uint8_t i = 0; i < caps.hcsParamsBm.N_PORTS; ++i)
             DPMI_StoreD(OperationalBase+PORTSC+i*4U, PortPower);
     }
-    delay(50);
+    delay(55);
 
     //pre-detect low/full speed devices, release to companion HC. MUST do it after CONFIGFLAG to get ownership of all ports
     if(caps.hcsParamsBm.N_CC > 0) //we got companion
@@ -176,7 +176,8 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
             DPMI_StoreD(pa, PortEnable|PortPower); //release reset. PortEnable won't enable port but avoid disabling it
             while(DPMI_LoadD(pa)&PortReset) //wait until reset is actually done
                 delay(5);
-            delay(5); //spec require 2ms for HC to enable ports with high speed devices after reset
+            delay(15);  //spec require 2ms for HC to enable ports with high speed devices after reset.
+                        //USB 2.0 spec also require device to be ready in 10ms after reset.
             uint32_t status = DPMI_LoadD(pa);
             if((status&ConnectStatus) && !(status&PortEnable)) //not enabled: low/full speed
             {
@@ -185,7 +186,7 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
             }
         }
     }
-    //delay(50); //UBSTS not updated immediately
+    delay(55); //UBSTS not updated immediately
     _LOG("USBCMD: %08lx USBSTS: %08lx\n", DPMI_LoadD(OperationalBase+USBCMD), DPMI_LoadD(OperationalBase+USBSTS));
     return TRUE;
 }
@@ -201,6 +202,7 @@ BOOL EHCI_DeinitController(HCD_Interface* pHCI)
         DPMI_StoreD(pHCData->OPBase + PERIODICLISTBASE, 0);
         DPMI_StoreD(pHCData->OPBase + ASYNCLISTADDR, 0);
         DPMI_StoreD(pHCData->OPBase + CONFIGFLAG, ~ConfigureFlag);
+        DPMI_StoreD(pHCData->OPBase+USBINTR, 0); //disable interrupts
 
         if(pHCData->wPeroidicListHandle)
         {
@@ -434,7 +436,7 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
             assert(FALSE);
             return FALSE; //reset time out
         }
-        delay(5); //after reset, spec require 2ms for HC to enable high speed ports
+        delay(15); //after reset, spec require 2ms for EHCI to enable high speed ports. USB 2.0 spec also require device to be ready in 10ms after reset.
         current = DPMI_LoadD(addr); //reload enable/disable state
         _LOG("EHCI port reset: %x\n",current);
     }

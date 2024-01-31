@@ -514,6 +514,7 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
             assert(FALSE);
             return FALSE;
         }
+        delay(15); //USB spec require device to be ready in 10ms after reset.
         outpw(portbase, PEDC|CSC);
         portsc = 0; //initially disabled after reset. clear enable in case reset & enable in one call
     }

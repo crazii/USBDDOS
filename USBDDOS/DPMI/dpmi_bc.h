@@ -389,8 +389,12 @@ static uint8_t DPMI_ExtCSCount = 0;
 static uint32_t DPMI_RmcbMemory;
 static DPMI_RMCB far* DPMI_Rmcb; //can be accessed in PM (segment is SEL_RMCB_DS*8)
 static DPMI_TempData far* DPMI_Temp;
-static void (far*DPMI_UserINTHandler[256])(void); //TODO: software int handlers
-static uint16_t DPMI_UserINTHandlerDS[256];
+
+static void (far*DPMI_ClientINTHandler[256])(void); //TODO: software int handlers
+static uint16_t DPMI_ClientINTHandlerDS[256];
+static uint32_t DPMI_OldIVT[32]; //32 entries for UEFI with CSM (APCI enabled)
+static uint32_t DPMI_IRQfromPM = 0;
+static uint32_t DPMI_IRQfromRM = 0;
 
 static uint32_t DPMI_GetSelectorBase(uint16_t selector, uint32_t* limit)
 {
@@ -1523,6 +1527,7 @@ static void __NAKED DPMI_NullINTHandler()
 
 extern "C" void __NAKED __CDECL near DPMI_HWIRQHandler();
 
+//note: DPMI_ExceptionHandler#n and DPMI_IRQHandler#n MUST be in the same size
 #define DPMI_EXCEPT(n) extern "C" void __NAKED __CDECL DPMI_ExceptionHandler##n() \
 {\
     _asm {call DPMI_ExceptionHandlerImplWrapper} \
@@ -1628,6 +1633,86 @@ void __NAKED __CDECL near DPMI_ExceptionHandlerImpl()
 
 #pragma option -k //BC
 
+//if irq orgins from PM, then call into IVT because there'll be new handlers installed after USBDDOS.
+//callling IVT will cause recursion, because USBDDOS also install RM handler in IVT.
+//the recursion will be skipped by DPMI_IRQfromPM mask, then we only call the old IVT before USBDDOS
+
+//if irq origins from RM, which means USBDDOS is called from IVT, then we will skip the IVT, and calls the old IVT
+
+//PM: IDT -> DPMI_HWIRQHandlerInternal -> DPMI_ClientINTHandler chain(last one in the chain is DPMI_DefaultClientIRQ#n) -> IVT (handlers installed AFTER usbddos) -> USBDDOS DPMI_HWIRQHandlerInternal -> OldIVT (handlers installed before USBDDOS)
+//RM: IVT -> (handlers installed AFTER usbddos) -> USBDDOS DPMI_HWIRQHandlerInternal -> DPMI_ClientINTHandler chain(last one in the chain is DPMI_DefaultClientIRQ#n) -> Old IVT
+//note: IVT handlers installed AFTER usbddos is called BEFORE usbddos
+
+//we change DPMI_IRQfromPM on IDT entry to raise the correspnding IRQ bit,
+//if interrupt comes from real mode (IVT), we will also reaise the bit in DPMI_IRQfromRM
+
+extern "C" void __CDECL near DPMI_Call_OldIVT(int irq)
+{
+    if(irq >= 32)
+    {
+        assert(FALSE);
+        return;
+    }
+    DPMI_REG r = {0};
+    r.w.cs = (uint16_t)(DPMI_OldIVT[irq]>>16);
+    r.w.ip = (uint16_t)(DPMI_OldIVT[irq]&0xFFFF);
+    DPMI_CallRealModeIRET(&r);
+    //This is the fianl entry for both PM & RM chain
+    assert(DPMI_IRQfromRM&(1<<irq));
+    DPMI_IRQfromRM &= ~(1<<irq); //restore RM mask
+    DPMI_IRQfromPM &= ~(1<<irq); //restore PM mask if interrupt comes from PM
+}
+
+extern "C" void __CDECL near DPMI_Call_IVT(int irq)
+{
+    if(irq >= 32)
+    {
+        assert(FALSE);
+        return;
+    }
+    //_LOG("irq: %d, PM: %lx, RM: %lx\n", irq, DPMI_IRQfromPM, DPMI_IRQfromRM);
+
+    if(DPMI_IRQfromPM&(1<<irq))
+    {
+        DPMI_REG r = {0};
+        DPMI_CallRealModeINT(PIC_IRQ2VEC(irq), &r); //call current IVT, will enter DPMI_HWIRQHandler later from IVT
+        DPMI_IRQfromPM &= ~(1<<irq); //restore PM mask
+    }
+    else
+    {
+        assert(DPMI_IRQfromRM&(1<<irq));
+        DPMI_Call_OldIVT(irq); //call old IVT entry that before USBDDOS installed
+    }
+}
+
+#pragma option -k- //BC
+#define DPMI_DEFAULT_CLIENT_IRQ(n) extern "C" void __NAKED __CDECL far DPMI_DefaultClientIRQ##n() \
+{\
+    _asm {push n}; \
+    _asm {call DPMI_Call_IVT}; \
+    _asm {add sp, 2}; \
+    _asm {retf}; \
+}
+#pragma disable_message (13) //WC: unreachable code, but seems invalid
+DPMI_DEFAULT_CLIENT_IRQ(0)
+DPMI_DEFAULT_CLIENT_IRQ(1)
+DPMI_DEFAULT_CLIENT_IRQ(2)
+DPMI_DEFAULT_CLIENT_IRQ(3)
+DPMI_DEFAULT_CLIENT_IRQ(4)
+DPMI_DEFAULT_CLIENT_IRQ(5)
+DPMI_DEFAULT_CLIENT_IRQ(6)
+DPMI_DEFAULT_CLIENT_IRQ(7)
+DPMI_DEFAULT_CLIENT_IRQ(8)
+DPMI_DEFAULT_CLIENT_IRQ(9)
+DPMI_DEFAULT_CLIENT_IRQ(10)
+DPMI_DEFAULT_CLIENT_IRQ(11)
+DPMI_DEFAULT_CLIENT_IRQ(12)
+DPMI_DEFAULT_CLIENT_IRQ(13)
+DPMI_DEFAULT_CLIENT_IRQ(14)
+DPMI_DEFAULT_CLIENT_IRQ(15)
+#pragma enable_message (13) //WC: unreachable code, but seems invalid
+#pragma option -k //BC
+
 
 extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
 {
@@ -1635,10 +1720,11 @@ extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
     //_LOG("HWIRQ %d\n", irq);
     uint8_t vec = PIC_IRQ2VEC(irq);
     //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
-    void (far* handler)(void) = DPMI_UserINTHandler[vec]; //save on stack, we are going to modify ds
-    if(handler)
+    void (far* handler)(void) = DPMI_ClientINTHandler[vec]; //save on stack, we are going to modify ds
+    //if PM & RM both marked, that means PM first then RM(IVT), and then here, we just call the old IVT without re-calling PM handlers again.
+    if(handler && !((DPMI_IRQfromPM&(1<<irq)) && (DPMI_IRQfromRM&(1<<irq))))
     {
-        uint16_t userds = DPMI_UserINTHandlerDS[vec];
+        uint16_t userds = DPMI_ClientINTHandlerDS[vec];
         _ASM_BEGIN
             _ASM(push ds)
             _ASM(push es)
@@ -1655,12 +1741,12 @@ extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
             _ASM(pop es)
             _ASM(pop ds)
         _ASM_END
+
+        DPMI_IRQfromPM &= ~(1<<irq); //restore entrance mask because PM handler may do a earlty return
+        DPMI_IRQfromRM &= ~(1<<irq);
     }
     else
-    {
-        DPMI_REG r = {0};
-        DPMI_CallRealModeINT(vec, &r); //call real mode IRQ handler
-    }
+        DPMI_Call_OldIVT(irq);
 }
 
 #pragma option -k- //BC
@@ -1709,6 +1795,18 @@ extern "C" void __NAKED __CDECL near DPMI_HWIRQHandler()
 
         _ASM2(mov ax, SEL_INTR_DS*8) //load the DS we're using
         _ASM2(mov ds, ax)
+
+        _ASM(push ecx)
+        _ASM(push eax)
+
+        _ASM(call PIC_GetIRQ)
+        _ASM2(mov cl, al)
+        _ASM2(mov eax, 1)
+        _ASM2(shl eax, cl)
+        _ASM2(or dword ptr DPMI_IRQfromPM, eax) //mark PM entrance
+        _ASM(pop eax)
+        _ASM(pop ecx)
+
         _ASM(call DPMI_HWIRQHandlerInternal)
 
         _ASM(pop gs)
@@ -1790,6 +1888,14 @@ static void DPMI_SetupIDT()
 
     DPMI_Temp->idtr.size = sizeof(IDT)*256 - 1;
     DPMI_Temp->idtr.offset = DPMI_PTR16R2L(DPMI_Temp->idt);
+
+    size = FP_OFF(DPMI_DefaultClientIRQ1) - FP_OFF(DPMI_DefaultClientIRQ0);
+    for(int i = 0; i < 32; ++i)
+    {
+        DPMI_ClientINTHandler[PIC_IRQ2VEC(i)] = (void (far*)(void)) MK_FP((SEL_CS+DPMI_LOADER_GetCSIndex(FP_SEG(DPMI_DefaultClientIRQ0)))<<3, FP_OFF(DPMI_DefaultClientIRQ0) + i*size);
+        DPMI_ClientINTHandlerDS[PIC_IRQ2VEC(i)] = SEL_INTR_DS*8;
+        DPMI_OldIVT[i] = *(uint32_t* far)MK_FP(0, PIC_IRQ2VEC(i));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1859,7 +1965,7 @@ static void DPMI_SetupGDT()
         gdt[SEL_HIMEM_DS+i].base_high = (uint8_t)(base>>24L);
     }}
 
-    gdt[SEL_INTR_DS] = gdt[SEL_DS + DPMI_LOADER_GetDSIndex(FP_SEG(DPMI_UserINTHandler))];
+    gdt[SEL_INTR_DS] = gdt[SEL_DS + DPMI_LOADER_GetDSIndex(FP_SEG(DPMI_ClientINTHandler))];
 
     _fmemcpy(&gdt[SEL_VIDEO], DPMI_DataDesc, sizeof(GDT));
     gdt[SEL_VIDEO].base_low = 0x8000;

@@ -87,6 +87,9 @@ static uint32_t VGA_Scroll(uint32_t offset)
     return offset - VGA_MAX_COLS;
 }
 
+#if defined(__WC__)
+#pragma disable_message (202) //W202: Symbol 'VGA_Print' has been defined, but not referenced
+#endif
 static void VGA_Print(const char *string)
 {
     uint32_t offset = VGA_GetCursor();
@@ -118,6 +121,9 @@ static void VGA_Print(const char *string)
         DPMI_StoreB((0x40UL<<4)+0x50+1, (uint8_t)(offset / VGA_MAX_COLS));
     }
 }
+//#if defined(__WC__) //NOT WORKING
+//#pragma enable_message (202) //W202: Symbol 'VGA_Print' has been defined, but not referenced
+//#endif
 
 //needs to work in interrupt handler. now use IN/OUT controls VGA directly.
 void DBG_Logv(const char* fmt, va_list aptr)

@@ -553,8 +553,11 @@ static BOOL near DPMI_InitProtectedMode()
 
         DPMI_SwitchProtectedMode(); //final PM and also pre-test the adjustment above.
         IDT far* idt = (IDT far*)MK_FP(SEL_SYS_DS*8, GDTSize);
-        for(int i = 0; i < 256; ++i)
+        {for(int i = 0; i < 256; ++i)
             idt[i].selector = cs; //change IDT selector to himem
+        }
+        for(int i = 0; i < 16; ++i) //change default IRQ handler's selector to himem
+            DPMI_ClientINTHandler[i] = (void (far*)(void)) MK_FP(cs, FP_OFF(DPMI_ClientINTHandler[i]));
         STIL();
     }
     //asm int 0x21;
@@ -714,7 +717,7 @@ void DPMI_Init(void)
 {
     _DATA_SEG = _SS;
     _CODE_SEG = _psp + 0x10; //+0x100 as segment
-    _INTR_SEG = FP_SEG(DPMI_UserINTHandler);
+    _INTR_SEG = FP_SEG(DPMI_ClientINTHandler);
     #if defined(__LARGE__) || defined(__COMPACT__)
     _DATA_SIZE = 1024UL*1024UL; //1M for dynamic increments
     #else
@@ -1048,10 +1051,9 @@ uint16_t DPMI_CallRealModeRETF(DPMI_REG* reg)
 
 uint16_t DPMI_CallRealModeINT(uint8_t i, DPMI_REG* reg)
 {
-    uint16_t off = (DPMI_PM) ? DPMI_LoadW(i*4) : *(uint16_t far*)MK_FP(0,i*4);
-    uint16_t seg = (DPMI_PM) ? DPMI_LoadW(i*4+2) : *(uint16_t far*)MK_FP(0,i*4+2);
-    reg->w.cs = seg;
-    reg->w.ip = off;
+    uint32_t offseg = (DPMI_PM) ? DPMI_LoadD(i*4) : *(uint32_t far*)MK_FP(0,i*4);
+    reg->w.cs = (uint16_t)(offseg>>16);
+    reg->w.ip = (uint16_t)(offseg&0xFFFF);
     DPMI_CallRealMode(reg, i);
     return 0;
 }
@@ -1062,13 +1064,29 @@ uint16_t DPMI_CallRealModeIRET(DPMI_REG* reg)
     return 0;
 }
 
-//the DPMI_HWIRQHandler is not directly called in IDT but with a dummy wrapper( DPMI_IRQHANDLER(xx) ).
-//the return addr on stack will be poped & discarded and IRET directly by DPMI_HWIRQHandler.
 #pragma option -k- //BC
-static void __NAKED far DPMI_ISRWrapper()
+static void __NAKED far DPMI_ISR_RMWrapper()
 {
     _ASM_BEGIN
-        _ASM(call DPMI_HWIRQHandler)
+        _ASM(push ds)
+        _ASM(push SEL_INTR_DS*8) //SEL_INTR_DS is setup in rmcb
+        _ASM(pop ds)
+
+        _ASM(push ecx)
+        _ASM(push eax)
+        _ASM(call PIC_GetIRQ)
+        _ASM2(mov cl, al)
+        _ASM2(mov eax, 1)
+        _ASM2(shl eax, cl)
+
+        _ASM2(or dword ptr DPMI_IRQfromRM, eax)
+
+        _ASM(pop eax)
+        _ASM(pop ecx)
+        _ASM(call DPMI_HWIRQHandlerInternal)
+
+        _ASM(pop ds)
+        _ASM(iret)
     _ASM_END
 }
 #pragma option -k
@@ -1093,14 +1111,14 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
     uint16_t seg = DPMI_LoadW(i*4+2);
     handle->rm_cs = seg;
     handle->rm_offset = off;
-    handle->cs = FP_SEG(DPMI_UserINTHandler[i]);
-    handle->offset = FP_OFF(DPMI_UserINTHandler[i]);
+    handle->cs = FP_SEG(DPMI_ClientINTHandler[i]);
+    handle->offset = FP_OFF(DPMI_ClientINTHandler[i]);
     handle->n = i;
-    handle->extra = RmcbIndex;
+    handle->extra = RmcbIndex | ((uint32_t)DPMI_ClientINTHandlerDS[i]<<16);
 
-    DPMI_UserINTHandler[i] = (void(far *)(void))ISR;
-    DPMI_UserINTHandlerDS[i] = ds;
-    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_ISRWrapper; //resue PM handler. temporary implementation for IRQs. DPMI_HWIRQHandler needs a wrapper
+    DPMI_ClientINTHandler[i] = (void(far *)(void))ISR;
+    DPMI_ClientINTHandlerDS[i] = ds;
+    DPMI_Rmcb->Table[RmcbIndex].Target = &DPMI_ISR_RMWrapper; //resue PM handler. temporary implementation for IRQs. DPMI_HWIRQHandler needs a wrapper
     DPMI_Rmcb->Table[RmcbIndex].UserReg = 0;
     
     //patch return code to IRET. not needed for now but if we support uninstall later, slot may be reused and the code need update each time on installation
@@ -1114,18 +1132,20 @@ uint16_t DPMI_InstallISR(uint8_t i, void(*ISR)(void), DPMI_ISR_HANDLE* outputp h
 
 uint16_t DPMI_UninstallISR(DPMI_ISR_HANDLE* inputp handle)
 {
+    int RmcbIndex = (int)(handle->extra&0xFFFF);
     if(handle == NULL || handle->rm_cs == 0 || handle->rm_offset == 0
-        || DPMI_Rmcb->Table[handle->extra].Target == NULL)
+        || DPMI_Rmcb->Table[RmcbIndex].Target == NULL)
     {
         assert(FALSE);
         return -1;
     }
     CLIS();
     uint8_t vec = handle->n;
-    DPMI_UserINTHandler[vec] = (void(far *)(void))MK_FP(handle->cs,handle->offset); //TODO: support chained call? for now restore to the first uninstall call.
-    DPMI_Rmcb->Table[handle->extra].Target = NULL;
+    DPMI_ClientINTHandler[vec] = (void(far *)(void))MK_FP(handle->cs,handle->offset); //TODO: support chained call? for now restore to the first uninstall call.
+    DPMI_ClientINTHandlerDS[vec] = (uint16_t)(handle->extra>>16);
+    DPMI_Rmcb->Table[RmcbIndex].Target = NULL;
 
-    if(DPMI_UserINTHandler[vec] == NULL) //no handler installed, restore default
+    if(DPMI_ClientINTHandler[vec] == NULL) //no handler installed, restore default
     {
         if(DPMI_PM)
         {
