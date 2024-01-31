@@ -9,6 +9,7 @@
 #include "USBDDOS/DPMI/dpmi.h"
 #include "USBDDOS/usb.h"
 #include "USBDDOS/dbgutil.h"
+#include "USBDDOS/pic.h"
 
 #if _LOG_ENABLE
 
@@ -108,7 +109,7 @@ static void VGA_Print(const char *string)
     if(!DPMI_IsInProtectedMode())
     {
         *(char far*)MK_FP(0x40, 0x50) = (uint8_t)(offset % VGA_MAX_COLS);
-        *(char far*)MK_FP(0x40, 0x51) = (uint8_t)(offset % VGA_MAX_COLS);
+        *(char far*)MK_FP(0x40, 0x51) = (uint8_t)(offset / VGA_MAX_COLS);
     }
     else
     #endif
@@ -142,17 +143,22 @@ void DBG_Logv(const char* fmt, va_list aptr)
     return;
     #endif
 
+#if 0
     if(!(CPU_FLAGS()&CPU_IFLAG))
     { //use VGA when in interrupt
         VGA_Print(buf);
     }
     else
-    { //direct VGA mode will mess other tools, i.e. SCROLLit, normally use BIOS function
+#endif
+    { //note: int 10h also support graphics mode
+        uint16_t mask = PIC_GetIRQMask();
+        PIC_SetIRQMask(0xFFFF); //mask all interrupts in case we're in interrupt and int10h will enable interrupts
         DPMI_REG r = {0};
         for(int i = 0; i < len; ++i)
         {
             r.h.ah = 0x0E;
             r.h.al = (uint8_t)buf[i];
+            r.h.bl = 0x07; //graphics mode only: foreground clolor
             DPMI_CallRealModeINT(0x10,&r);
             if(buf[i] =='\n')
             {
@@ -161,6 +167,7 @@ void DBG_Logv(const char* fmt, va_list aptr)
                 DPMI_CallRealModeINT(0x10,&r);
             }
         }
+        PIC_SetIRQMask(mask);
     }
     #undef SIZE
 }
