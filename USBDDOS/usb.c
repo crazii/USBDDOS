@@ -994,9 +994,9 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 void USB_ISR(void)
 {
     const uint8_t irq = PIC_GetIRQ();
-    if(irq == 0xFF) //already handled (EOI sent, pic isr invalid)
+    if(irq == 0xFF) //already handled by other handlers (shared IRQ, EOI sent, pic isr invalid)
         return;
-    if(USB_FindISRHandle(irq) == NULL) //previous IRQ handle, new IRQ not for us
+    if(USB_FindISRHandle(irq) == NULL) //previous IRQ handled (shared IRQ), new IRQ arrived but not for us
         return;
 
     BOOL handled = FALSE;
