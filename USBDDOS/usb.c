@@ -994,6 +994,11 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
 void USB_ISR(void)
 {
     const uint8_t irq = PIC_GetIRQ();
+    if(irq == 0xFF) //already handled (EOI sent, pic isr invalid)
+        return;
+    if(USB_FindISRHandle(irq) == NULL) //previous IRQ handle, new IRQ not for us
+        return;
+
     BOOL handled = FALSE;
     USB_ISR_FinalizerPtr = &USB_ISR_FinalizerHeader;
 
@@ -1025,7 +1030,6 @@ void USB_ISR(void)
         USB_ISR_FinalizerHeader.next = NULL;
 
         PIC_UnmaskIRQ(irq);
-        //_LOG("EOIE ");
     }
     else //if we send EOI, we stop the calling chain because the final handler in the chain may send EOI again.
     {
@@ -1046,14 +1050,12 @@ void USB_ISR(void)
 #endif
         //original handler may mask the IRQ agian, enable
         PIC_UnmaskIRQ(irq);
-
     }
 }
 
 DPMI_ISR_HANDLE* USB_FindISRHandle(uint8_t irq)
 {
-    int i;
-    for(i = 0; i < USBT.HC_Count; ++i)
+    for(int i = 0; i < USBT.HC_Count; ++i)
     {
         if(USB_ISRHandle[i].n == PIC_IRQ2VEC(irq))
             return &USB_ISRHandle[i];
