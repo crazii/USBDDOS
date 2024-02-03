@@ -1717,6 +1717,9 @@ DPMI_DEFAULT_CLIENT_IRQ(15)
 extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
 {
     uint8_t irq = PIC_GetIRQ();
+    if(irq == 0xFF) //already handled (shared IRQ handled by other driver)
+        return;
+
     //_LOG("HWIRQ %d\n", irq);
     uint8_t vec = PIC_IRQ2VEC(irq);
     //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
