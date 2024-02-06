@@ -149,7 +149,7 @@ void DBG_Logv(const char* fmt, va_list aptr)
     return;
     #endif
 
-#if 0
+#if 1
     if(!(CPU_FLAGS()&CPU_IFLAG))
     { //use VGA when in interrupt
         VGA_Print(buf);

@@ -1656,6 +1656,7 @@ extern "C" void __CDECL near DPMI_Call_OldIVT(int irq)
     DPMI_REG r = {0};
     r.w.cs = (uint16_t)(DPMI_OldIVT[irq]>>16);
     r.w.ip = (uint16_t)(DPMI_OldIVT[irq]&0xFFFF);
+    //_LOG("OLDIVT: %d %x:%x", irq, r.w.cs, r.w.ip);
     DPMI_CallRealModeIRET(&r);
     //This is the fianl entry for both PM & RM chain
     assert(DPMI_IRQfromRM&(1<<irq));
@@ -1674,14 +1675,18 @@ extern "C" void __CDECL near DPMI_Call_IVT(int irq)
 
     if(DPMI_IRQfromPM&(1<<irq))
     {
+        //_LOG("CALLIVT: %d %x ", irq, PIC_IRQ2VEC(irq));
         DPMI_REG r = {0};
         DPMI_CallRealModeINT(PIC_IRQ2VEC(irq), &r); //call current IVT, will enter DPMI_HWIRQHandler later from IVT
         DPMI_IRQfromPM &= ~(1<<irq); //restore PM mask
+        //_LOG("CALLIVTE ");
     }
     else
     {
+        //_LOG("CALLOIVT ");
         assert(DPMI_IRQfromRM&(1<<irq));
         DPMI_Call_OldIVT(irq); //call old IVT entry that before USBDDOS installed
+        //_LOG("CALLOIVTE ");
     }
 }
 
@@ -1895,9 +1900,11 @@ static void DPMI_SetupIDT()
     size = FP_OFF(DPMI_DefaultClientIRQ1) - FP_OFF(DPMI_DefaultClientIRQ0);
     for(int i = 0; i < 32; ++i)
     {
-        DPMI_ClientINTHandler[PIC_IRQ2VEC(i)] = (void (far*)(void)) MK_FP((SEL_CS+DPMI_LOADER_GetCSIndex(FP_SEG(DPMI_DefaultClientIRQ0)))<<3, FP_OFF(DPMI_DefaultClientIRQ0) + i*size);
-        DPMI_ClientINTHandlerDS[PIC_IRQ2VEC(i)] = SEL_INTR_DS*8;
-        DPMI_OldIVT[i] = *(uint32_t* far)MK_FP(0, PIC_IRQ2VEC(i));
+        int vec = PIC_IRQ2VEC(i);
+        DPMI_ClientINTHandler[vec] = (void (far*)(void)) MK_FP((SEL_CS+DPMI_LOADER_GetCSIndex(FP_SEG(DPMI_DefaultClientIRQ0)))<<3, FP_OFF(DPMI_DefaultClientIRQ0) + i*size);
+        DPMI_ClientINTHandlerDS[vec] = SEL_INTR_DS*8;
+        DPMI_OldIVT[i] = *(uint32_t far*)MK_FP(0, vec*4); //far* not *far!
+        //_fmemcpy(&DPMI_OldIVT[i], MK_FP(0, vec*4), 4);
     }
 }
 

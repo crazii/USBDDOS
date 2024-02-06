@@ -82,7 +82,7 @@ static void __NAKED near DPMI_RMCBCommonEntry() //commen entry for call back
     _ASM_END
 
     _ASM_BEGIN
-        _ASM(cli) //RMCB stack are temporary so disable interrup on RMCB stack
+        _ASM(cli) //RMCB stack are temporary so disable interrupt on RMCB stack
         //switch to RMCB stack
         _ASM2(movzx esi, sp)
         _ASM2(mov ax, ss)
@@ -270,8 +270,8 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM2(mov ax, INTn)
         _ASM2(test ah, ah)
         _ASM(jnz skip_flags)
+        _ASM2(and word ptr [bx + DPMI_REG_OFF_FLAGS], 0xBCFF) //clear NT, clear IF TF (by Intel INTn instruction reference).(AC in hiword)
         _ASM(push word ptr [bx + DPMI_REG_OFF_FLAGS])
-        _ASM2(and word ptr [bx + DPMI_REG_OFF_FLAGS], 0xFCFF) //clear IF TF (by Intel INTn instruction reference).(AC in hiword)
     _ASMLBL(skip_flags:)
         _ASM(push cs)
 #if defined(__BC__)
@@ -286,7 +286,7 @@ static void far _pascal DPMI_RMCBTranslation(DPMI_REG* reg, unsigned INTn, BOOL 
         _ASM(add ax, word ptr cs:[bx+1]);
         _ASM(add ax, 3) //size of jmp instruction itself
         _ASM(pop bx)
-        _ASM(mov directcall, ax); //directcall=!0, it's a runtime hack using relative offset, so no need to adjust offset as for BC
+        _ASM(mov directcall, 1); //directcall=!0, it's a runtime hack using relative offset, so no need to adjust offset as for BC
 #endif
         _ASM2(mov cx, directcall)
         _ASM2(test cx, cx)
@@ -585,6 +585,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
     //A, proteced mode IRQ handling will call realmode handler through here
     //B, real mode IRQ handling, if hooked, will call to PM handler through RMCB, then the PM handler might call realmode functions (i.e.debug print)
     //senario B might not work since BIOS/DOS interrupt are not reentrant
+    //DO NOT use _LOG here and it may cause recursion
 
     //copy struct to dest stack
     DPMI_Rmcb->TranslationSP -= sizeof(DPMI_REG);
@@ -607,7 +608,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM2(lss sp, stackREG) //stackREG stored at ss:bp[xx]. load ss:sp in one shot, or interrutp will be on wrong stack
         _ASM2(mov cx, sp) //DPMI_REG near* for translation call
         _ASM2(les bx, DPMI_Rmcb)
-        _ASM2(cmp dx, SEL_HIMEM_DS*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and interrupt should not be enabled on it)
+        _ASM2(cmp dx, SEL_HIMEM_DSE*8) //if not on the himem stack, skip set sp. coulde be on translation stack. (rmcb stack is temporary and interrupt should not be enabled on it)
         _ASM(jb TranslationSkipSaveSP)
         _ASM2(mov bp, es:[bx + RMCB_OFF_PMSP]);
         _ASM2(mov es:[bx + RMCB_OFF_PMSP], ax); //if real mode interrupt reflect to pm, it will use this sp pointer
@@ -634,10 +635,10 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM(pop bp)
 #endif
         //push parameter for translation
-        _ASM(push cx) //note: pascal param left to right order
+        _ASM(push cx) //reg //note: pascal param left to right order
         _ASM2(shr ecx, 16)
-        _ASM(push cx)
-        _ASM(push 0)
+        _ASM(push cx) //INTn
+        _ASM(push 0) //directcall
         //chained call switch pm (return of translation)
         _ASM(push word ptr es:[bx + RMCB_OFF_RMSEG]);
         _ASM(push word ptr es:[bx + RMCB_OFF_SwitchPM]);
@@ -655,7 +656,7 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM2(mov ds, ax)
 
         _ASM(pop dx) //old ss
-        _ASM2(cmp dx, SEL_HIMEM_DS*8)
+        _ASM2(cmp dx, SEL_HIMEM_DSE*8)
         _ASM(jb TranslationSkipSaveSP2)
         _ASM2(mov ss:[bx + RMCB_OFF_PMSP], bp);
     _ASMLBL(TranslationSkipSaveSP2:)
@@ -670,6 +671,10 @@ static void __CDECL DPMI_CallRealMode(DPMI_REG* reg, unsigned INTn) //INTn < 256
         _ASM(pop fs)
         _ASM(pop es)
     _ASM_END
+    // if(!(CPU_FLAGS()&CPU_IFLAG)) //only safe to log when IF=0
+    // {
+    //     _LOG("DPMI_CallRealMode end: %x %x\n", _DS, _SS);
+    // }
     _fmemcpy(reg, stackREG, sizeof(DPMI_REG));
     DPMI_Rmcb->TranslationSP += (sizeof(DPMI_REG) + DPMI_RMCB_TRASNLATION_STACK_SIZE);
 }
@@ -1051,7 +1056,7 @@ uint16_t DPMI_CallRealModeRETF(DPMI_REG* reg)
 
 uint16_t DPMI_CallRealModeINT(uint8_t i, DPMI_REG* reg)
 {
-    uint32_t offseg = (DPMI_PM) ? DPMI_LoadD(i*4) : *(uint32_t far*)MK_FP(0,i*4);
+    uint32_t offseg = (DPMI_PM) ? DPMI_LoadD(i*4) : *(uint32_t far*)MK_FP(0, i*4);
     reg->w.cs = (uint16_t)(offseg>>16);
     reg->w.ip = (uint16_t)(offseg&0xFFFF);
     DPMI_CallRealMode(reg, i);
