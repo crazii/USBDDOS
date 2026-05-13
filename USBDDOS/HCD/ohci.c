@@ -202,9 +202,51 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
         DPMI_StoreD(dwIOBase + HcInterruptStatus, StartofFrame);
         context &= ~StartofFrame;
     }
-    if(context & UnrecoverableError) // need reset
+    if(context & UnrecoverableError) // OHCI spec 5.3.1.1: reset and reinit
     {
-        //return TRUE;
+        /* PATCHED: was empty. Was a real bug for NEC OHCI which is known
+         * to raise spurious UEs (Linux applies OHCI_QUIRK_NEC for this).
+         * Recovery: full host-controller reset, then restore the
+         * operational registers from the values we know we set during
+         * InitController. Pending transfers will fail at the class-driver
+         * layer; callers are expected to retry. */
+        _LOG("OHCI: UnrecoverableError, resetting controller\n");
+
+        /* Save BIOS-detected frame interval (HCR resets it to default). */
+        uint32_t FrameInterval = DPMI_LoadD(dwIOBase + HcFmInterval);
+
+        /* Issue host controller reset; HCR self-clears within 10us per spec. */
+        DPMI_StoreD(dwIOBase + HcCommandStatus, HostControllerReset);
+
+        /* Bounded busy-wait (no delay() in ISR context). 10us typical,
+         * give a generous ~1ms safety margin via 1000 polls. */
+        int spin = 1000;
+        while(spin-- > 0 && (DPMI_LoadD(dwIOBase + HcCommandStatus) & HostControllerReset))
+            ;
+
+        /* Restore operational registers (HCR clears them). */
+        DPMI_StoreD(dwIOBase + HcFmInterval, FrameInterval);
+        DPMI_StoreD(dwIOBase + HcHCCA, DPMI_PTR2P(&pHCDData->HCCA));
+        DPMI_StoreD(dwIOBase + HcControlHeadED, DPMI_PTR2P(&pHCDData->ControlHead));
+        DPMI_StoreD(dwIOBase + HcBulkHeadED, DPMI_PTR2P(&pHCDData->BulkHead));
+        DPMI_StoreD(dwIOBase + HcPeriodicStart, (FrameInterval & 0x3FFF) * 9 / 10);
+
+        /* Re-enable the same interrupt set we configured in InitController.
+         * HcInterruptEnable is write-1-to-set, so this enables those bits. */
+        DPMI_StoreD(dwIOBase + HcInterruptEnable,
+                    (0x4000003FL & ~StartofFrame) | MasterInterruptEnable);
+
+        /* Re-enable list processing in HcControl, then go USBOPERATIONAL. */
+        DPMI_MaskD(dwIOBase + HcControl, ~InterruptRouting, 0UL);
+        DPMI_MaskD(dwIOBase + HcControl, ~0UL,
+                   ControlListEnable | PeriodicListEnable |
+                   IsochronousEnable | BulkListEnable);
+        DPMI_MaskD(dwIOBase + HcControl, ~HostControllerFunctionalState,
+                   (USBOPERATIONAL << HostControllerFunctionalState_SHIFT));
+
+        /* Clear UE status so it doesn't perpetually re-fire. */
+        DPMI_StoreD(dwIOBase + HcInterruptStatus, UnrecoverableError);
+        context &= ~UnrecoverableError;
     }
     if(context & ScheduleOverrun) // TODO:
     {
