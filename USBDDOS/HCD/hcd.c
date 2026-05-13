@@ -87,21 +87,25 @@ BOOL HCD_RemoveDevice(HCD_Device* pDevice)
 
     assert(pDevice->pRequest == NULL);
 
-    BOOL result = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_RESET); //No need to do that, but do it for safety
-    assert(result);
-    result = result && pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
-    assert(result);
-    result = result && pDevice->pHCI->pHCDMethod->RemoveDevice(pDevice);
-    assert(result);
+    //Best-effort cleanup. SetPortStatus/HCDMethod failures during teardown are logged
+    //but not fatal: the device must be removed from the HCD DeviceList regardless, or
+    //subsequent enumeration sees a stale entry and triggers worse misbehavior. Each
+    //step runs unconditionally so a failure early in the chain doesn't skip later steps.
+    BOOL portReset = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_RESET); //No need to do that, but do it for safety
+    if(!portReset) _LOG("HCD_RemoveDevice: port %d reset failed during teardown\n", pDevice->bHubPort);
+    BOOL portDisable = pDevice->pHub->SetPortStatus(pDevice->pHub, pDevice->bHubPort, USB_PORT_DISABLE);
+    if(!portDisable) _LOG("HCD_RemoveDevice: port %d disable failed during teardown\n", pDevice->bHubPort);
+    BOOL hcdRemove = pDevice->pHCI->pHCDMethod->RemoveDevice(pDevice);
+    if(!hcdRemove) _LOG("HCD_RemoveDevice: HCI method RemoveDevice failed during teardown\n");
 
-    if(result)
-    {
-        memmove(&pDevice->pHCI->DeviceList[i],&pDevice->pHCI->DeviceList[i+1],(pDevice->pHCI->bDevCount-i-1)*sizeof(HCD_Device*));
-        pDevice->pHCI->DeviceList[--pDevice->pHCI->bDevCount] = NULL;
-        pDevice->pHCData = NULL;
-        pDevice->pHCI = NULL;
-    }
-    return result;
+    //Always remove from device list — even if some cleanup steps failed.
+    //Leaving a half-removed device in the list is strictly worse than partial cleanup.
+    memmove(&pDevice->pHCI->DeviceList[i],&pDevice->pHCI->DeviceList[i+1],(pDevice->pHCI->bDevCount-i-1)*sizeof(HCD_Device*));
+    pDevice->pHCI->DeviceList[--pDevice->pHCI->bDevCount] = NULL;
+    pDevice->pHCData = NULL;
+    pDevice->pHCI = NULL;
+
+    return portReset && portDisable && hcdRemove;
 }
 
 HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir, void* pBuffer, uint16_t size, uint8_t endpoint, HCD_COMPLETION_CB pFnCB, void* pCallbackData)
