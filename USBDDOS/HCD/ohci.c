@@ -84,8 +84,16 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
         else if(HCFS == USBRESET)
         { // take ownership from SMM driver
             DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, OwnershipChangeRequest);
-            while(DPMI_LoadD(dwBase + HcControl) & InterruptRouting) // wait SMM driver
+            /* Gap 3: bound the SMM handoff wait. Some BIOSes never relinquish
+             * (locked SMM, BIOS bug); the original unbounded while loop hangs
+             * USBDDOS forever in that case. Linux's quirk_usb_handoff_ohci
+             * uses a comparable 500ms cap and proceeds with a warning; we
+             * give ~1s (20 * 50ms) of headroom for slow BIOSes. */
+            int spin;
+            for(spin = 20; spin > 0 && (DPMI_LoadD(dwBase + HcControl) & InterruptRouting); --spin)
                 delay(50);
+            if(spin == 0)
+                _LOG("OHCI: SMM handoff timeout after 1s, proceeding anyway (BIOS bug?)\n");
         }
         //HCFS = (DPMI_LoadD(dwBase + HcControl) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
         //_LOG("HCFS: %d\n", HCFS);
