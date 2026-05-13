@@ -151,6 +151,41 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
     pHCDData->ED4msTail = &pHCDData->ED4ms;
     pHCDData->ED2msTail = &pHCDData->ED2ms;
     pHCDData->ED1msTail = &pHCDData->ED1ms;
+
+    /* Gap 2: INITRESET-equivalent verify and one-shot retry.
+     * Some OPTi 82C861 (FireLink) and certain SiS chips don't honor
+     * HcFmInterval / HcPeriodicStart writes while in the post-HCR SUSPEND
+     * state - the register reads back as zero in the FSMPS or FrameInterval
+     * field. Mirrors Linux's OHCI_QUIRK_INITRESET handling
+     * (drivers/usb/host/ohci-hcd.c around the "retry:" label). On failure,
+     * HC-reset again and transition to USBOPERATIONAL state BEFORE
+     * re-writing FmInterval / PeriodicStart so the chip accepts the write. */
+    {
+        uint32_t fi = DPMI_LoadD(dwBase + HcFmInterval);
+        uint32_t ps = DPMI_LoadD(dwBase + HcPeriodicStart);
+        if((fi & 0x3FFF0000UL) == 0 || ps == 0)
+        {
+            _LOG("OHCI: FmInterval=%08lx PeriodicStart=%08lx didn't latch; INITRESET retry\n", (unsigned long)fi, (unsigned long)ps);
+            DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, HostControllerReset);
+            delay(1);
+            /* INITRESET quirk: USBOPERATIONAL state FIRST, BEFORE FmInterval write */
+            DPMI_MaskD(dwBase + HcControl, ~HostControllerFunctionalState,
+                       (USBOPERATIONAL << HostControllerFunctionalState_SHIFT));
+            /* Re-establish state cleared by HCR */
+            if(!bSkipFmInterval)
+                DPMI_StoreD(dwBase + HcFmInterval, FrameInterval);
+            DPMI_StoreD(dwBase + HcHCCA, DPMI_PTR2P(&pHCDData->HCCA));
+            DPMI_StoreD(dwBase + HcControlHeadED, DPMI_PTR2P(&pHCDData->ControlHead));
+            DPMI_StoreD(dwBase + HcBulkHeadED, DPMI_PTR2P(&pHCDData->BulkHead));
+            DPMI_StoreD(dwBase + HcInterruptEnable, (0x4000003FL & ~StartofFrame) | MasterInterruptEnable);
+            DPMI_MaskD(dwBase + HcControl, ~0UL, ControlListEnable | PeriodicListEnable | IsochronousEnable | BulkListEnable);
+            DPMI_StoreD(dwBase + HcPeriodicStart, (FrameInterval & 0x3FFF) * 9 / 10);
+            fi = DPMI_LoadD(dwBase + HcFmInterval);
+            ps = DPMI_LoadD(dwBase + HcPeriodicStart);
+            if((fi & 0x3FFF0000UL) == 0 || ps == 0)
+                _LOG("OHCI: still won't latch after INITRESET retry, proceeding anyway\n");
+        }
+    }
     return TRUE;
 }
 
