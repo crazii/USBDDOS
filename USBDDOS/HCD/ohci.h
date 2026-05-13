@@ -83,6 +83,13 @@
 #define PortOverCurrentIndicatorChange BIT19
 #define PortResetStatusChange   BIT20
 
+//OHCI 1.0a Appendix B Legacy Support Interface Specification.
+//Implemented on chips with Legacy keyboard/mouse emulation (NEC µPD720101,
+//SiS 7001, etc.). Reserved/RAZ on non-Legacy-Support implementations -
+//writes are silently ignored.
+#define HceControl              0x100L
+#define EmulationEnable         BIT0
+
 #define PIDFROMTD               0 //for control ED PID
 #define PIDSETUP                0
 #define PIDOUT                  1
