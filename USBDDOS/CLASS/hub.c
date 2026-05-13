@@ -73,14 +73,18 @@ static BOOL HUB_SetPortStatus(HCD_HUB* pHub, uint8_t port, uint16_t status)
     {
         _LOG("HUB port %d resetting\n", port);
         result = USB_HUB_SetPortFeature(HC2USB(pHub->pDevice), port, PORT_RESET) && result;
-        delay(55); //apply reset signal for 10ms+
-        result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, PORT_RESET) && result; //release reset signal
+        delay(55); //apply reset signal for 10ms+. Per USB 2.0 11.5.1.5 the hub auto-releases reset after the duration; software does not.
+        //Wait for the hub to complete the reset (PS_RESET self-clears). Bounded retry: 100 iterations * delay(5) = ~500ms cap.
+        int timeout = 100;
         do
         {
             delay(5);
             USB_HUB_PS ps; ps.val = USB_HUB_GetPortStatus(HC2USB(pHub->pDevice), port);
             current = ps.bm.status;
-        } while((current&PS_RESET)); //wait until reset is actually done. this also reload the current states
+        } while((current&PS_RESET) && --timeout > 0); //wait until reset is actually done. this also reload the current states
+        //Acknowledge the port-reset change indicator (USB 2.0 spec 11.24.2 Table 11-17: C_PORT_RESET is the valid clear-side selector).
+        //The original code used ClearPortFeature(PORT_RESET) which is NOT a valid ClearPortFeature selector per spec and STALLs on compliant hubs.
+        result = USB_HUB_ClearPortFeature(HC2USB(pHub->pDevice), port, C_PORT_RESET) && result;
 
         _LOG("HUB port %d reset %x\n", port, current);
     }
@@ -186,7 +190,7 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     delay(55);
 
     {for(uint8_t i = 0; i < desc.bNbrPorts; ++i)
-        USB_HUB_ClearPortFeature(pDevice, i, PORT_RESET);}
+        USB_HUB_ClearPortFeature(pDevice, i, C_PORT_RESET);} //ack the port-reset change indicator. Spec: C_PORT_RESET is the valid clear-side selector (was PORT_RESET, which STALLs on compliant hubs).
     delay(55);
 
     //disable
