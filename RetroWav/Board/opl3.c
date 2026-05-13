@@ -41,7 +41,7 @@
     并将在法律允许的最大范围内被起诉。
 */
 
-#include "RETROWAV/BOARD/OPL3.h"
+#include "RetroWav/Board/opl3.h"
 
 static const int transfer_speed = 2e6;
 

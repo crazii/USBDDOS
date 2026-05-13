@@ -42,7 +42,7 @@
     并将在法律允许的最大范围内被起诉。
 */
 
-#include "RetroWav/RetroWav.h"
+#include "RetroWav/retrowav.h"
 #include <assert.h>
 
 #define RETROWAVE_CMD_BUFFER_SIZE 110

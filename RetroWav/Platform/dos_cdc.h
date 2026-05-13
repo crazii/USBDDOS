@@ -9,8 +9,8 @@
 
 #include <errno.h>
 
-#include "RetroWav/RetroWav.h"
-#include "RetroWav/Protocol/Serial.h"
+#include "RetroWav/retrowav.h"
+#include "RetroWav/Protocol/serial.h"
 
 #ifdef __cplusplus
 extern "C" {
