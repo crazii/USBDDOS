@@ -43,7 +43,7 @@
 
 #pragma once
 
-#include "RetroWav/RetroWav.h"
+#include "RetroWav/retrowav.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -21,9 +21,9 @@
 #endif
 
 #if ENABLE_RETROWAVE
-#include "RetroWav/RetroWav.h"
+#include "RetroWav/retrowav.h"
 #include "RetroWav/Platform/dos_cdc.h"
-#include "RetroWav/Board/OPL3.h"
+#include "RetroWav/Board/opl3.h"
 #include "emm.h"
 #include "hdpmipt.h"
 
