@@ -139,7 +139,15 @@ void DBG_Logv(const char* fmt, va_list aptr)
     len = min(len, SIZE-1);
     buf[len] = '\0';
 
-    #if 0
+    /* COM1 logging path. Enabled in this fork (was #if 0 upstream) so
+     * headless emulator runs and serial-console real-hardware testing can
+     * capture _LOG output without a VGA screen. Bret-Johnson-style serial
+     * output: drain the UART transmit-holding-register-empty status bit
+     * (LSR bit 5 at port 0x3F8+5) before writing each byte to the
+     * transmitter (port 0x3F8). The early return then skips the upstream
+     * VGA/INT-10h paths below, which keeps timing predictable on
+     * USBDDOSP regression captures. */
+    #if 1
     outp(0x3F8+3, 0x03);
     for(int i = 0; i < len; ++i)
     {
