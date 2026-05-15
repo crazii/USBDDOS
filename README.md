@@ -2,51 +2,70 @@
 
 ## Status
 
-**Current version: `v1.0.0-alpha.1`.** The "alpha" label here means
-**real-hardware verification is pending — NOT that the code is unstable
-or broken.** Specifically:
+**Current version: `v1.0.0-alpha.2` (May 15, 2026)** — housekeeping
+release; no new code or features.
 
-* All 11 commits build clean with `-Werror` on Open Watcom v2 and
+Every patch from `v1.0.0-alpha.1` was merged into upstream
+`crazii/USBDDOS` between May 13 and May 15, 2026. Upstream master is
+at `b1308fb`. The alpha.2 binaries on the release page are built
+directly from upstream master and are byte-identical (Watcom) or
+near-identical (DJGPP, differing only in an embedded build-hash) to
+the alpha.1 binaries. If alpha.1 is already running on your system,
+there is no reason to update; alpha.2 exists for build-provenance
+clarity, not as a functional change.
+
+**The "alpha" label still means real-hardware verification is
+pending — NOT that the code is unstable or broken.** Specifically:
+
+* All upstream code builds clean with `-Werror` on Open Watcom v2 and
   DJGPP gcc 12.2.0.
 * The 7-test QEMU regression suite passes 7/7
   (`ohci-init`, `ohci-kbd`, `ohci-msc`, `uhci-init`, `ehci-init`,
   `ohci-hub-hid`, `ohci-audio`).
-* Every patch is derived from authoritative documentation: the
+* Every patch was derived from authoritative documentation: the
   USB 2.0 spec (for the Gap 4 hub-class fix), Linux `pci-quirks.c`
   and `ohci-hcd.c` (for Gaps 2, 3, 6), Apple Darwin `IOUSBFamily`
   (for the pending Gap 7), the NEC µPD720101 / ALi M5237 / SiS 630 /
   OPTi 82C861 chip datasheets, and Benjamin Lunt's FYSOS Book 8
   (for Gap 8).
-* What's missing: a regression pass against the actual silicon each
-  chip-quirk fix targets. QEMU implements *spec-compliant* USB
+* What's still missing: a regression pass against the actual silicon
+  each chip-quirk fix targets. QEMU implements *spec-compliant* USB
   devices; the patched paths exist precisely because real silicon
-  deviates from spec. So while the code "works" in the emulator,
-  the proof that each fix behaves correctly against the chip it
-  targets is missing.
+  deviates from spec.
 
-**The fork moves from alpha to beta** when at least one independent
-real-hardware test report exists per patched gap. If you have NEC
-µPD720101, ALi M5237 / M1543C, SiS 7001, OPTi 82C861, or a
-Mac-Mini-2011-class Intel PCH platform and can run a smoke test,
-[file an issue](https://github.com/Netrunner01/USBDDOS/issues) with
-the results either way — that's the single most useful contribution
-this project needs right now.
+**Promotion to beta or v1.0.0** requires at least one independent
+real-hardware test report per patched gap. If you have NEC µPD720101,
+ALi M5237 / M1543C, SiS 7001, OPTi 82C861, or a Mac-Mini-2011-class
+Intel PCH platform and can run a smoke test, [file an
+issue](https://github.com/Netrunner01/USBDDOS/issues) with the results
+either way — that's the single most useful contribution this project
+needs right now.
 
 ## Why this fork exists
 
-Upstream `crazii/USBDDOS` has not received a maintainer commit since
-February 2024, and the issue tracker has accumulated bug reports with
-no resolutions. Several of those bugs have specific identifiable root
-causes — some with one-line fixes that have been sitting in users'
-forks for over a year. This fork is a place those fixes live in one
-public location so people who actually need a working USB driver
-stack on legacy DOS hardware can use one without compiling it
-themselves.
+When this fork was started in May 2026, upstream `crazii/USBDDOS` had
+not received a maintainer commit since February 2024 and the issue
+tracker had accumulated bug reports with no resolutions. The fork's
+purpose was to provide a public home for a focused set of fixes that
+users had identified but never seen merged.
 
-It is a small, deliberately-scoped fork. It is not a competing project
-or a hostile takeover bid. If upstream resumes, the patches here are
-designed to land as clean per-issue commits on `crazii/USBDDOS` with
-no rebasing required.
+**That situation has since changed.** Between May 13 and May 15, 2026,
+upstream resumed activity and merged every fix in this fork's
+`v1.0.0-alpha.1` patch series (PRs #22–#30 against `crazii/USBDDOS`).
+The fork's code-side mission is therefore complete — the patches are
+now upstream, where they belong.
+
+**The fork continues to exist as a binary-hosting layer.** Many
+real-hardware users of legacy DOS USB don't compile their own
+drivers, and upstream doesn't publish pre-built binaries. This fork
+publishes binary releases (built from upstream master, reproducible
+by anyone with Open Watcom v2 or DJGPP) as a convenience for testers
+and end users. It also remains a staging area for fixes that haven't
+yet been written or upstreamed (see "What this fork does NOT do" for
+the current known-unimplemented list).
+
+If upstream begins publishing its own binary releases, this fork can
+sunset to read-only.
 
 ## Who this fork is for
 

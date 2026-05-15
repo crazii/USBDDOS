@@ -1,14 +1,82 @@
 # Changelog
 
 All notable changes to Netrunner01/USBDDOS are documented here. This
-fork derives from [crazii/USBDDOS](https://github.com/crazii/USBDDOS)
-commit `54345d0` (Feb 6, 2024). Upstream's own versioning is not
-modified by this fork; the version strings below identify fork-side
-iteration only.
+fork derives from [crazii/USBDDOS](https://github.com/crazii/USBDDOS);
+the initial alpha was based on upstream `54345d0` (Feb 6, 2024), and
+subsequent releases track upstream as the fork's patches are merged
+in. Upstream's own versioning is not modified by this fork; the
+version strings below identify fork-side iteration only.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/)
 for the fork-side suffix.
+
+## [1.0.0-alpha.2] — 2026-05-15
+
+**This is a housekeeping release.** No new code, no functional
+changes, no bug fixes. The alpha.2 binaries are byte-identical (Watcom)
+or near-identical (DJGPP differs by 7 bytes of embedded build-hash) to
+the alpha.1 binaries. If alpha.1 is already running on your system, do
+not update — there is no reason to.
+
+**Why cut a release at all, then?** Between May 13 and May 15, 2026,
+upstream `crazii/USBDDOS` merged every patch from this fork's
+`v1.0.0-alpha.1` patch series (PRs #22–#30). The patches now live at
+upstream `master` (`b1308fb`) and are no longer carried as fork-side
+cherry-picks. This release exists solely to refresh the binaries' build
+provenance so they map to a public upstream commit rather than to a
+fork-internal tag — useful for anyone wanting to verify "these binaries
+correspond to crazii/USBDDOS at commit X" without trusting fork-side
+state.
+
+**Alpha designation (carried forward unchanged from alpha.1)**:
+real-hardware verification on the silicon the patches target is still
+pending. The alpha label remains accurate because the field-validation
+criterion has not changed and is not affected by where the source
+lives. Promotion to beta or v1.0.0 still requires at least one
+independent real-hardware test report per patched gap.
+
+### Changed
+* **Source provenance**: binaries are now built from upstream master
+  at commit `b1308fb`, not from fork-side cherry-picks. Anyone can
+  `git clone https://github.com/crazii/USBDDOS.git && git checkout b1308fb`
+  and build a byte-identical Watcom binary.
+* **Build hash embedded in DJGPP binary**: `b1308fb, DJGPP` (was
+  `afb2b84, DJGPP` in alpha.1). This is the only differing region
+  between alpha.1 and alpha.2 DJGPP binaries.
+
+### Upstream merge order (for the record)
+1. PR #17 (stanwebber: case-correct `#include` paths) — merged
+   earlier; fork's own case-fix patch deferred in favor of this one.
+2. PR #22 (debug: COM1 logging)
+3. PR #23 (HCD defensive teardown)
+4. PR #24 (Gap 4: hub `ClearPortFeature(PORT_RESET)` spec violation)
+5. PR #25 (Gap 8: POTPGT wait)
+6. PR #26 (Gap 2: INITRESET-equivalent retry)
+7. PR #27 (Gap 3: SMM-handoff bound)
+8. PR #28 (Gap 1: OHCI UnrecoverableError recovery)
+9. PR #29 (Gap 6: ALi M5237 HcFmInterval lockup avoidance)
+10. PR #30 (Gap 5: OHCI Legacy Support emulation disable)
+
+### Unchanged
+* Functional code: all patches landed unmodified. The Open Watcom v2
+  debug build is byte-identical to alpha.1's (MD5
+  `39962c2092961ba679467ba46ab24c43`, 94,380 bytes), confirming that
+  Crazii merged each patch as-submitted and that stanwebber's
+  case-fix has no effect on Windows-built (case-insensitive)
+  binaries.
+
+### Build details
+* **Open Watcom v2 debug build**: `usbddos.exe`, 94,380 bytes,
+  MD5 `39962c2092961ba679467ba46ab24c43`, bit-stable across rebuilds.
+* **DJGPP gcc 12.2.0 release build**: `usbddosp.exe`, 207,872 bytes,
+  MD5 `2b1b0221f338c59041e7e6ec18827ef9`. Byte-content of all non-hash
+  regions identical to alpha.1.
+
+### Reference upstream commit
+* `b1308fb` — `Merge pull request #30 from netrunner01/fix/ohci-legacy-support-disable`
+  (May 15, 2026). All of the fork's alpha.1 patch series is reachable
+  from this commit.
 
 ## [1.0.0-alpha.1] — 2026-05-13
 
