@@ -123,6 +123,19 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
         //HCFS = (DPMI_LoadD(dwBase + HcControl) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
         //_LOG("HCFS: %d\n", HCFS);
     }
+
+    /* Gap 5: disable OHCI Legacy Support emulation now that we've taken
+     * ownership. On chips that implement Legacy Support (NEC µPD720101,
+     * SiS 7001, etc.), BIOS may have left the keyboard/mouse PS/2-style
+     * emulation active. With our driver running, that emulation can
+     * spuriously generate interrupts or compete for the same MMIO state.
+     * Writing 0 to HceControl clears EmulationEnable (and all other
+     * Legacy Support state). Per OHCI 1.0a Appendix B, HceControl is
+     * at MMIO 0x100; on chips without Legacy Support the offset is
+     * reserved/RAZ and the write is silently ignored, so this is
+     * universally safe. */
+    DPMI_StoreD(dwBase + HceControl, 0);
+
     /* Gap 6: read-modify-write of HcFmInterval to preserve the BIOS-tuned
      * value across the soft reset. On ALi M5237 (and other chips matching
      * OHCI_HasFmIntervalLockup), reading HcFmInterval locks the entire
