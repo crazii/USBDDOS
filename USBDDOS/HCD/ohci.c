@@ -13,6 +13,31 @@
 // configs
 #define TIME_OUT 500L
 
+/* OHCI 1.0a default FrameInterval (12000 bits per frame minus 1).
+ * Used as a substitute value on chips where reading HcFmInterval is
+ * unsafe (see OHCI_HasFmIntervalLockup below). */
+#define OHCI_FI_DEFAULT 0x2EDF
+
+/* Gap 6 quirk: PCI IDs of OHCI controllers whose HcFmInterval register
+ * locks the entire system on access. Modeled on Linux's no_fminterval
+ * flag in quirk_usb_handoff_ohci (drivers/usb/host/pci-quirks.c).
+ *
+ * Currently known affected silicon:
+ *   ULi / ALi M5237  (PCI 10B9:5237) - the OHCI block inside the ALi
+ *                                       M1543C southbridge.
+ *
+ * The cost of skipping HcFmInterval read/restore is that the controller
+ * boots with its hardware-default value (FI = 0x2EDF) rather than any
+ * BIOS-tuned value. Linux accepts this trade-off; we do too.
+ *
+ * Add more matches here if other affected silicon is identified.
+ */
+static inline BOOL OHCI_HasFmIntervalLockup(HCD_Interface* pHCI)
+{
+    return (pHCI->PCI.Header.VendorID == 0x10B9 &&
+            pHCI->PCI.Header.DeviceID == 0x5237);
+}
+
 static void OHCI_ISR_ProcessDoneQueue(HCD_Interface* pHCI, uint32_t dwDoneHead);
 static uint16_t OHCI_GetPortStatus(HCD_Interface* pHCI, uint8_t port);
 static BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status);
@@ -98,10 +123,22 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
         //HCFS = (DPMI_LoadD(dwBase + HcControl) & HostControllerFunctionalState) >> HostControllerFunctionalState_SHIFT;
         //_LOG("HCFS: %d\n", HCFS);
     }
-    uint32_t FrameInterval = DPMI_LoadD(dwBase + HcFmInterval);
+    /* Gap 6: read-modify-write of HcFmInterval to preserve the BIOS-tuned
+     * value across the soft reset. On ALi M5237 (and other chips matching
+     * OHCI_HasFmIntervalLockup), reading HcFmInterval locks the entire
+     * system, so skip the read/restore and accept the post-reset default. */
+    BOOL bSkipFmInterval = OHCI_HasFmIntervalLockup(pHCI);
+    if(bSkipFmInterval)
+        _LOG("OHCI: HcFmInterval lockup quirk active (PCI %04x:%04x), using spec default %04xh\n",
+             pHCI->PCI.Header.VendorID, pHCI->PCI.Header.DeviceID, OHCI_FI_DEFAULT);
+
+    uint32_t FrameInterval = bSkipFmInterval
+        ? OHCI_FI_DEFAULT
+        : DPMI_LoadD(dwBase + HcFmInterval);
     DPMI_MaskD(dwBase + HcCommandStatus, ~0UL, HostControllerReset);
     delay(1); //10us max
-    DPMI_StoreD(dwBase + HcFmInterval, FrameInterval);
+    if(!bSkipFmInterval)
+        DPMI_StoreD(dwBase + HcFmInterval, FrameInterval);
 
     // get ports
     pHCI->bNumPorts = DPMI_LoadB(dwBase + HcRhDescriptorA); // low 8bit of a register
@@ -273,8 +310,12 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
          * layer; callers are expected to retry. */
         _LOG("OHCI: UnrecoverableError, resetting controller\n");
 
-        /* Save BIOS-detected frame interval (HCR resets it to default). */
-        uint32_t FrameInterval = DPMI_LoadD(dwIOBase + HcFmInterval);
+        /* Save BIOS-detected frame interval (HCR resets it to default).
+         * Gap 6: skip on chips where HcFmInterval access locks the system. */
+        BOOL bSkipFmIntervalISR = OHCI_HasFmIntervalLockup(pHCI);
+        uint32_t FrameInterval = bSkipFmIntervalISR
+            ? OHCI_FI_DEFAULT
+            : DPMI_LoadD(dwIOBase + HcFmInterval);
 
         /* Issue host controller reset; HCR self-clears within 10us per spec. */
         DPMI_StoreD(dwIOBase + HcCommandStatus, HostControllerReset);
@@ -285,8 +326,10 @@ BOOL OHCI_ISR(HCD_Interface* pHCI)
         while(spin-- > 0 && (DPMI_LoadD(dwIOBase + HcCommandStatus) & HostControllerReset))
             ;
 
-        /* Restore operational registers (HCR clears them). */
-        DPMI_StoreD(dwIOBase + HcFmInterval, FrameInterval);
+        /* Restore operational registers (HCR clears them).
+         * Gap 6: skip HcFmInterval restore on quirked chips. */
+        if(!bSkipFmIntervalISR)
+            DPMI_StoreD(dwIOBase + HcFmInterval, FrameInterval);
         DPMI_StoreD(dwIOBase + HcHCCA, DPMI_PTR2P(&pHCDData->HCCA));
         DPMI_StoreD(dwIOBase + HcControlHeadED, DPMI_PTR2P(&pHCDData->ControlHead));
         DPMI_StoreD(dwIOBase + HcBulkHeadED, DPMI_PTR2P(&pHCDData->BulkHead));
