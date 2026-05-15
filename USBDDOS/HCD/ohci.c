@@ -105,8 +105,9 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
     memset(pHCDData, 0, sizeof(OHCI_HCData));
     _LOG("HCDDData %08x, Initial memory usage: %d\n", pHCDData, sizeof(OHCI_HCData));
 
-    // port power on
-    if(DPMI_LoadD(dwBase + HcRhDescriptorA) & PowerSwitchingMode)
+    // port power on, then wait POTPGT*2ms before accessing the ports
+    uint32_t rh_desc_a = DPMI_LoadD(dwBase + HcRhDescriptorA);
+    if(rh_desc_a & PowerSwitchingMode)
     { // per-port power
         for (uint32_t i = 0; i < pHCI->bNumPorts; i++)
             DPMI_MaskD(dwBase + HcRhPort1Status + i * 4, ~0UL, SetPortPower);
@@ -114,6 +115,23 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
     else
     { // all-port power
         DPMI_MaskD(dwBase + HcRhStatus, ~0UL, SetGlobalPower);
+    }
+    /* Gap 8: wait POTPGT * 2ms before accessing ports.
+     * OHCI 1.0a 7.4.1: PowerOnToPowerGoodTime (HcRhDescriptorA bits 31:24)
+     * specifies the time in 2ms units that must elapse after enabling port
+     * power before software may access the port. NEC µPD720101 default
+     * POTPGT = 0x0F = 30ms (manual section 4.2); SiS 7001 = 0x01 = 2ms.
+     * Without this wait, GetPortStatus may return stale values on slower
+     * silicon, causing flaky enumeration.
+     *
+     * CRITICAL: mask with 0xFF before multiplying. POTPGT is an 8-bit field;
+     * without the mask a right-shift of a signed value with the top bit set
+     * could sign-extend to 0xFFFFFFFF, multiplying to a ~50-day delay
+     * (FYSOS Book 8 documents this trap). */
+    {
+        uint32_t potpgt = (rh_desc_a >> 24) & 0xFFUL;
+        if(potpgt > 0)
+            delay(potpgt * 2);
     }
     // hcca & queue heads
     OHCI_BuildHCCA(pHCDData);
