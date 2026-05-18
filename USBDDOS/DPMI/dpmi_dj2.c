@@ -307,6 +307,15 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
 
 void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment/* = 4*/)
 {
+    /* Gap H: page-crossing check must be performed in LINEAR address space,
+     * not C-pointer-relative space.  Under HDPMI32 (and any DPMI host that
+     * returns a non-page-aligned segment base for the XMS mapping), the
+     * mspace C-pointers and the linear addresses have a non-zero phase
+     * difference: C-pointer pages start at one grid, linear pages start at
+     * another offset by (DPMI_DSBase & 0xFFF).  An allocation that fits
+     * within one C-pointer page can still straddle a linear page boundary,
+     * which is what the hardware sees for DMA.  Translate via DPMI_DSBase
+     * before the boundary test. */
     #if DEBUG
     CLIS();
     XMS_Allocated += size;
@@ -315,13 +324,19 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment/* = 4*/)
     uint32_t offset = align(addr, alignment) - addr;
 
     uint32_t extra = 0;
-    while(((addr+offset+extra)&~0xFFF) != ((addr+offset+extra+size)&~0xFFF))
     {
-        extra += align(size, alignment);
-        mspace_free(XMS_Space, ptr-8);
-        ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+extra+8) + 8;
-        addr = (uintptr_t)ptr;
-        offset = align(addr, alignment) - addr + extra;
+        uint32_t lin_start = DPMI_DSBase + (uint32_t)(addr + offset + extra);
+        uint32_t lin_end   = lin_start + size;
+        while((lin_start & ~0xFFFUL) != (lin_end & ~0xFFFUL))
+        {
+            extra += align(size, alignment);
+            mspace_free(XMS_Space, ptr-8);
+            ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+extra+8) + 8;
+            addr = (uintptr_t)ptr;
+            offset = align(addr, alignment) - addr + extra;
+            lin_start = DPMI_DSBase + (uint32_t)(addr + offset + extra);
+            lin_end   = lin_start + size;
+        }
     }
 
     uint32_t* uptr = (uint32_t*)(ptr + offset);
@@ -337,8 +352,15 @@ void* DPMI_DMAMallocNCPB(unsigned int size, unsigned int alignment/* = 4*/)
     void* tries[TRY] = {0};
     tries[0] = mspace_memalign(XMS_Space, alignment, size);
     int i = 0;
-    while(i<TRY && ((align((uintptr_t)tries[i],alignment))&~0xFFFUL) != ((align((uintptr_t)tries[i],alignment)+size-1)&~0xFFFUL))
-        tries[++i] = mspace_memalign(XMS_Space, alignment, size);
+    {
+        uint32_t lin_start = DPMI_DSBase + (uint32_t)align((uintptr_t)tries[0], alignment);
+        while(i<TRY && (lin_start & ~0xFFFUL) != ((lin_start + size - 1) & ~0xFFFUL))
+        {
+            tries[++i] = mspace_memalign(XMS_Space, alignment, size);
+            if(!tries[i]) break;
+            lin_start = DPMI_DSBase + (uint32_t)align((uintptr_t)tries[i], alignment);
+        }
+    }
     if(i == TRY)
     {
         assert(FALSE);
