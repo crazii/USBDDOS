@@ -360,7 +360,39 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     }
 
     if(NoDriver)
-        printf("No driver found at port: %d for device (class %02x), skip\n", portIndex, pDevice->Desc.bDeviceClass);
+    {
+        //Gap I (a): graceful skip already exists; improve diagnostics so
+        //the COM1/_LOG trail clearly identifies which class was unrecognized.
+        //Helps confirm whether the freeze on KT133A+NEC+mixed-class-hub
+        //was reached or whether enumeration died before this point.
+        const char* className = "unknown";
+        switch (pDevice->Desc.bDeviceClass)
+        {
+            case 0x00: className = "see-interface"; break;
+            case 0x01: className = "audio"; break;
+            case 0x02: className = "CDC"; break;
+            case 0x03: className = "HID"; break;
+            case 0x05: className = "physical"; break;
+            case 0x06: className = "image"; break;
+            case 0x07: className = "printer"; break;
+            case 0x08: className = "mass-storage"; break;
+            case 0x09: className = "hub"; break;
+            case 0x0A: className = "CDC-data"; break;
+            case 0x0B: className = "smartcard"; break;
+            case 0x0D: className = "content-security"; break;
+            case 0x0E: className = "video"; break;
+            case 0x0F: className = "health"; break;
+            case 0xDC: className = "diagnostic"; break;
+            case 0xE0: className = "wireless"; break;
+            case 0xEF: className = "miscellaneous(IAD)"; break;
+            case 0xFE: className = "app-specific"; break;
+            case 0xFF: className = "vendor"; break;
+        }
+        printf("No driver found at port: %d for device (class %02x/%02x/%02x %s), skip\n",
+               portIndex,
+               pDevice->Desc.bDeviceClass, pDevice->Desc.bDeviceSubClass, pDevice->Desc.bDeviceProtocol,
+               className);
+    }
     else
         printf("Error initializing device at port: %d, address: %d.\n", portIndex, address);
     USB_RemoveDevice(pDevice); //this will disable the hub port
@@ -625,6 +657,14 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
     {
         uint8_t len = *(pBuffer + i);
         uint8_t descType = *(pBuffer + (i+1));
+        //Gap I (d): defend against malformed/zero-length descriptors that would cause
+        //infinite loop on i += len.  Observed risk on audio/vendor devices with
+        //non-standard class-specific descriptors.
+        if (len == 0)
+        {
+            _LOG("USB: malformed descriptor at offset %d (bLength=0, type=%02x); bailing parse\n", i, descType);
+            break;
+        }
         if(descType == USB_DT_CONFIGURATION)
         {
             ++ConfigIndex;
@@ -635,9 +675,18 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
 
             USB_ConfigDesc* pConfigDesc = (USB_ConfigDesc*)(pBuffer + i);
             pDevice->pConfigList[ConfigIndex] = *pConfigDesc;
-            USB_InterfaceDesc* pInterfaceDesc = (USB_InterfaceDesc*)malloc(sizeof(USB_InterfaceDesc)*pConfigDesc->bNumInterfaces);
+            //Gap I (c): cap bNumInterfaces per Linux USB_QUIRK_HONOR_BNUMINTERFACES.
+            //Some devices advertise more interface descriptors than they can service
+            //and cannot handle iteration past the declared count, or report
+            //implausible counts that would exhaust DPMI heap.
+            if (pDevice->pConfigList[ConfigIndex].bNumInterfaces > 32)
+            {
+                _LOG("USB: device claims %d interfaces; capping at 32\n", pDevice->pConfigList[ConfigIndex].bNumInterfaces);
+                pDevice->pConfigList[ConfigIndex].bNumInterfaces = 32;
+            }
+            USB_InterfaceDesc* pInterfaceDesc = (USB_InterfaceDesc*)malloc(sizeof(USB_InterfaceDesc)*pDevice->pConfigList[ConfigIndex].bNumInterfaces);
             assert(pInterfaceDesc);
-            memset(pInterfaceDesc, 0, sizeof(USB_InterfaceDesc)*pConfigDesc->bNumInterfaces);
+            memset(pInterfaceDesc, 0, sizeof(USB_InterfaceDesc)*pDevice->pConfigList[ConfigIndex].bNumInterfaces);
             pDevice->pConfigList[ConfigIndex].pInterfaces = pInterfaceDesc;
         }
         else if(descType == USB_DT_INTERFACE)
@@ -674,6 +723,24 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
             ++EndpointIndex;
             assert(EndpointIndex < pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].bNumEndpoints);
             pDevice->pConfigList[ConfigIndex].pInterfaces[InterfaceIndex].pEndpoints[EndpointIndex] = *(USB_EndpointDesc*)(pBuffer+i);
+        }
+        else if(descType == USB_DT_INTERFACE_ASSOCIATION)
+        {
+            //Gap I (b): IAD ECN.  Informational only -- the IAD groups subsequent
+            //INTERFACE descriptors into one logical function, but USBDDOS performs
+            //class binding at device level (not function level) and does NOT use
+            //bFunctionClass for driver lookup.  Surface the IAD for log visibility;
+            //continue parsing each INTERFACE descriptor normally.
+            if (i + 7 < length)
+            {
+                _LOG("USB: IAD at offset %d (firstIf=%d, count=%d, funcClass=%02X/%02X/%02X)\n",
+                     i, *(pBuffer + i + 2), *(pBuffer + i + 3),
+                     *(pBuffer + i + 4), *(pBuffer + i + 5), *(pBuffer + i + 6));
+            }
+            else
+            {
+                _LOG("USB: truncated IAD at offset %d\n", i);
+            }
         }
         i = (uint16_t)(i + len);
     }

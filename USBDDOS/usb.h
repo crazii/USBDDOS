@@ -44,6 +44,7 @@ extern "C" {
 #define USB_DT_DEVICE_QUALIFIER  6
 #define USB_DT_OTHER_SPEED_CONFIGURATION 7
 #define USB_DT_INTERFACE_POWER 8
+#define USB_DT_INTERFACE_ASSOCIATION 0x0B //Interface Association Descriptor (IAD ECN, USB 2.0)
 #define USB_DT_CSINTERFACE     0x24 //class-specific interface
 
 //Descriptor Index , wIndex
