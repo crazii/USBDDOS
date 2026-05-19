@@ -130,11 +130,7 @@ void DBG_Logv(const char* fmt, va_list aptr)
 {
     #define SIZE (int)(DUMP_BUFF_SIZE*2)
     char buf[SIZE];
-    #if defined(__BC__)
-    int len = vsprintf(buf, fmt, aptr);
-    #else
     int len = vsnprintf(buf, SIZE, fmt, aptr);
-    #endif
     assert(len < SIZE);
     len = min(len, SIZE-1);
     buf[len] = '\0';
