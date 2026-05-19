@@ -54,7 +54,13 @@ static USBALLOC_Memory* USBALLOC_GetMemory(void)
             assert(memory->arena != NULL);
             #else
             assert(memory->arena == NULL);
-            memory->arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32); //alignment to 32 for EHCI
+            /* Gap H: pool arenas are sliced into 32-byte HC structures (TDs, EDs)
+             * for OHCI and EHCI consumers via USB_TAlloc*.  An arena that straddles
+             * a 4KB page boundary would silently make some of its sub-slices span
+             * pages too -- broken for OHCI DMA per spec section 4.2.2.
+             * USBALLOC_MEMORY_SIZE (1KB) fits in a single page so NCPB always
+             * succeeds within its retry budget. */
+            memory->arena = (uint8_t*)DPMI_DMAMallocNCPB(USBALLOC_MEMORY_SIZE, 32);
             #endif
             //_LOG("memory arena: %08lx\n", ((uint32_t)(memory->arena)));
             assert((((uint32_t)(memory->arena))&0x1F) == 0);
@@ -86,7 +92,9 @@ void USBALLOC_Init(void)
 #if USBALLOC_PREALLOC
     for(int i = 0; i < USBALLOC_MEMORY_COUNT; ++i)
     {
-        USBALLOC_Pool[i].arena = (uint8_t*)DPMI_DMAMalloc(USBALLOC_MEMORY_SIZE, 32);
+        //Gap H: see comment in USBALLOC_GetMemory above. NCPB applies to the
+        //pre-allocated path too.
+        USBALLOC_Pool[i].arena = (uint8_t*)DPMI_DMAMallocNCPB(USBALLOC_MEMORY_SIZE, 32);
         assert(USBALLOC_Pool[i].arena);
     }
 #endif

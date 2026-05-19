@@ -10,6 +10,31 @@
 
 // ref: OHCI_Specification_Rev.1.0a
 
+/* Gap H: OHCI DMA structures (HCCA, EDs, TDs) must not span 4KB page
+ * boundaries.  The OHCI hardware DMA-accesses these as units and the
+ * spec does NOT support split pages for the structures themselves
+ * (only for data buffers, which have a separate CBP/BE mechanism in
+ * the TD that explicitly supports a single page-boundary crossing,
+ * per OHCI 1.0a section 3.1.1.1).
+ *
+ * The HCData allocation is the highest-risk site: it embeds the
+ * 256-byte HCCA plus 8 static EDs (~548 bytes total), and a plain
+ * DPMI_DMAMalloc could place it straddling a 4KB page boundary,
+ * silently breaking DMA for either the HCCA or the static EDs.
+ *
+ * EHCI has used this macro-override pattern (ehci.c:25-30) since
+ * EHCI bring-up; OHCI catches up here.
+ */
+#define DPMI_DMAMalloc DPMI_DMAMallocNCPB
+#ifdef USB_TAlloc
+#undef USB_TAlloc
+#endif
+#define USB_TAlloc DPMI_DMAMallocNCPB
+#ifdef USB_TAlloc32
+#undef USB_TAlloc32
+#endif
+#define USB_TAlloc32(size) DPMI_DMAMallocNCPB((size), 32)
+
 // configs
 #define TIME_OUT 500L
 
@@ -197,6 +222,24 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
     //_LOG("HCCA: %04x %08lx\n", &pHCDData->HCCA, DPMI_PTR2P(&pHCDData->HCCA));
     assert((DPMI_PTR2P(&pHCDData->HCCA) & 0xFF) == 0); // ensure alignment
     assert((DPMI_PTR2P(&pHCDData->ControlHead) & 0xF) == 0);
+    /* Gap H: defense-in-depth checks that DPMI_DMAMallocNCPB (substituted
+     * via the macro at top of file) actually produced a non-page-crossing
+     * allocation.  HCCA is the DMA-critical block (256 bytes, OHCI hw reads
+     * the entire structure as a unit); the static EDs (ControlHead through
+     * ED1ms) each individually fit in their own page by 16-byte alignment
+     * but are tested as a region to confirm the whole HCData footprint is
+     * page-contained.  Assertion-only (compiled out under NDEBUG); the real
+     * fix is the macro substitution. */
+#if DEBUG
+    {
+        uint32_t hccaStart = DPMI_PTR2P(&pHCDData->HCCA);
+        uint32_t hccaEnd   = hccaStart + sizeof(OHCI_HCCA_BLOCK) - 1;
+        assert((hccaStart & ~0xFFFUL) == (hccaEnd & ~0xFFFUL));
+        uint32_t hcdStart  = DPMI_PTR2P(pHCDData);
+        uint32_t hcdEnd    = hcdStart + sizeof(OHCI_HCData) - 1;
+        assert((hcdStart & ~0xFFFUL) == (hcdEnd & ~0xFFFUL));
+    }
+#endif
 
     pHCDData->ControlHead.ControlBits.Skip = 1;
     DPMI_StoreD(dwBase + HcControlHeadED, DPMI_PTR2P(&pHCDData->ControlHead));
