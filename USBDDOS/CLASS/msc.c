@@ -700,11 +700,13 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
 
         if(!result)
         {
+            _LOG("MSC: Error reading boot sector\n"); /* F-AUDIT-3 */
             printf("MSC: Error reading boot sector.\n");
             return FALSE;
         }
         if(TSRData.bpb.DOS20.BPS != pDriverData->BlockSize || (memcmp(TSRData.bpb.DOS40.FS, "FAT",3) != 0 && memcmp(TSRData.bpb.DOS70.FS, "FAT",3) != 0))
         {
+            _LOG("MSC: BPB not found (BPS=%u expected %u)\n", TSRData.bpb.DOS20.BPS, pDriverData->BlockSize); /* F-AUDIT-3 */
             printf("MSC: BPB not found.\n");
             return FALSE;
         }
@@ -954,10 +956,17 @@ static BOOL USB_MSC_DOS_InstallDevice(USB_Device* pDevice)     //ref: https://gi
     free(cds);
     free(buf);
 
+    /* F-AUDIT-3: braces required so _LOG and printf both run on the chosen branch */
     if(overriden)
+    {
+        _LOG("MSC: Disk %s %s BIOS-overridden, drive %c:\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
         printf("USB Disk \'%s %s\': BIOS driver overrided, remounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
+    }
     else
+    {
+        _LOG("MSC: Disk %s %s mounted, drive %c:\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
         printf("USB Disk \'%s %s\' mounted as drive %c:.\n", pDevice->sManufacture, pDevice->sProduct, 'A' + CDSIndex);
+    }
     return TRUE;
 }
 
@@ -967,6 +976,7 @@ BOOL USB_MSC_DOS_Install()
     MSC_DriverINT_RMCB = DPMI_AllocateRMCB_RETF(&USB_MSC_DOS_DriverINT, &MSC_DOSDriverReg);
     if(MSC_DriverINT_RMCB == 0)
     {
+        _LOG("MSC: Driver install failed - RMCB allocation\n"); /* F-AUDIT-3 */
         printf("MSC Driver Install: Error Allocating RMCB.\n");
         return FALSE;
     }
