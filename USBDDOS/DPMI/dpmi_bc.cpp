@@ -972,8 +972,13 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment)
 {
     CLIS();
     alignment = max(alignment,4);
-    uint8_t* ptr = (uint8_t*)malloc(size + alignment + 2) + 2;
-    assert((short)ptr != 2);
+    /* F-AUDIT-1: check malloc return before pointer arithmetic.
+     * Old code did `malloc(...) + 2` producing 0x00000002 on OOM, which
+     * downstream callers couldn't distinguish from a valid pointer.
+     */
+    uint8_t* raw = (uint8_t*)malloc(size + alignment + 2);
+    if(raw == NULL) { STIL(); return NULL; }
+    uint8_t* ptr = raw + 2;
     uint32_t addr = DPMI_PTR2L(ptr);
     uint16_t offset = (uint16_t)(align(addr, alignment) - addr);
     void* aligned = ptr + offset;

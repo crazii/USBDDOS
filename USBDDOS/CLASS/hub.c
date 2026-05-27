@@ -162,6 +162,11 @@ BOOL USB_HUB_InitDevice(USB_Device* pDevice)
     USB_HubDesc desc;
     USB_Request req = {USB_REQ_READ|USB_REQ_TYPE_HUB, USB_REQ_GET_DESCRIPTOR, USB_DT_HUB<<8, 0, sizeof(desc)};
     void* dma = DPMI_DMAMalloc(sizeof(desc), 4);
+    if(!dma) /* F-AUDIT-1 */
+    {
+        _LOG("HUB: failed to alloc DMA buffer (%u bytes)\n", (unsigned)sizeof(desc));
+        return FALSE;
+    }
     uint8_t err = USB_SyncSendRequest(pDevice, &req, dma);
     memcpy(&desc, dma, sizeof(desc));
     if(err != 0)
