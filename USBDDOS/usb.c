@@ -279,9 +279,21 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
 {
     //early return
     if(pHub->pHCI->bDevCount >= USB_MAX_HC_COUNT)
+    {
+        _LOG("USB: bDevCount >= USB_MAX_HC_COUNT (%d) on HC; refusing device on port %d\n",
+             USB_MAX_HC_COUNT, portIndex);
         return FALSE;
+    }
     if(USBT.DeviceCount >= USB_MAX_DEVICE_COUNT)
+    {
+        /* F-AUDIT-2: silent reject was a real-world support nightmare.
+         * Make it visible in COM1 capture so users can identify the cause.
+         */
+        _LOG("USB: DeviceCount >= USB_MAX_DEVICE_COUNT (%d); refusing device on port %d. "
+             "Hint: bump USB_MAX_DEVICE_COUNT in usbcfg.h\n",
+             USB_MAX_DEVICE_COUNT, portIndex);
         return FALSE;
+    }
 
     USB_Device* pDevice = NULL;
     uint8_t address;
