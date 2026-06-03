@@ -95,6 +95,12 @@ typedef struct HCD_HostrControllerDriverMethod
 
     BOOL (*RemoveEndPoint)(HCD_Device* pDevice, void* pEndpoint);
 
+    //Abort the in-flight control transfer on the default control pipe: stop the
+    //HC executing the QH, free the queued TDs, restore a clean tail, leaving the
+    //EP usable. Called by the control-transfer timeout. May be NULL (HC without
+    //abort support, in which case the timeout falls back to waiting).
+    BOOL (*AbortControl)(HCD_Device* pDevice, void* pEndpoint);
+
 }HCD_Method;
 
 typedef struct HCD_HostControllerType
@@ -137,6 +143,11 @@ HCD_Request* HCD_AddRequest(HCD_Device* pDevice, void* pEndpoint, HCD_TxDir dir,
 
 //invoke callback and remove the request entry
 BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode);
+
+//Drop any in-flight requests for an endpoint without invoking their callbacks.
+//Used by the control-transfer timeout after the HC has freed the stuck TDs, so
+//no TD still references these requests.
+void HCD_AbortRequests(HCD_Device* pDevice, void* pEndpoint);
 
 //the initial state of all ports on a hub device should be disabled, @see USB_EnumerateDevices
 typedef struct HCD_HUB

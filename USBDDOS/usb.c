@@ -479,6 +479,23 @@ uint8_t USB_SendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffe
     return pFn(&pDevice->HCDDevice, pDevice->pDefaultControlEP, dir, request, dma, pRequest->wLength, USB_Completion_UserCallback, pUserData);
 }
 
+#ifndef USB_CONTROL_TIMEOUT_MS
+#define USB_CONTROL_TIMEOUT_MS 2000     /* cap on a single control transfer */
+#endif
+#define USB_ERROR_TIMEOUT      0xFEu    /* synthetic error for a timed-out transfer */
+
+/* PIT channel-0 current count: decrements at ~1.193182 MHz, wraps every ~54.9ms.
+ * A latched read is atomic and IRQ-mask independent, so it advances even inside
+ * the control-transfer wait, which masks the timer IRQ and freezes the BIOS tick. */
+static uint16_t USB_PITCount(void)
+{
+    uint16_t lo, hi;
+    outp(0x43, 0x00);   /* latch counter 0 */
+    lo = inp(0x40);
+    hi = inp(0x40);
+    return (uint16_t)((hi << 8) | lo);
+}
+
 uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pBuffer)
 {
     USB_SyncCallbackResult result;
@@ -497,8 +514,60 @@ uint8_t USB_SyncSendRequest(USB_Device* pDevice, USB_Request* pRequest, void* pB
     STIL();
 #endif
 
-    while(!result.Finished)
-        USB_IDLE_WAIT();
+    {
+        /* Bounded control wait. The HC completion callback sets result.Finished;
+         * a device that NAKs the data stage forever never completes the TD, so
+         * cap the wait (PIT-timed -- works in this IRQ-masked region where the
+         * BIOS tick is frozen) and abort the stuck transfer instead of hanging. */
+        uint32_t elapsed = 0;
+        uint16_t prev = USB_PITCount();
+        const uint32_t limit = (uint32_t)USB_CONTROL_TIMEOUT_MS * 1193UL; /* counts */
+        BOOL timedout = FALSE;
+        while(!result.Finished)
+        {
+            USB_IDLE_WAIT();
+            uint16_t now = USB_PITCount();
+            elapsed += (uint16_t)(prev - now); /* counts down; u16 wrap-safe */
+            prev = now;
+            if(elapsed >= limit) { timedout = TRUE; break; }
+        }
+        if(timedout && !result.Finished)
+        {
+            HCD_Interface* pHCI = pDevice->HCDDevice.pHCI;
+#if DEBUG
+            _LOG("CONTROL TIMEOUT(%dms) a%d bmReq=%02x bReq=%02x wVal=%04x wIdx=%04x wLen=%d base=%08lx irq=%d port=%d\n",
+                USB_CONTROL_TIMEOUT_MS, pDevice->HCDDevice.bAddress, pRequest->bmRequestType, pRequest->bRequest,
+                pRequest->wValue, pRequest->wIndex, pRequest->wLength,
+                (unsigned long)pHCI->dwBaseAddress, pHCI->PCI.Header.DevHeader.Device.IRQ, pDevice->HCDDevice.bHubPort);
+            if(pHCI->dwBaseAddress < 0x10000UL)
+            {
+                uint16_t b = (uint16_t)pHCI->dwBaseAddress;
+                _LOG("  UHCI USBCMD=%04x USBSTS=%04x FRNUM=%04x PORTSC%d=%04x\n",
+                    inpw((uint16_t)(b+0)), inpw((uint16_t)(b+2)), inpw((uint16_t)(b+6)),
+                    pDevice->HCDDevice.bHubPort,
+                    inpw((uint16_t)(b + 0x10 + pDevice->HCDDevice.bHubPort*2)));
+            }
+#endif
+            if(pHCI->pHCDMethod->AbortControl != NULL)
+            {
+                /* Free the stuck TDs first (so no TD still references the request),
+                 * then drop the in-flight request so its callback can never fire
+                 * into this stack frame. Order matters. */
+                pHCI->pHCDMethod->AbortControl(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
+                HCD_AbortRequests(&pDevice->HCDDevice, pDevice->pDefaultControlEP);
+                result.ErrorCode = USB_ERROR_TIMEOUT;
+                result.Finished = TRUE;
+            }
+            else
+            {
+                /* HC without abort support: can't safely abandon the wait (the
+                 * callback still points at &result), so fall back to waiting. */
+                _LOG("CONTROL timeout; no abort for this HC, waiting\n");
+                while(!result.Finished)
+                    USB_IDLE_WAIT();
+            }
+        }
+    }
 
 #if USB_MASK_IRQ_ON_IDLEWAIT
     {

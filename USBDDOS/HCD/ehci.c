@@ -48,6 +48,7 @@ HCD_Method EHCI_AccessMethod =
     &EHCI_RemoveDevice,
     &EHCI_CreateEndpoint,
     &EHCI_RemoveEndpoint,
+    NULL, //AbortControl: not yet implemented for EHCI (timeout falls back to wait)
 };
 
 static void EHCI_ResetHC(HCD_Interface* pHCI);
