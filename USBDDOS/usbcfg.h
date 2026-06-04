@@ -11,7 +11,7 @@
 //constants
 #define HCD_MAX_DEVICE_COUNT 15     //device per root hub by spec
 #if defined(__BC__) || defined(__WC__)
-#define USB_MAX_DEVICE_COUNT 4      //save 16 bit memory
+#define USB_MAX_DEVICE_COUNT 8      //small pool to save 16-bit real-mode memory (~144 bytes/slot)
 #else
 #define USB_MAX_DEVICE_COUNT 127    //no need to change, max address 127
 #endif
