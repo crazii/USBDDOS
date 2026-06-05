@@ -100,9 +100,13 @@ BOOL USB_MSC_InitDevice(USB_Device* pDevice)
             
             //skip float library to save code size. it's the culprit that makes code seg exceeds 64K (found in map.txt)
             //there's no other floating points used in USBDDOS.
+            //Note: MaxLBA below must remain the un-scaled LastLBA value;
+            //USB_MSC_ReadSector and other consumers use pDriverData->MaxLBA
+            //for sector-range bounds checks. Use a separate scratch
+            //variable (MaxLBA_K) for the kilo-scaled capacity display.
             uint32_t div = BlockSize >= 1024 ? BlockSize / 1024 : 1024 / BlockSize;
-            MaxLBA /= 1024;
-            uint32_t cap = BlockSize >= 1024 ? MaxLBA*div : MaxLBA/div;
+            uint32_t MaxLBA_K = MaxLBA / 1024;
+            uint32_t cap = BlockSize >= 1024 ? MaxLBA_K*div : MaxLBA_K/div;
             uint16_t capN = (uint16_t)(cap/1024);
             uint16_t capP = (uint16_t)(cap - ((uint32_t)capN)*1024UL);
             while(capP/10 != 0) capP = capP/10;
