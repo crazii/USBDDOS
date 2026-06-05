@@ -340,6 +340,94 @@ If you're using USB boot disk to boot the system, then ```/disk``` parameter is 
 
 Do not use ```LH/LOADHIGH``` for USBDDOS - A DPMI (or a DOS Extender) program is executed above 1M, so no need to do that. Actually if ```LH``` is used, then after TSR the PSP segment will resident in high memory with its' real mode data/code freed, which may generate fragmentations. A DPMI TSR also doesn't need to use assembly to strictly control/optimize the memory layout for TSR, as a common real mode program does.
 
+# Memory managers and XMS
+
+USBDDOS has different memory-manager requirements depending on which
+binary you run.  Both rely on an XMS provider; the DPMI requirement
+differs.
+
+## USBDDOS.EXE (Open Watcom / Borland) - flexible
+
+The Watcom (and Borland) build links a built-in 16-bit protected-mode
+switcher and does **not** need an external DPMI host.  At startup it
+probes for VCPI (INT 67h, AX=DE00h):
+
+- **VCPI present** (EMM386 / JEMM386 / QEMM386 in V86 mode): USBDDOS
+  cooperates with the V86 host and logs `Entered protected mode from
+  virtual 8086 mode.`  Resident footprint ~12 KB.
+- **No VCPI** (pure real mode, no EMM386-class manager): USBDDOS
+  switches directly to protected mode and logs `Entered protected
+  mode from real mode.`  Resident footprint ~4 KB.
+
+Either path works.  An XMS host (HIMEM.SYS / HIMEMX.EXE / equivalent)
+is still required because USBDDOS allocates protected-mode data in
+extended memory.
+
+## USBDDOSP.EXE (DJGPP) - needs a DPMI host
+
+USBDDOSP is a DJGPP-built program and requires an external DPMI host.
+The release bundle includes `CWSDPMI.EXE` as the default fallback.
+Acceptable hosts, in order of recommendation:
+
+1. **HDPMI32** (Japheth) - pure DPMI, no V86 needed, minimal footprint
+2. **JEMM386 NOEMS** (FreeDOS) - EMM386 replacement that provides
+   DPMI 0.9 services directly from V86 mode
+3. **EMM386.EXE NOEMS** (MS-DOS / DR-DOS) - same idea on commercial DOS
+4. **CWSDPMI -p** (bundled fallback) - works alone but see XMS note below
+
+### The CWSDPMI tight-XMS failure mode
+
+When CWSDPMI runs as the *sole* DPMI provider (no JEMM386 / EMM386 /
+HDPMI32 loaded), CWSDPMI allocates its protected-mode heap directly
+from XMS.  On systems with limited free XMS - small total RAM, many
+XMS-consuming TSRs already loaded, or a tight V86 layout - CWSDPMI can
+consume enough XMS that the subsequent USBDDOSP startup fails:
+
+```
+sbrk: fffe, SP: 7350, stack: ...
+HimemCS: ...
+...
+Failed allocating XMS memory, size: 2949120.
+```
+
+USBDDOSP exits without going TSR.
+
+This failure does **not** occur on systems with abundant free XMS
+(typically 16 MB+ RAM and a minimal TSR load).  It is most likely on:
+
+- Systems with under 8 MB total RAM
+- Heavy V86 setups where EMM386's frame and UMB providers have already
+  reserved much of XMS
+- Constrained emulator configurations
+
+#### Resolutions
+
+- **Load an alternative DPMI host before USBDDOSP.**  Loading JEMM386
+  NOEMS or EMM386 NOEMS as part of CONFIG.SYS (or HDPMI32 from
+  AUTOEXEC.BAT) provides DPMI 0.9 via VCPI / V86 services.  CWSDPMI is
+  no longer used at all; USBDDOSP draws its DPMI from the V86 host
+  with no XMS heap competition.  Recommended for FreeDOS:
+  ```
+  DEVICE=\HIMEMX.EXE
+  DEVICE=\JEMM386.EXE NOEMS
+  ```
+- **Increase free XMS** - unload TSRs, reduce DOS=UMB allocation, raise
+  total system RAM if practical.
+- **Switch to USBDDOS.EXE (Watcom).**  The Watcom build is unaffected
+  because it doesn't use a DPMI host.
+
+## Recommended setups by DOS
+
+| DOS                | USBDDOS.EXE       | USBDDOSP.EXE                       |
+| ------------------ | ----------------- | ---------------------------------- |
+| FreeDOS 1.3 / 1.4  | HIMEMX            | HIMEMX + JEMM386 NOEMS             |
+| MS-DOS 6.22 / 7.x  | HIMEM             | HIMEM + EMM386 NOEMS               |
+| DR-DOS 7.x         | EMM386's HIDOS    | HIDOS + EMM386 NOEMS, or HDPMI32   |
+| PC DOS 2000        | HIMEM             | HIMEM + EMM386 NOEMS               |
+
+If you don't know what you have, the Watcom binary (`USBDDOS.EXE`)
+will work in nearly every configuration without manual setup.
+
 # Credits
 * RetroWaveLib from Sudomaker (folder renamed to RetroWav as 8.3 file name, and tiny code changes, for old compiler) https://github.com/SudoMaker/RetroWave
 * This code is somehow based on an old code, usb-driver-under-dos: https://code.google.com/archive/p/usb-driver-under-dos/, with critital changes:
