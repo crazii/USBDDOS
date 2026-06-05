@@ -558,7 +558,25 @@ void* EHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, ui
         if(EPS == EPS_HIGH)
             bInterval = (uint8_t)min(bInterval<=4?1:bInterval-4, EHCI_INTR_COUNT); //pack [1~4] to [1] and clamp [1~16] to [1~11]
         else
-            bInterval = min(bInterval, EHCI_INTR_COUNT);
+        {
+            /* USB 2.0 section 9.6.6: for full-speed and low-speed endpoints,
+             * bInterval is a LINEAR polling period in milliseconds (range
+             * 1..255), NOT a log-scale exponent the way it is for high-speed
+             * endpoints.  The EHCI periodic schedule's InterruptTail[] is
+             * indexed by log2 of the polling interval (slot i polls at 2^i
+             * frames = 2^i ms on EHCI).  Treating the linear millisecond
+             * value as a log-scale index put a typical 10ms HID keyboard
+             * into slot 7 (128ms polling, ~12.8x slower than requested).
+             *
+             * Convert linear ms to floor(log2) + 1 so the device lands on
+             * the largest slot whose polling interval is <= the requested
+             * bInterval.  bInterval=10 -> slot 3 (8ms); bInterval=8 -> slot 3
+             * (8ms); bInterval=255 -> clamped to slot 7 (128ms). */
+            uint8_t log2_floor = 0;
+            uint8_t v = bInterval;
+            while(v > 1U) { v >>= 1; log2_floor++; }
+            bInterval = (uint8_t)min((uint8_t)(log2_floor + 1U), (uint8_t)EHCI_INTR_COUNT);
+        }
         pQH->EXT.Interval = bInterval&0xFU;
         //EHCI_QH* head = &pHCData->InterruptQH[bInterval-1];
         EHCI_QH** tail = &pHCData->InterruptTail[bInterval-1];
@@ -593,7 +611,7 @@ BOOL EHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
         result = EHCI_DetachQH(pQH, &pHCData->BulkQH, &pHCData->BulkTail);
     else if(bTransferType == USB_ENDPOINT_TRANSFER_TYPE_INTR || bTransferType == USB_ENDPOINT_TRANSFER_TYPE_ISOC)
     {
-        assert(pQH->EXT.Interval <= 11);
+        assert(pQH->EXT.Interval >= 1 && pQH->EXT.Interval <= EHCI_INTR_COUNT);
         EHCI_QH* head = &pHCData->InterruptQH[pQH->EXT.Interval-1];
         EHCI_QH** tail = &pHCData->InterruptTail[pQH->EXT.Interval-1];
         result = EHCI_DetachQH(pQH, head, tail);
