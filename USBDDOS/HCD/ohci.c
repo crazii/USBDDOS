@@ -184,6 +184,11 @@ BOOL OHCI_InitController(HCD_Interface* pHCI, PCI_DEVICE* pPCIDev)
 
     pHCI->pHCDMethod = &OHCI_Method;
     pHCI->pHCDData = DPMI_DMAMalloc(sizeof(OHCI_HCData), 256);
+    if(!pHCI->pHCDData) /* F-AUDIT-1 */
+    {
+        _LOG("OHCI: failed to alloc HCData (%u bytes)\n", (unsigned)sizeof(OHCI_HCData));
+        return FALSE;
+    }
     OHCI_HCData* pHCDData = (OHCI_HCData*)pHCI->pHCDData;
     memset(pHCDData, 0, sizeof(OHCI_HCData));
     _LOG("HCDDData %08x, Initial memory usage: %d\n", pHCDData, sizeof(OHCI_HCData));
@@ -762,6 +767,11 @@ BOOL OHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 BOOL OHCI_InitDevice(HCD_Device* pDevice)
 {
     pDevice->pHCData = DPMI_DMAMalloc(sizeof(OHCI_HCDeviceData), 16);
+    if(!pDevice->pHCData) /* F-AUDIT-1 */
+    {
+        _LOG("OHCI: failed to alloc per-device HCData (%u bytes)\n", (unsigned)sizeof(OHCI_HCDeviceData));
+        return FALSE;
+    }
     OHCI_HCDeviceData* pDD = (OHCI_HCDeviceData*)pDevice->pHCData;
     memset(pDD, 0, sizeof(OHCI_HCDeviceData));
     _LOG("Device %08x, memory usage: %d\n", pDD, sizeof(OHCI_HCDeviceData));

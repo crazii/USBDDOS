@@ -113,6 +113,11 @@ BOOL EHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     }
 
     pHCI->pHCDData = DPMI_DMAMalloc(sizeof(EHCI_HCData), EHCI_ALIGN);
+    if(!pHCI->pHCDData) /* F-AUDIT-1 */
+    {
+        _LOG("EHCI: failed to alloc HCData (%u bytes)\n", (unsigned)sizeof(EHCI_HCData));
+        return FALSE;
+    }
     EHCI_HCData* pHCData = (EHCI_HCData*)pHCI->pHCDData;
     memset(pHCData, 0, sizeof(EHCI_HCData));
 
@@ -475,6 +480,11 @@ BOOL EHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 BOOL EHCI_InitDevice(HCD_Device* pDevice)
 {
     pDevice->pHCData = DPMI_DMAMalloc(sizeof(EHCI_HCDeviceData), EHCI_ALIGN);
+    if(!pDevice->pHCData) /* F-AUDIT-1 */
+    {
+        _LOG("EHCI: failed to alloc per-device HCData (%u bytes)\n", (unsigned)sizeof(EHCI_HCDeviceData));
+        return FALSE;
+    }
     EHCI_HCDeviceData* pDeviceData = (EHCI_HCDeviceData*)pDevice->pHCData;
     memset(pDeviceData, 0, sizeof(EHCI_HCDeviceData));
     //EHCI_HCData* pHCData = (EHCI_HCData*)pDevice->pHCI->pHCDData;
@@ -665,7 +675,11 @@ BOOL EHCI_SetupPeriodicList(HCD_Interface* pHCI)
 
     // build frame list entries
     EHCI_FLEP* flep = (EHCI_FLEP*)malloc(4096);
-    assert(flep);
+    if(!flep) /* F-AUDIT-1 */
+    {
+        _LOG("EHCI: failed to malloc 4096 for frame list\n");
+        return FALSE;
+    }
     {//scope for BC
         for(int i = 0; i < 1024; ++i)
             flep[i].Ptr = (Typ_QH<<Typ_Shift) | Tbit;

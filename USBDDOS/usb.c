@@ -685,7 +685,12 @@ BOOL USB_ParseConfiguration(uint8_t* pBuffer, uint16_t length, USB_Device* pDevi
                 pDevice->pConfigList[ConfigIndex].bNumInterfaces = 32;
             }
             USB_InterfaceDesc* pInterfaceDesc = (USB_InterfaceDesc*)malloc(sizeof(USB_InterfaceDesc)*pDevice->pConfigList[ConfigIndex].bNumInterfaces);
-            assert(pInterfaceDesc);
+            if(!pInterfaceDesc) /* F-AUDIT-1 */
+            {
+                _LOG("USB: malloc failed for %u interfaces; bailing parse\n",
+                     pDevice->pConfigList[ConfigIndex].bNumInterfaces);
+                return FALSE;
+            }
             memset(pInterfaceDesc, 0, sizeof(USB_InterfaceDesc)*pDevice->pConfigList[ConfigIndex].bNumInterfaces);
             pDevice->pConfigList[ConfigIndex].pInterfaces = pInterfaceDesc;
         }
@@ -1045,7 +1050,14 @@ static void USB_ConfigEndpoints(USB_Device* pDevice)
             epd->bmAttributesBits.TransferType,
             epd->wMaxPacketSizeFlags.Size,
             epd->bInterval);    //create EP
-        assert(ep);
+        if(!ep) /* F-AUDIT-1: HCD endpoint allocation failed; skip this EP */
+        {
+            _LOG("USB: CreateEndpoint failed for class %x ep %02x [%u/%u]; skipping\n",
+                 pDevice->Desc.bDeviceClass, epd->bEndpointAddress, i+1, bNumEndpoints);
+            pDevice->pEndpoints[i] = NULL;
+            pDevice->pEndpointDesc[i] = epd;
+            continue;
+        }
         _LOG("Class %x Endpoint %02x created: %08x [%u/%u]\n", pDevice->Desc.bDeviceClass, epd->bEndpointAddress, ep, i+1, bNumEndpoints);
         pDevice->pEndpoints[i] = ep;
         pDevice->pEndpointDesc[i] = epd;

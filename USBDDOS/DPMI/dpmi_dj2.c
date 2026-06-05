@@ -287,8 +287,11 @@ void* DPMI_DMAMalloc(unsigned int size, unsigned int alignment/* = 4*/)
 {
     #if DEBUG
     CLIS();
+    /* F-AUDIT-1: check mspace_malloc return before pointer arithmetic. */
+    uint8_t* raw = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+8);
+    if(raw == NULL) { STIL(); return NULL; }
     XMS_Allocated += size;
-    uint8_t* ptr = (uint8_t*)mspace_malloc(XMS_Space, size+alignment+8) + 8;
+    uint8_t* ptr = raw + 8;
     uintptr_t addr = (uintptr_t)ptr;
     uint32_t offset = align(addr, alignment) - addr;
     uint32_t* uptr = (uint32_t*)(ptr + offset);

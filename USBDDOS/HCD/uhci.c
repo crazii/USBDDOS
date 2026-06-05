@@ -106,6 +106,11 @@ BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
     DataArea = DataArea < 0x100000L ? DataArea : DPMI_MapMemory(DataArea, 4096);    //1024 entry, 4 bytes per entry.
     _LOG("UHCI frame list base address: %08lx\n", DataArea);
     pHCI->pHCDData = DPMI_DMAMalloc(sizeof(UHCI_HCData), 16);
+    if(!pHCI->pHCDData) /* F-AUDIT-1 */
+    {
+        _LOG("UHCI: failed to alloc HCData (%u bytes)\n", (unsigned)sizeof(UHCI_HCData));
+        return FALSE;
+    }
     UHCI_HCData* pHCData = (UHCI_HCData*)pHCI->pHCDData;
     memset(pHCData, 0, sizeof(UHCI_HCData));
 
@@ -551,6 +556,11 @@ BOOL UHCI_SetPortStatus(HCD_Interface* pHCI, uint8_t port, uint16_t status)
 BOOL UHCI_InitDevice(HCD_Device* pDevice)
 {
     pDevice->pHCData = DPMI_DMAMalloc(sizeof(UHCI_HCDeviceData), 16);
+    if(!pDevice->pHCData) /* F-AUDIT-1 */
+    {
+        _LOG("UHCI: failed to alloc per-device HCData (%u bytes)\n", (unsigned)sizeof(UHCI_HCDeviceData));
+        return FALSE;
+    }
     UHCI_HCDeviceData* pDeviceData = (UHCI_HCDeviceData*)pDevice->pHCData;
     memset(pDeviceData, 0, sizeof(UHCI_HCDeviceData));
     
