@@ -1718,6 +1718,18 @@ DPMI_DEFAULT_CLIENT_IRQ(15)
 #pragma enable_message (13) //WC: unreachable code, but seems invalid
 #pragma option -k //BC
 
+//A reflected hardware IRQ may require a mode-switch round-trip (PM<->V86 via
+//VCPI, or the RMCB) to reach its real-mode handler. That round-trip uses a
+//single client-state save area and is NOT reentrant: if a second hardware
+//IRQ is taken (at the PM IDT) while the first is still mid-round-trip, the
+//nested switch clobbers the outer saved frame and the outer context resumes
+//in the wrong CPU mode (e.g. a V86 frame resumed as protected mode), faulting
+//in unrelated code. Guard against this by deferring any hardware IRQ that
+//arrives while another is being serviced: mask it, EOI it so the PIC is not
+//left in-service, and re-deliver it (the source device keeps its data latched,
+//so the line re-asserts on unmask) once the outer service completes.
+static uint8_t DPMI_HWIRQInService = 0;
+static uint16_t DPMI_HWIRQDeferred = 0;
 
 extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
 {
@@ -1725,7 +1737,15 @@ extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
     if(irq == 0xFF) //already handled (shared IRQ handled by other driver)
         return;
 
-    //_LOG("HWIRQ %d\n", irq);
+    if(DPMI_HWIRQInService) //nested HW IRQ: defer rather than re-enter the non-reentrant mode switch
+    {
+        PIC_MaskIRQ(irq);
+        PIC_SendSpecificEOI(irq);
+        DPMI_HWIRQDeferred |= (uint16_t)(1<<irq);
+        return;
+    }
+    DPMI_HWIRQInService = 1;
+
     uint8_t vec = PIC_IRQ2VEC(irq);
     //assert(vec >= 0x08 && vec <= 0x0F || vec >= 0x70 && vec <= 0x77);
     void (far* handler)(void) = DPMI_ClientINTHandler[vec]; //save on stack, we are going to modify ds
@@ -1755,6 +1775,19 @@ extern "C" void __CDECL near DPMI_HWIRQHandlerInternal()
     }
     else
         DPMI_Call_OldIVT(irq);
+
+    DPMI_HWIRQInService = 0;
+    //re-deliver any IRQs deferred during this service: unmask so the still-asserted
+    //device line re-fires, now in a non-nested context.
+    if(DPMI_HWIRQDeferred)
+    {
+        uint16_t pending = DPMI_HWIRQDeferred;
+        DPMI_HWIRQDeferred = 0;
+        for(uint8_t b = 0; b < 16; ++b)
+            if(pending & (1<<b))
+                PIC_UnmaskIRQ(b);
+    }
+
 }
 
 #pragma option -k- //BC
