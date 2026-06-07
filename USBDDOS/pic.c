@@ -33,6 +33,19 @@ void PIC_SendEOI(void)
     //STIL();
 }
 
+//Specific EOI for a single IRQ line, leaving any other in-service IRQ intact.
+//Needed when acknowledging one IRQ while another is still being serviced.
+void PIC_SendSpecificEOI(uint8_t irq)
+{
+    if(irq >= 8)
+    {
+        outp(PIC_PORT2, (uint8_t)(0x60 | (irq & 7))); //slave specific EOI
+        outp(PIC_PORT1, (uint8_t)(0x60 | PIC_SLAVE_IRQ)); //master specific EOI for cascade
+    }
+    else
+        outp(PIC_PORT1, (uint8_t)(0x60 | irq)); //master specific EOI
+}
+
 uint8_t PIC_GetIRQ(void)
 {
     //CLIS();

@@ -21,6 +21,9 @@ extern "C"
 //send end of interrupt. MUST be called in interrupt handler
 void PIC_SendEOI(void);
 
+//send a specific EOI for one IRQ, leaving other in-service IRQs intact
+void PIC_SendSpecificEOI(uint8_t irq);
+
 //get interrupting IRQ. MUST be called in interrupt handler
 uint8_t PIC_GetIRQ(void);
 
