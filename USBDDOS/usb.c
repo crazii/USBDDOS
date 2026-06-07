@@ -278,20 +278,10 @@ BOOL USB_InitController(uint8_t bus, uint8_t dev, uint8_t func, PCI_DEVICE* pPCI
 BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
 {
     //early return
-    if(pHub->pHCI->bDevCount >= USB_MAX_HC_COUNT)
+    if(pHub->pHCI->bDevCount >= HCD_MAX_DEVICE_COUNT)
     {
-        _LOG("USB: bDevCount >= USB_MAX_HC_COUNT (%d) on HC; refusing device on port %d\n",
-             USB_MAX_HC_COUNT, portIndex);
-        return FALSE;
-    }
-    if(USBT.DeviceCount >= USB_MAX_DEVICE_COUNT)
-    {
-        /* F-AUDIT-2: silent reject was a real-world support nightmare.
-         * Make it visible in COM1 capture so users can identify the cause.
-         */
-        _LOG("USB: DeviceCount >= USB_MAX_DEVICE_COUNT (%d); refusing device on port %d. "
-             "Hint: bump USB_MAX_DEVICE_COUNT in usbcfg.h\n",
-             USB_MAX_DEVICE_COUNT, portIndex);
+        _LOG("USB: HC device limit reached (%d); refusing device on port %d\n",
+             HCD_MAX_DEVICE_COUNT, portIndex);
         return FALSE;
     }
 
@@ -301,6 +291,12 @@ BOOL USB_InitDevice(HCD_HUB* pHub, uint8_t portIndex, uint16_t portStatus)
     {
         if(!HCD_IS_DEVICE_VALID(&USBT.Devices[address].HCDDevice))
             break;
+    }
+    if(address >= USB_MAX_DEVICE_COUNT)
+    {   //pool full: refuse the device rather than index past Devices[]
+        _LOG("USB device pool full (%d): device at port %d not enumerated. "
+             "Hint: bump USB_MAX_DEVICE_COUNT in usbcfg.h\n", USB_MAX_DEVICE_COUNT, portIndex);
+        return FALSE;
     }
     pDevice = &USBT.Devices[address];
     address = (uint8_t)(address + 1); //1 based

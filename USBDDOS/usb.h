@@ -270,7 +270,6 @@ typedef struct
     USB_Routine InitFunctions[USB_MAX_DEVICE_COUNT]; //un-ordered function array
     uint16_t HC_Count;
     volatile uint16_t HUB_Count; //hub count changes during enumeration, i.e. new hub device found
-    uint16_t DeviceCount;
 }USB_Table;
 
 extern USB_Table USBT;
