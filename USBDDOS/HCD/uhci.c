@@ -26,6 +26,7 @@ static BOOL UHCI_InitDevice(HCD_Device* pDevice);
 static BOOL UHCI_RemoveDevice(HCD_Device* pDevice);
 static void* UHCI_CreateEndpoint(HCD_Device* pDevice, uint8_t EPAddr, HCD_TxDir dir, uint8_t bTransferType, uint16_t MaxPacketSize, uint8_t bInterval);
 static BOOL UHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint);
+static BOOL UHCI_AbortControl(HCD_Device* pDevice, void* pEndpoint);
 
 static void UHCI_EnableInterrupt(HCD_Interface* pHCI, BOOL enable);
 static void UHCI_QHTDSchedule(HCD_Interface* pHCI);
@@ -54,6 +55,7 @@ HCD_Method UHCIAccessMethod =
     &UHCI_RemoveDevice,
     &UHCI_CreateEndpoint,
     &UHCI_RemoveEndpoint,
+    &UHCI_AbortControl,
 };
 
 BOOL UHCI_InitController(HCD_Interface * pHCI, PCI_DEVICE* pPCIDev)
@@ -684,6 +686,39 @@ BOOL UHCI_RemoveEndpoint(HCD_Device* pDevice, void* pEndpoint)
     //UHCI_StartHC(pDevice->pHCI);
     UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
     return result;
+}
+
+//Abort the in-flight control transfer without tearing down the (persistent)
+//default-control QH: point its element link at the terminate flag so the HC
+//stops executing the queued chain, free that chain, restore a fresh empty tail,
+//and clear the data toggle. Pairs with the control-transfer timeout in
+//USB_SyncSendRequest + HCD_AbortRequests (which drops the pending request).
+BOOL UHCI_AbortControl(HCD_Device* pDevice, void* pEndpoint)
+{
+    UHCI_QH* pQH = UHCI_ED_GETQH(pEndpoint);
+    if(pDevice == NULL || pQH == NULL)
+        return FALSE;
+    UHCI_EnableInterrupt(pDevice->pHCI, FALSE);
+    CLIS();
+    pQH->ElementLink = TerminateFlag;       //HC stops executing the queued TDs
+    UHCI_TD* pTD = pQH->pTail;              //free the whole queued chain
+    while(pTD != NULL)
+    {
+        UHCI_TD* pPrev = pTD->pPrev;
+        USB_TFree32(pTD);
+        pTD = pPrev;
+    }
+    pQH->pTail = NULL;
+    UHCI_TD* pNew = (UHCI_TD*)USB_TAlloc32(sizeof(UHCI_TD)); //fresh empty tail
+    if(pNew != NULL)
+    {
+        memset(pNew, 0, sizeof(UHCI_TD));
+        UHCI_InsertTDintoQH(pQH, pNew);
+    }
+    pQH->Flags.DataToggle = 0;              //clean toggle for the next transfer
+    STIL();
+    UHCI_EnableInterrupt(pDevice->pHCI, TRUE);
+    return TRUE;
 }
 
 void UHCI_EnableInterrupt(HCD_Interface* pHCI, BOOL enable)

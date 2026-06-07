@@ -182,3 +182,28 @@ BOOL HCD_InvokeCallBack(HCD_Request* pRequest, uint16_t actuallen, uint8_t ecode
     USB_TFree32(req);
     return TRUE;
 }
+
+void HCD_AbortRequests(HCD_Device* pDevice, void* pEndpoint)
+{
+    if(pDevice == NULL)
+        return;
+    CLIS();
+    HCD_Request* req = pDevice->pRequest;
+    HCD_Request* prev = NULL;
+    while(req != NULL)
+    {
+        HCD_Request* next = req->pNext;
+        if(req->pEndpoint == pEndpoint)
+        {
+            if(prev)
+                prev->pNext = next;
+            else
+                pDevice->pRequest = next;
+            USB_TFree32(req); //no callback: the freed TDs no longer reference it
+        }
+        else
+            prev = req;
+        req = next;
+    }
+    STIL();
+}
